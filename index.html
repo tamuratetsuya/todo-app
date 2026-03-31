@@ -28,51 +28,6 @@
 
     h1 { font-size: 24px; font-weight: 700; color: #1a1a2e; margin-bottom: 24px; }
 
-    .sync-box {
-      background: #f8f9ff;
-      border: 1px solid #e0e7ff;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 24px;
-      font-size: 13px;
-      color: #555;
-    }
-
-    .sync-box .sync-label { margin-bottom: 6px; color: #888; }
-
-    .sync-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .sync-code {
-      flex: 1;
-      font-family: monospace;
-      font-size: 14px;
-      color: #333;
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      padding: 6px 10px;
-      cursor: pointer;
-    }
-
-    .sync-btn {
-      padding: 6px 12px;
-      background: #4f7df3;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-
-    .sync-btn:hover { background: #3a65d8; }
-    .sync-btn.secondary { background: #888; }
-    .sync-btn.secondary:hover { background: #666; }
-
     .input-row {
       display: flex;
       gap: 8px;
@@ -105,6 +60,7 @@
     }
 
     .input-row button:hover { background: #3a65d8; }
+    .input-row button:disabled { background: #aaa; cursor: not-allowed; }
 
     .filters {
       display: flex;
@@ -205,65 +161,22 @@
 
     .status {
       font-size: 12px;
-      color: #aaa;
       margin-top: 8px;
       text-align: right;
     }
 
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.4);
-      justify-content: center;
-      align-items: center;
-      z-index: 100;
-    }
-
-    .modal-overlay.open { display: flex; }
-
-    .modal {
-      background: white;
-      border-radius: 12px;
-      padding: 24px;
-      width: 90%;
-      max-width: 380px;
-    }
-
-    .modal h2 { font-size: 18px; margin-bottom: 8px; color: #1a1a2e; }
-    .modal p { font-size: 13px; color: #666; margin-bottom: 16px; }
-
-    .modal input {
-      width: 100%;
-      padding: 10px 14px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      font-size: 15px;
-      font-family: monospace;
-      outline: none;
-      margin-bottom: 12px;
-    }
-
-    .modal input:focus { border-color: #4f7df3; }
-
-    .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+    .status.ok { color: #4caf50; }
+    .status.error { color: #e53935; }
+    .status.loading { color: #aaa; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>TODO</h1>
 
-    <div class="sync-box">
-      <div class="sync-label">同期コード（別デバイスでこのコードを入力すると同じデータが使えます）</div>
-      <div class="sync-row">
-        <input class="sync-code" id="syncCodeDisplay" readonly onclick="copySyncCode()" title="クリックでコピー" />
-        <button class="sync-btn secondary" onclick="openModal()">変更</button>
-      </div>
-    </div>
-
     <div class="input-row">
       <input type="text" id="todoInput" placeholder="新しいタスクを入力..." />
-      <button onclick="addTodo()">追加</button>
+      <button id="addBtn" onclick="addTodo()">追加</button>
     </div>
 
     <div class="filters">
@@ -278,74 +191,32 @@
       <span id="countLabel"></span>
       <button class="clear-btn" onclick="clearDone()">完了済みを削除</button>
     </div>
-    <div class="status" id="status">接続中...</div>
+    <div class="status loading" id="status">読み込み中...</div>
   </div>
 
-  <!-- 同期コード変更モーダル -->
-  <div class="modal-overlay" id="modalOverlay">
-    <div class="modal">
-      <h2>同期コードを変更</h2>
-      <p>別デバイスの同期コードを入力すると、そのデバイスと同じデータが使えます。</p>
-      <input type="text" id="modalInput" placeholder="同期コードを入力..." />
-      <div class="modal-btns">
-        <button class="sync-btn secondary" onclick="closeModal()">キャンセル</button>
-        <button class="sync-btn" onclick="changeSyncCode()">適用</button>
-      </div>
-    </div>
-  </div>
-
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyAn3jBAooUKCe6XRUFIRn-S1VkKHXsU5h4",
-      authDomain: "todo-app-6fbbb.firebaseapp.com",
-      projectId: "todo-app-6fbbb",
-      storageBucket: "todo-app-6fbbb.firebasestorage.app",
-      messagingSenderId: "702291602185",
-      appId: "1:702291602185:web:b6c675c9047dc76aea81d8"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+  <script>
+    // ★ デプロイ後にEC2のパブリックIPまたはドメインに変更してください
+    const API = 'http://57.183.7.38:8000';
 
     let todos = [];
     let filter = 'all';
-    let unsubscribe = null;
 
-    function getSyncCode() {
-      let code = localStorage.getItem('syncCode');
-      if (!code) {
-        code = Math.random().toString(36).slice(2, 8).toUpperCase();
-        localStorage.setItem('syncCode', code);
-      }
-      return code;
+    function setStatus(msg, type = 'ok') {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status ' + type;
     }
 
-    function setStatus(msg) {
-      document.getElementById('status').textContent = msg;
-    }
-
-    async function save() {
-      const code = getSyncCode();
-      await setDoc(doc(db, 'todos', code), { items: todos });
-    }
-
-    function subscribe() {
-      if (unsubscribe) unsubscribe();
-      const code = getSyncCode();
-      document.getElementById('syncCodeDisplay').value = code;
-      setStatus('接続中...');
-      unsubscribe = onSnapshot(doc(db, 'todos', code), (snap) => {
-        if (snap.exists()) {
-          todos = snap.data().items || [];
-        } else {
-          todos = [];
-        }
+    async function fetchTodos() {
+      try {
+        const res = await fetch(`${API}/todos`);
+        if (!res.ok) throw new Error();
+        todos = await res.json();
         render();
-        setStatus('同期済み ✓');
-      }, () => setStatus('オフライン'));
+        setStatus('同期済み ✓', 'ok');
+      } catch {
+        setStatus('サーバーに接続できません', 'error');
+      }
     }
 
     function render() {
@@ -360,9 +231,10 @@
       } else {
         list.innerHTML = filtered.map(t => `
           <li class="todo-item">
-            <input type="checkbox" ${t.done ? 'checked' : ''} onchange="window.toggle('${t.id}')" />
+            <input type="checkbox" ${t.done ? 'checked' : ''}
+              onchange="toggle(${t.id}, this.checked)" />
             <span class="todo-text ${t.done ? 'done' : ''}">${escapeHtml(t.text)}</span>
-            <button class="delete-btn" onclick="window.remove('${t.id}')">×</button>
+            <button class="delete-btn" onclick="remove(${t.id})">×</button>
           </li>
         `).join('');
       }
@@ -372,71 +244,79 @@
         `残り ${remaining} 件 / 合計 ${todos.length} 件`;
     }
 
+    async function addTodo() {
+      const input = document.getElementById('todoInput');
+      const text = input.value.trim();
+      if (!text) return;
+      const btn = document.getElementById('addBtn');
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${API}/todos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        if (!res.ok) throw new Error();
+        input.value = '';
+        await fetchTodos();
+      } catch {
+        setStatus('追加に失敗しました', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function toggle(id, done) {
+      try {
+        await fetch(`${API}/todos/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ done })
+        });
+        await fetchTodos();
+      } catch {
+        setStatus('更新に失敗しました', 'error');
+      }
+    }
+
+    async function remove(id) {
+      try {
+        await fetch(`${API}/todos/${id}`, { method: 'DELETE' });
+        await fetchTodos();
+      } catch {
+        setStatus('削除に失敗しました', 'error');
+      }
+    }
+
+    async function clearDone() {
+      const doneTodos = todos.filter(t => t.done);
+      try {
+        await Promise.all(doneTodos.map(t =>
+          fetch(`${API}/todos/${t.id}`, { method: 'DELETE' })
+        ));
+        await fetchTodos();
+      } catch {
+        setStatus('削除に失敗しました', 'error');
+      }
+    }
+
+    function setFilter(f, btn) {
+      filter = f;
+      document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      render();
+    }
+
     function escapeHtml(str) {
       return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
                 .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
-    window.addTodo = async () => {
-      const input = document.getElementById('todoInput');
-      const text = input.value.trim();
-      if (!text) return;
-      todos.push({ id: Date.now().toString(), text, done: false });
-      input.value = '';
-      await save();
-    };
-
-    window.toggle = async (id) => {
-      const t = todos.find(t => t.id === id);
-      if (t) t.done = !t.done;
-      await save();
-    };
-
-    window.remove = async (id) => {
-      todos = todos.filter(t => t.id !== id);
-      await save();
-    };
-
-    window.clearDone = async () => {
-      todos = todos.filter(t => !t.done);
-      await save();
-    };
-
-    window.setFilter = (f, btn) => {
-      filter = f;
-      document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      render();
-    };
-
-    window.copySyncCode = () => {
-      const code = getSyncCode();
-      navigator.clipboard.writeText(code).then(() => setStatus('コードをコピーしました！'));
-    };
-
-    window.openModal = () => {
-      document.getElementById('modalOverlay').classList.add('open');
-      document.getElementById('modalInput').value = '';
-      document.getElementById('modalInput').focus();
-    };
-
-    window.closeModal = () => {
-      document.getElementById('modalOverlay').classList.remove('open');
-    };
-
-    window.changeSyncCode = () => {
-      const input = document.getElementById('modalInput').value.trim().toUpperCase();
-      if (!input) return;
-      localStorage.setItem('syncCode', input);
-      closeModal();
-      subscribe();
-    };
-
     document.getElementById('todoInput').addEventListener('keydown', e => {
-      if (e.key === 'Enter') window.addTodo();
+      if (e.key === 'Enter') addTodo();
     });
 
-    subscribe();
+    fetchTodos();
   </script>
 </body>
 </html>
