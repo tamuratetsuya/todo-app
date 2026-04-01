@@ -156,6 +156,28 @@
       border-radius: 12px;
     }
 
+    .play-btn {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .play-btn svg {
+      width: 48px;
+      height: 48px;
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.6));
+      opacity: 0.9;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    .media-item:hover .play-btn svg {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+
     /* ── 記事本文 ── */
     .article-body {
       padding: 28px 32px 32px;
@@ -634,10 +656,11 @@
       const count = p.media.length;
       const gridClass = count === 1 ? 'count-1' : count === 2 ? 'count-2' : count === 3 ? 'count-3' : 'count-many';
       const items = p.media.map(m => {
+        const playBtn = `<div class="play-btn"><svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="24" fill="rgba(0,0,0,0.45)"/><polygon points="19,14 38,24 19,34" fill="white"/></svg></div>`;
         const media = m.media_type === 'video'
-          ? `<video src="${m.url}" onclick="openLightbox('video','${m.url}')" muted playsinline></video>`
+          ? `<video src="${m.url}#t=0.001" muted playsinline preload="metadata"></video>${playBtn}`
           : `<img src="${m.url}" onclick="openLightbox('image','${m.url}')" loading="lazy" />`;
-        return `<div class="media-item">${media}</div>`;
+        return `<div class="media-item" ${m.media_type === 'video' ? `onclick="openLightbox('video','${m.url}')" style="cursor:pointer"` : ''}>${media}</div>`;
       }).join('');
       mediaHtml = `<div class="media-grid ${gridClass}">${items}</div>`;
     }
