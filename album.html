@@ -666,19 +666,22 @@ function renderMedia(eventId, items) {
         ${item.comment ? `<div class="media-comment">${item.comment}</div>` : ''}
       </div>`;
 
+    const canDelete = currentUser && currentUser === item.user_name;
+    const deleteBtnHTML = canDelete ? `<button class="delete-btn">✕</button>` : '';
+
     if (item.media_type === 'video') {
       el.innerHTML = `
         <div class="media-item-inner">
           <video src="${item.url}" preload="metadata"></video>
           <div class="video-badge">▶ 動画</div>
-          <button class="delete-btn">✕</button>
+          ${deleteBtnHTML}
           ${overlayHTML}
         </div>`;
     } else {
       el.innerHTML = `
         <div class="media-item-inner">
           <img src="${item.url}" alt="${item.file_name}" loading="lazy">
-          <button class="delete-btn">✕</button>
+          ${deleteBtnHTML}
           ${overlayHTML}
         </div>`;
     }
@@ -687,12 +690,15 @@ function renderMedia(eventId, items) {
       if (e.target.classList.contains('delete-btn')) return;
       openLightbox(eventId, idx);
     });
-    el.querySelector('.delete-btn').addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (!confirm('削除しますか？')) return;
-      await fetch(`${API}/media/${item.id}`, { method: 'DELETE' });
-      loadMedia(eventId);
-    });
+    const deleteBtn = el.querySelector('.delete-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('削除しますか？')) return;
+        await fetch(`${API}/media/${item.id}`, { method: 'DELETE' });
+        loadMedia(eventId);
+      });
+    }
 
     grid.appendChild(el);
   });
