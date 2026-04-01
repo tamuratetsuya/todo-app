@@ -44,6 +44,16 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS participants (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                event_id BIGINT NOT NULL,
+                user_name VARCHAR(100) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_event_user (event_id, user_name),
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+            )
+        """)
     conn.commit()
     conn.close()
 
@@ -82,10 +92,62 @@ def list_events(year: int, month: int):
             (year, month),
         )
         rows = cur.fetchall()
+        for row in rows:
+            row["date"] = row["date"].isoformat()
+            cur.execute(
+                "SELECT user_name FROM participants WHERE event_id = %s ORDER BY created_at",
+                (row["id"],),
+            )
+            row["participants"] = [r["user_name"] for r in cur.fetchall()]
     conn.close()
-    for row in rows:
-        row["date"] = row["date"].isoformat()
     return rows
+
+
+class JoinRequest(BaseModel):
+    user_name: str
+
+
+@app.post("/events/{event_id}/join", status_code=200)
+def join_event(event_id: int, body: JoinRequest):
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM events WHERE id = %s", (event_id,))
+        if not cur.fetchone():
+            conn.close()
+            raise HTTPException(status_code=404, detail="Not found")
+        try:
+            cur.execute(
+                "INSERT INTO participants (event_id, user_name) VALUES (%s, %s)",
+                (event_id, body.user_name),
+            )
+            conn.commit()
+        except Exception:
+            pass  # 既に参加済みの場合は無視
+        cur.execute(
+            "SELECT user_name FROM participants WHERE event_id = %s ORDER BY created_at",
+            (event_id,),
+        )
+        participants = [r["user_name"] for r in cur.fetchall()]
+    conn.close()
+    return {"participants": participants}
+
+
+@app.delete("/events/{event_id}/join", status_code=200)
+def leave_event(event_id: int, body: JoinRequest):
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM participants WHERE event_id = %s AND user_name = %s",
+            (event_id, body.user_name),
+        )
+        conn.commit()
+        cur.execute(
+            "SELECT user_name FROM participants WHERE event_id = %s ORDER BY created_at",
+            (event_id,),
+        )
+        participants = [r["user_name"] for r in cur.fetchall()]
+    conn.close()
+    return {"participants": participants}
 
 
 @app.post("/events", status_code=201)
