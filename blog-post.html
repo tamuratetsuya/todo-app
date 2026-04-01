@@ -207,6 +207,24 @@
       gap: 10px;
     }
 
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text-muted);
+      margin-right: 12px;
+      padding: 4px 10px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .copy-btn:hover { color: var(--green); border-color: var(--green-dim); }
+    .copy-btn.copied { color: var(--green); border-color: var(--green-dim); background: rgba(26,122,62,0.08); }
+
     .delete-btn, .edit-btn {
       background: none;
       border: none;
@@ -567,6 +585,10 @@
           <div class="article-text">${escapeHtml(p.body)}</div>
           <div class="link-cards" id="link-cards"></div>
           <div class="article-actions">
+            <button class="copy-btn" id="copy-${p.id}" onclick="copyText(${p.id}, \`${escapeHtml(p.body)}\`)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              コピー
+            </button>
             <button class="edit-btn" onclick="openEditModal(${p.id}, \`${escapeHtml(p.title)}\`, \`${escapeHtml(p.body)}\`)">編集</button>
             <button class="delete-btn" onclick="deletePost(${p.id})">削除</button>
           </div>
@@ -604,6 +626,18 @@
           <div class="link-card-url">${escapeHtml(ogp.url)}</div>
         </div>
       </a>`;
+  }
+
+  function copyText(id, text) {
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById(`copy-${id}`);
+      btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> コピー済み`;
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> コピー`;
+        btn.classList.remove('copied');
+      }, 2000);
+    });
   }
 
   function openEditModal(id, title, body) {
