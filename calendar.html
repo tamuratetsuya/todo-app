@@ -21,22 +21,66 @@
 
     /* ヘッダー */
     .header {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-      padding: 20px 24px;
+      background: linear-gradient(135deg, #1a6b3a 0%, #2ecc71 60%, #a8e063 100%);
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(46,204,113,0.35);
+      padding: 22px 28px;
       margin-bottom: 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
       gap: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before {
+      content: '⛳';
+      position: absolute;
+      right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 64px;
+      opacity: 0.15;
+      pointer-events: none;
     }
 
     .header h1 {
-      font-size: 22px;
-      color: #1a1a2e;
+      font-size: 26px;
+      font-weight: 800;
+      color: white;
+      letter-spacing: 1px;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
+
+    .header h1 .sub-title {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 2px;
+      opacity: 0.85;
+      margin-top: 2px;
+    }
+
+    .header .user-section label { color: rgba(255,255,255,0.85); }
+
+    .header .user-section input {
+      border: 1.5px solid rgba(255,255,255,0.5);
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border-radius: 8px;
+    }
+
+    .header .user-section input::placeholder { color: rgba(255,255,255,0.6); }
+    .header .user-section input:focus {
+      outline: none;
+      border-color: white;
+      background: rgba(255,255,255,0.3);
+    }
+
+    .header .color-dot { border-color: transparent; }
+    .header .color-dot.selected { border-color: white; }
 
     .user-section {
       display: flex;
@@ -433,7 +477,7 @@
 
   <!-- ヘッダー -->
   <div class="header">
-    <h1>📅 共有カレンダー</h1>
+    <h1>⛳ ゴルフはじめました<span class="sub-title">GOLF SCHEDULE</span></h1>
     <div class="user-section">
       <label>あなたの名前:</label>
       <input type="text" id="userName" placeholder="名前を入力" maxlength="30">
