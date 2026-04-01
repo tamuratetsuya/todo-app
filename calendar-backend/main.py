@@ -51,10 +51,14 @@ def init_db():
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 event_id BIGINT NOT NULL,
                 user_name VARCHAR(100) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'join',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE KEY uq_event_user (event_id, user_name),
                 FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             )
+        """)
+        cur.execute("""
+            ALTER TABLE participants ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'join'
         """)
     conn.commit()
     conn.close()
@@ -97,16 +101,31 @@ def list_events(year: int, month: int):
         for row in rows:
             row["date"] = row["date"].isoformat()
             cur.execute(
-                "SELECT user_name FROM participants WHERE event_id = %s ORDER BY created_at",
+                "SELECT user_name, status FROM participants WHERE event_id = %s ORDER BY created_at",
                 (row["id"],),
             )
-            row["participants"] = [r["user_name"] for r in cur.fetchall()]
+            rows2 = cur.fetchall()
+            row["participants"] = [r["user_name"] for r in rows2 if r["status"] == "join"]
+            row["pending"] = [r["user_name"] for r in rows2 if r["status"] == "pending"]
     conn.close()
     return rows
 
 
 class JoinRequest(BaseModel):
     user_name: str
+    status: Optional[str] = "join"
+
+
+def _get_participants(cur, event_id):
+    cur.execute(
+        "SELECT user_name, status FROM participants WHERE event_id = %s ORDER BY created_at",
+        (event_id,),
+    )
+    rows = cur.fetchall()
+    return {
+        "participants": [r["user_name"] for r in rows if r["status"] == "join"],
+        "pending": [r["user_name"] for r in rows if r["status"] == "pending"],
+    }
 
 
 @app.post("/events/{event_id}/join", status_code=200)
@@ -117,21 +136,19 @@ def join_event(event_id: int, body: JoinRequest):
         if not cur.fetchone():
             conn.close()
             raise HTTPException(status_code=404, detail="Not found")
+        status = body.status if body.status in ("join", "pending") else "join"
         try:
             cur.execute(
-                "INSERT INTO participants (event_id, user_name) VALUES (%s, %s)",
-                (event_id, body.user_name),
+                "INSERT INTO participants (event_id, user_name, status) VALUES (%s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE status = %s",
+                (event_id, body.user_name, status, status),
             )
             conn.commit()
         except Exception:
-            pass  # 既に参加済みの場合は無視
-        cur.execute(
-            "SELECT user_name FROM participants WHERE event_id = %s ORDER BY created_at",
-            (event_id,),
-        )
-        participants = [r["user_name"] for r in cur.fetchall()]
+            pass
+        result = _get_participants(cur, event_id)
     conn.close()
-    return {"participants": participants}
+    return result
 
 
 @app.delete("/events/{event_id}/join", status_code=200)
@@ -143,13 +160,9 @@ def leave_event(event_id: int, body: JoinRequest):
             (event_id, body.user_name),
         )
         conn.commit()
-        cur.execute(
-            "SELECT user_name FROM participants WHERE event_id = %s ORDER BY created_at",
-            (event_id,),
-        )
-        participants = [r["user_name"] for r in cur.fetchall()]
+        result = _get_participants(cur, event_id)
     conn.close()
-    return {"participants": participants}
+    return result
 
 
 @app.post("/events", status_code=201)

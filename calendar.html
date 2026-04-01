@@ -525,8 +525,18 @@
       color: #bbb;
     }
 
-    .btn-join   { background: #27ae60; color: white; }
-    .btn-leave  { background: #95a5a6; color: white; }
+    .btn-join    { background: #27ae60; color: white; }
+    .btn-pending { background: #f39c12; color: white; }
+    .btn-leave   { background: #95a5a6; color: white; }
+
+    .participants-group-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 6px 0 4px;
+    }
 
     /* サブカレンダー（今月・来月） */
     .sub-cal-wrapper {
@@ -857,16 +867,16 @@ async function deleteEvent(id) {
   loadSubCalendars();
 }
 
-async function joinEvent(eventId) {
+async function joinEvent(eventId, status = 'join') {
   const user = document.getElementById('userName').value.trim();
   if (!user) { alert('名前を入力してください'); return; }
   const res = await fetch(`${API}/events/${eventId}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_name: user }),
+    body: JSON.stringify({ user_name: user, status }),
   });
   const data = await res.json();
-  updateParticipants(eventId, data.participants);
+  updateParticipants(eventId, data.participants, data.pending);
   loadSubCalendars();
 }
 
@@ -879,28 +889,38 @@ async function leaveEvent(eventId) {
     body: JSON.stringify({ user_name: user }),
   });
   const data = await res.json();
-  updateParticipants(eventId, data.participants);
+  updateParticipants(eventId, data.participants, data.pending);
   loadSubCalendars();
 }
 
-function updateParticipants(eventId, participants) {
-  // eventsキャッシュを更新
+function updateParticipants(eventId, participants, pending) {
   const ev = events.find(e => e.id === eventId);
-  if (ev) ev.participants = participants;
-  renderParticipants(eventId, participants);
+  if (ev) { ev.participants = participants; ev.pending = pending || []; }
+  renderParticipants(eventId, participants, pending || []);
   renderDetailActions(eventId);
 }
 
-function renderParticipants(eventId, participants) {
+function renderParticipants(eventId, participants, pending) {
   const list = document.getElementById('participantsList');
   const me = document.getElementById('userName').value.trim();
-  if (!participants || participants.length === 0) {
+  const joins = participants || [];
+  const pends = pending || [];
+  if (joins.length === 0 && pends.length === 0) {
     list.innerHTML = '<span class="participants-empty">まだ参加者はいません</span>';
     return;
   }
-  list.innerHTML = participants.map(p =>
-    `<span class="participant-chip${p === me ? ' me' : ''}">${p === me ? '✓ ' : ''}${p}</span>`
-  ).join('');
+  let html = '';
+  if (joins.length > 0) {
+    html += '<div class="participants-group-label">✅ 参加</div><div class="participants-list" style="margin-bottom:6px">';
+    html += joins.map(p => `<span class="participant-chip${p === me ? ' me' : ''}">${p === me ? '✓ ' : ''}${p}</span>`).join('');
+    html += '</div>';
+  }
+  if (pends.length > 0) {
+    html += '<div class="participants-group-label">🤔 検討中</div><div class="participants-list">';
+    html += pends.map(p => `<span class="participant-chip" style="background:#fef3cd;color:#856404;">${p}</span>`).join('');
+    html += '</div>';
+  }
+  list.innerHTML = html;
 }
 
 function renderDetailActions(eventId) {
@@ -909,11 +929,11 @@ function renderDetailActions(eventId) {
   const me = document.getElementById('userName').value.trim();
   const isOwner = ev.user_name === me;
   const isParticipant = (ev.participants || []).includes(me);
+  const isPending = (ev.pending || []).includes(me);
 
   const actions = document.getElementById('detailActions');
   actions.innerHTML = '';
 
-  // 閉じるボタン（常に表示）
   const closeBtn = document.createElement('button');
   closeBtn.className = 'btn btn-cancel';
   closeBtn.textContent = '閉じる';
@@ -921,7 +941,6 @@ function renderDetailActions(eventId) {
   actions.appendChild(closeBtn);
 
   if (isOwner) {
-    // 作成者：編集・削除
     const editBtn = document.createElement('button');
     editBtn.className = 'btn btn-primary';
     editBtn.textContent = '編集';
@@ -933,21 +952,38 @@ function renderDetailActions(eventId) {
     delBtn.textContent = '削除';
     delBtn.addEventListener('click', () => deleteEventFromDetail(eventId));
     actions.appendChild(delBtn);
-  } else {
-    // 他人のイベント：参加 or キャンセル
-    if (isParticipant) {
-      const leaveBtn = document.createElement('button');
-      leaveBtn.className = 'btn btn-leave';
-      leaveBtn.textContent = '参加をキャンセル';
-      leaveBtn.addEventListener('click', () => leaveEvent(eventId));
-      actions.appendChild(leaveBtn);
-    } else {
+  } else if (isParticipant || isPending) {
+    const leaveBtn = document.createElement('button');
+    leaveBtn.className = 'btn btn-leave';
+    leaveBtn.textContent = 'キャンセル';
+    leaveBtn.addEventListener('click', () => leaveEvent(eventId));
+    actions.appendChild(leaveBtn);
+
+    if (isPending) {
       const joinBtn = document.createElement('button');
       joinBtn.className = 'btn btn-join';
       joinBtn.textContent = '参加する';
-      joinBtn.addEventListener('click', () => joinEvent(eventId));
+      joinBtn.addEventListener('click', () => joinEvent(eventId, 'join'));
       actions.appendChild(joinBtn);
+    } else {
+      const pendBtn = document.createElement('button');
+      pendBtn.className = 'btn btn-pending';
+      pendBtn.textContent = '検討中に変更';
+      pendBtn.addEventListener('click', () => joinEvent(eventId, 'pending'));
+      actions.appendChild(pendBtn);
     }
+  } else {
+    const pendBtn = document.createElement('button');
+    pendBtn.className = 'btn btn-pending';
+    pendBtn.textContent = '検討中';
+    pendBtn.addEventListener('click', () => joinEvent(eventId, 'pending'));
+    actions.appendChild(pendBtn);
+
+    const joinBtn = document.createElement('button');
+    joinBtn.className = 'btn btn-join';
+    joinBtn.textContent = '参加する';
+    joinBtn.addEventListener('click', () => joinEvent(eventId, 'join'));
+    actions.appendChild(joinBtn);
   }
 }
 
@@ -987,7 +1023,7 @@ function appendDay(grid, dayNum, otherMonth, dayEvents, dow, dateStr, isToday) {
     (dayEvents || []).slice(0, MAX).forEach(ev => {
       const chip = document.createElement('div');
       chip.className = `event-chip c-${ev.color}`;
-      const pCount = (ev.participants || []).length;
+      const pCount = (ev.participants || []).length + (ev.pending || []).length;
       const timePrefix = ev.start_time ? ev.start_time.slice(0,5) + ' ' : '';
       const maxTitleLen = pCount > 0 ? (timePrefix ? 4 : 7) : (timePrefix ? 6 : 10);
       const titleShort = ev.title.length > maxTitleLen ? ev.title.slice(0, maxTitleLen) + '…' : ev.title;
@@ -1116,7 +1152,7 @@ function openDetailModal(ev) {
     descEl.style.display = 'none';
   }
 
-  renderParticipants(ev.id, ev.participants || []);
+  renderParticipants(ev.id, ev.participants || [], ev.pending || []);
   renderDetailActions(ev.id);
 
   document.getElementById('detailOverlay').classList.add('open');
