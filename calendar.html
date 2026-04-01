@@ -1165,11 +1165,16 @@ function openDetailModal(ev) {
   renderParticipants(ev.id, ev.participants || [], ev.pending || []);
   renderDetailActions(ev.id);
 
-  // アップロードボタンのイベントを設定
-  const fileInput = document.getElementById('modalFileInput');
-  const newInput = fileInput.cloneNode(true); // 古いリスナーをリセット
-  fileInput.parentNode.replaceChild(newInput, fileInput);
-  newInput.addEventListener('change', () => modalUploadFiles(ev.id, newInput.files));
+  // 過去の予定のみアップロードボタンを表示
+  const isPast = new Date(ev.date) < new Date(new Date().toDateString());
+  const uploadArea = document.getElementById('modalUploadArea').parentElement;
+  uploadArea.style.display = isPast ? 'block' : 'none';
+  if (isPast) {
+    const fileInput = document.getElementById('modalFileInput');
+    const newInput = fileInput.cloneNode(true);
+    fileInput.parentNode.replaceChild(newInput, fileInput);
+    newInput.addEventListener('change', () => modalUploadFiles(ev.id, newInput.files));
+  }
 
   document.getElementById('detailOverlay').classList.add('open');
 }

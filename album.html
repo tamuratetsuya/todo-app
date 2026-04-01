@@ -354,17 +354,20 @@ async function loadAlbum() {
   const events = await res.json();
   const container = document.getElementById('albumList');
 
-  if (!events.length) {
+  const today = new Date(new Date().toDateString());
+  const pastEvents = events.filter(ev => new Date(ev.date) < today);
+
+  if (!pastEvents.length) {
     container.innerHTML = `
       <div class="empty-state">
         <div class="icon">📷</div>
-        <p>まだ写真・動画はありません</p>
-        <p style="margin-top:6px;font-size:12px;">カレンダーの予定から追加できます</p>
+        <p>まだ過去の予定がありません</p>
+        <p style="margin-top:6px;font-size:12px;">ラウンド後に写真・動画をアップロードできます</p>
       </div>`;
     return;
   }
 
-  for (const ev of events) {
+  for (const ev of pastEvents) {
     const card = document.createElement('div');
     card.className = 'album-card';
     card.dataset.eventId = ev.id;
