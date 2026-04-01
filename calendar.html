@@ -12,6 +12,8 @@
       background: #f0f2f5;
       min-height: 100vh;
       padding: 24px 16px;
+      overflow-x: hidden;
+      -webkit-text-size-adjust: 100%;
     }
 
     .container {
@@ -24,13 +26,17 @@
       background: linear-gradient(135deg, #1a6b3a 0%, #2ecc71 60%, #a8e063 100%);
       border-radius: 16px;
       box-shadow: 0 4px 20px rgba(46,204,113,0.35);
-      padding: 22px 28px;
+      padding: 18px 20px;
       margin-bottom: 16px;
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-justify-content: space-between;
       justify-content: space-between;
+      -webkit-flex-wrap: wrap;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 10px;
       position: relative;
       overflow: hidden;
     }
@@ -83,19 +89,23 @@
     .header .color-dot.selected { border-color: white; }
 
     .user-section {
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
-      gap: 10px;
+      -webkit-flex-wrap: wrap;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
-    .user-section label { font-size: 14px; color: #666; }
+    .user-section label { font-size: 13px; color: #666; white-space: nowrap; }
 
     .user-section input {
       border: 1.5px solid #ddd;
       border-radius: 8px;
       padding: 6px 12px;
-      font-size: 14px;
-      width: 140px;
+      font-size: 16px;
+      width: 120px;
     }
 
     .color-picker {
@@ -289,22 +299,28 @@
     .overlay {
       display: none;
       position: fixed;
-      inset: 0;
+      top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0,0,0,0.4);
       z-index: 100;
-      align-items: center;
+      -webkit-align-items: flex-start;
+      align-items: flex-start;
+      -webkit-justify-content: center;
       justify-content: center;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 20px 16px;
     }
 
-    .overlay.open { display: flex; }
+    .overlay.open { display: -webkit-flex; display: flex; }
 
     .modal {
       background: white;
       border-radius: 16px;
-      padding: 28px;
+      padding: 24px 20px;
       width: 100%;
       max-width: 440px;
       box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      margin: auto 0;
     }
 
     .modal h3 {
@@ -334,9 +350,12 @@
       border: 1.5px solid #e0e0e0;
       border-radius: 8px;
       padding: 8px 12px;
-      font-size: 14px;
+      font-size: 16px;
       transition: border-color 0.15s;
       font-family: inherit;
+      -webkit-appearance: none;
+      appearance: none;
+      background-color: white;
     }
 
     .form-row input:focus,
@@ -397,15 +416,21 @@
     }
 
     .time-sel-h {
-      width: 64px !important;
-      padding: 8px 4px !important;
-      text-align: center;
+      width: 68px !important;
+      padding: 8px 6px 8px 8px !important;
+      text-align: left;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 6px center;
     }
 
     .time-sel-m {
-      width: 56px !important;
-      padding: 8px 4px !important;
-      text-align: center;
+      width: 68px !important;
+      padding: 8px 6px 8px 8px !important;
+      text-align: left;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 6px center;
     }
 
     .time-sep {
@@ -632,9 +657,20 @@
     }
 
     @media (max-width: 600px) {
-      .day { min-height: 70px; padding: 4px; }
+      body { padding: 12px 10px; }
+      .day { min-height: 68px; padding: 3px; }
       .event-chip { font-size: 10px; padding: 1px 4px; }
-      .nav h2 { font-size: 16px; }
+      .nav { padding: 10px 14px; }
+      .nav h2 { font-size: 15px; min-width: 130px; }
+      .nav button { padding: 6px 12px; font-size: 16px; }
+      .header { padding: 14px 14px; border-radius: 12px; }
+      .header h1 { font-size: 18px; }
+      .header::before { font-size: 44px; }
+      .user-section input { width: 110px; }
+      .modal { padding: 20px 16px; border-radius: 14px; }
+      .sub-cal-header { padding: 12px 14px; font-size: 15px; }
+      .time-picker-row { gap: 6px; }
+      .time-sel-h, .time-sel-m { width: 62px !important; }
     }
   </style>
 </head>
