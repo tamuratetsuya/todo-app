@@ -242,15 +242,24 @@
       border-radius: 4px;
       margin-bottom: 2px;
       cursor: pointer;
-      white-space: nowrap;
       overflow: hidden;
-      text-overflow: ellipsis;
       color: white;
       font-weight: 500;
       transition: opacity 0.1s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
 
     .event-chip:hover { opacity: 0.85; }
+
+    .chip-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      flex: 1;
+    }
 
     .chip-participants {
       font-size: 10px;
@@ -912,6 +921,7 @@ function appendDay(grid, dayNum, otherMonth, dayEvents, dow, dateStr, isToday) {
       const chip = document.createElement('div');
       chip.className = `event-chip c-${ev.color}`;
       const chipText = document.createElement('span');
+      chipText.className = 'chip-title';
       chipText.textContent = (ev.start_time ? ev.start_time.slice(0,5) + ' ' : '') + ev.title;
       chip.appendChild(chipText);
       const pCount = (ev.participants || []).length;
@@ -921,10 +931,6 @@ function appendDay(grid, dayNum, otherMonth, dayEvents, dow, dateStr, isToday) {
         badge.textContent = `👥${pCount}`;
         chip.appendChild(badge);
       }
-      chip.style.display = 'flex';
-      chip.style.justifyContent = 'space-between';
-      chip.style.alignItems = 'center';
-      chip.style.gap = '4px';
       chip.addEventListener('click', (e) => {
         e.stopPropagation();
         openDetailModal(ev);
