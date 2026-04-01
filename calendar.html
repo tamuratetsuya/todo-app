@@ -1166,7 +1166,7 @@ function openDetailModal(ev) {
   renderDetailActions(ev.id);
 
   // 過去の予定のみアップロードボタンを表示
-  const isPast = new Date(ev.date) < new Date(new Date().toDateString());
+  const isPast = new Date(ev.date) <= new Date(new Date().toDateString());
   const uploadArea = document.getElementById('modalUploadArea').parentElement;
   uploadArea.style.display = isPast ? 'block' : 'none';
   if (isPast) {

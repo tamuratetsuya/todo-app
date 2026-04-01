@@ -355,7 +355,7 @@ async function loadAlbum() {
   const container = document.getElementById('albumList');
 
   const today = new Date(new Date().toDateString());
-  const pastEvents = events.filter(ev => new Date(ev.date) < today);
+  const pastEvents = events.filter(ev => new Date(ev.date) <= today);
 
   if (!pastEvents.length) {
     container.innerHTML = `
