@@ -1,12 +1,19 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import os
+import uuid
 import pymysql
 from dotenv import load_dotenv
 import requests as http_requests
 from bs4 import BeautifulSoup
+import boto3
+from botocore.exceptions import ClientError
+
+S3_BUCKET = 'golfspace-media'
+S3_REGION = 'ap-northeast-1'
+s3_client = boto3.client('s3', region_name=S3_REGION)
 
 load_dotenv()
 
@@ -57,8 +64,24 @@ def init_db():
                 FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             )
         """)
+        # statusカラムがなければ追加
+        try:
+            cur.execute("""
+                ALTER TABLE participants ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'join'
+            """)
+        except Exception:
+            pass  # 既にカラムが存在する場合は無視
         cur.execute("""
-            ALTER TABLE participants ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'join'
+            CREATE TABLE IF NOT EXISTS event_media (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                event_id BIGINT NOT NULL,
+                user_name VARCHAR(100) NOT NULL,
+                s3_key VARCHAR(500) NOT NULL,
+                file_name VARCHAR(300) NOT NULL,
+                media_type VARCHAR(20) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+            )
         """)
     conn.commit()
     conn.close()
@@ -235,3 +258,99 @@ def get_og(url: str):
         return {'title': title, 'description': description, 'image': image}
     except Exception:
         raise HTTPException(status_code=400, detail='Failed to fetch OG data')
+
+
+# ========== メディア ==========
+
+@app.post("/events/{event_id}/media", status_code=201)
+async def upload_media(event_id: int, user_name: str = Form(...), file: UploadFile = File(...)):
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM events WHERE id = %s", (event_id,))
+        if not cur.fetchone():
+            conn.close()
+            raise HTTPException(status_code=404, detail="Not found")
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    media_type = 'video' if ext in ('.mp4', '.mov', '.avi', '.webm') else 'image'
+    s3_key = f"events/{event_id}/{uuid.uuid4().hex}{ext}"
+
+    content = await file.read()
+    s3_client.put_object(
+        Bucket=S3_BUCKET,
+        Key=s3_key,
+        Body=content,
+        ContentType=file.content_type or 'application/octet-stream',
+    )
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO event_media (event_id, user_name, s3_key, file_name, media_type) VALUES (%s, %s, %s, %s, %s)",
+            (event_id, user_name, s3_key, file.filename, media_type),
+        )
+        conn.commit()
+        media_id = cur.lastrowid
+    conn.close()
+
+    url = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': s3_key}, ExpiresIn=3600)
+    return {'id': media_id, 'url': url, 'media_type': media_type, 'file_name': file.filename, 's3_key': s3_key}
+
+
+@app.get("/events/{event_id}/media")
+def list_media(event_id: int):
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM event_media WHERE event_id = %s ORDER BY created_at DESC",
+            (event_id,),
+        )
+        rows = cur.fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        url = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': row['s3_key']}, ExpiresIn=3600)
+        row['url'] = url
+        row['created_at'] = row['created_at'].isoformat()
+        result.append(row)
+    return result
+
+
+@app.delete("/media/{media_id}", status_code=204)
+def delete_media(media_id: int):
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT s3_key FROM event_media WHERE id = %s", (media_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Not found")
+        s3_client.delete_object(Bucket=S3_BUCKET, Key=row['s3_key'])
+        cur.execute("DELETE FROM event_media WHERE id = %s", (media_id,))
+        conn.commit()
+    conn.close()
+
+
+@app.get("/album")
+def get_album():
+    """全イベントのメディア数を含む一覧（アルバムページ用）"""
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT e.*, COUNT(m.id) as media_count
+            FROM events e
+            LEFT JOIN event_media m ON e.id = m.event_id
+            GROUP BY e.id
+            HAVING media_count > 0
+            ORDER BY e.date DESC
+        """)
+        rows = cur.fetchall()
+        for row in rows:
+            row['date'] = row['date'].isoformat()
+            cur.execute(
+                "SELECT user_name, status FROM participants WHERE event_id = %s ORDER BY created_at",
+                (row['id'],),
+            )
+            ps = cur.fetchall()
+            row['participants'] = [r['user_name'] for r in ps if r['status'] == 'join']
+    conn.close()
+    return rows

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>アルバム | ゴルフはじめました</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; }
+
+    /* ヘッダー */
+    .header {
+      background: linear-gradient(135deg, #1a6b3a 0%, #2ecc71 60%, #a8e063 100%);
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(46,204,113,0.35);
+      padding: 22px 28px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before {
+      content: '📷';
+      position: absolute;
+      right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 64px;
+      opacity: 0.15;
+      pointer-events: none;
+    }
+
+    .header h1 {
+      font-size: 26px;
+      font-weight: 800;
+      color: white;
+      letter-spacing: 1px;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .header h1 .sub-title {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 2px;
+      opacity: 0.85;
+      margin-top: 2px;
+    }
+
+    .header-nav {
+      display: flex;
+      gap: 10px;
+    }
+
+    .nav-btn {
+      background: rgba(255,255,255,0.25);
+      color: white;
+      border: 1.5px solid rgba(255,255,255,0.5);
+      border-radius: 8px;
+      padding: 7px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+
+    .nav-btn:hover { background: rgba(255,255,255,0.4); }
+
+    /* アルバムカード */
+    .album-card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .album-card-header {
+      padding: 16px 20px 14px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .event-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 8px;
+    }
+
+    .event-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .event-meta-item {
+      font-size: 13px;
+      color: #666;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .participants-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 8px;
+    }
+
+    .p-chip {
+      font-size: 11px;
+      background: #e8f4fd;
+      color: #2980b9;
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-weight: 500;
+    }
+
+    /* メディアグリッド */
+    .media-grid {
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    @media (max-width: 600px) {
+      .media-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .media-thumb {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      position: relative;
+      background: #f0f0f0;
+    }
+
+    .media-thumb img,
+    .media-thumb video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .media-thumb .video-badge {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.55);
+      color: white;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      pointer-events: none;
+    }
+
+    .media-thumb .delete-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background: rgba(0,0,0,0.5);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      font-size: 12px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .media-thumb:hover .delete-btn { display: flex; }
+
+    .album-card-footer {
+      padding: 12px 16px 16px;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    .upload-area {
+      border: 2px dashed #d0d0d0;
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .upload-area:hover {
+      border-color: #2ecc71;
+      background: #f0fff4;
+    }
+
+    .upload-area input { display: none; }
+
+    .upload-area-text {
+      font-size: 13px;
+      color: #888;
+      margin-top: 6px;
+    }
+
+    .upload-progress {
+      display: none;
+      margin-top: 10px;
+    }
+
+    .progress-bar {
+      height: 4px;
+      background: #e0e0e0;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #2ecc71;
+      width: 0%;
+      transition: width 0.2s;
+    }
+
+    /* 空状態 */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #aaa;
+    }
+
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state p { font-size: 14px; }
+
+    /* ライトボックス */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .lightbox.open { display: flex; }
+
+    .lightbox img, .lightbox video {
+      max-width: 92vw;
+      max-height: 85vh;
+      border-radius: 8px;
+      object-fit: contain;
+    }
+
+    .lightbox-close {
+      position: absolute;
+      top: 16px;
+      right: 20px;
+      color: white;
+      font-size: 32px;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .lightbox-info {
+      color: rgba(255,255,255,0.7);
+      font-size: 12px;
+      margin-top: 10px;
+    }
+
+    .lightbox-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      color: white;
+      font-size: 36px;
+      cursor: pointer;
+      padding: 10px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 50%;
+      line-height: 1;
+    }
+
+    .lightbox-prev { left: 12px; }
+    .lightbox-next { right: 12px; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>⛳ ゴルフはじめました<span class="sub-title">PHOTO ALBUM</span></h1>
+    <div class="header-nav">
+      <a href="https://calendar.golfspace.jp" class="nav-btn">📅 カレンダー</a>
+    </div>
+  </div>
+
+  <div id="albumList"></div>
+
+</div>
+
+<!-- ライトボックス -->
+<div class="lightbox" id="lightbox">
+  <span class="lightbox-close" id="lbClose">✕</span>
+  <span class="lightbox-nav lightbox-prev" id="lbPrev">‹</span>
+  <div id="lbContent"></div>
+  <div class="lightbox-info" id="lbInfo"></div>
+  <span class="lightbox-nav lightbox-next" id="lbNext">›</span>
+</div>
+
+<script>
+const API = 'https://calendar.golfspace.jp/api/calendar';
+let currentUser = '';
+let lbItems = [];
+let lbIndex = 0;
+
+// ユーザー名をlocalStorageから取得
+const saved = localStorage.getItem('calendarUser');
+if (saved) {
+  try { currentUser = JSON.parse(saved).name || ''; } catch {}
+}
+
+const WEEKDAYS = ['日','月','火','水','木','金','土'];
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr);
+  const w = WEEKDAYS[d.getDay()];
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${w}）`;
+}
+
+async function loadAlbum() {
+  const res = await fetch(`${API}/album`);
+  const events = await res.json();
+  const container = document.getElementById('albumList');
+
+  if (!events.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📷</div>
+        <p>まだ写真・動画はありません</p>
+        <p style="margin-top:6px;font-size:12px;">カレンダーの予定から追加できます</p>
+      </div>`;
+    return;
+  }
+
+  for (const ev of events) {
+    const card = document.createElement('div');
+    card.className = 'album-card';
+    card.dataset.eventId = ev.id;
+
+    const timeStr = ev.start_time ? ev.start_time.slice(0,5) + '〜' : '';
+    const pChips = (ev.participants || []).map(p =>
+      `<span class="p-chip">${p}</span>`).join('');
+
+    card.innerHTML = `
+      <div class="album-card-header">
+        <div class="event-title">⛳ ${ev.title}</div>
+        <div class="event-meta">
+          <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
+          ${timeStr ? `<span class="event-meta-item">⏰ ${timeStr}</span>` : ''}
+        </div>
+        ${pChips ? `<div class="participants-chips">${pChips}</div>` : ''}
+      </div>
+      <div class="media-grid" id="grid-${ev.id}"></div>
+      <div class="album-card-footer">
+        <label class="upload-area" id="uploadArea-${ev.id}">
+          <input type="file" accept="image/*,video/*" multiple id="fileInput-${ev.id}">
+          <div style="font-size:24px">📤</div>
+          <div class="upload-area-text">写真・動画をアップロード<br><span style="font-size:11px">タップまたはドラッグ＆ドロップ</span></div>
+        </label>
+        <div class="upload-progress" id="progress-${ev.id}">
+          <div class="progress-bar"><div class="progress-fill" id="fill-${ev.id}"></div></div>
+          <div style="font-size:11px;color:#888;margin-top:4px" id="progressText-${ev.id}"></div>
+        </div>
+      </div>`;
+
+    container.appendChild(card);
+    loadMedia(ev.id);
+    setupUpload(ev.id);
+  }
+}
+
+async function loadMedia(eventId) {
+  const res = await fetch(`${API}/events/${eventId}/media`);
+  const items = await res.json();
+  renderMedia(eventId, items);
+}
+
+function renderMedia(eventId, items) {
+  const grid = document.getElementById(`grid-${eventId}`);
+  if (!grid) return;
+  grid.innerHTML = '';
+  items.forEach((item, idx) => {
+    const thumb = document.createElement('div');
+    thumb.className = 'media-thumb';
+    if (item.media_type === 'video') {
+      thumb.innerHTML = `
+        <video src="${item.url}" preload="metadata"></video>
+        <div class="video-badge">▶</div>
+        <button class="delete-btn" data-id="${item.id}" data-event="${eventId}">✕</button>`;
+    } else {
+      thumb.innerHTML = `
+        <img src="${item.url}" alt="${item.file_name}" loading="lazy">
+        <button class="delete-btn" data-id="${item.id}" data-event="${eventId}">✕</button>`;
+    }
+    thumb.addEventListener('click', (e) => {
+      if (e.target.classList.contains('delete-btn')) return;
+      openLightbox(eventId, idx);
+    });
+    thumb.querySelector('.delete-btn').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('削除しますか？')) return;
+      await fetch(`${API.replace('/api/calendar','')}/api/calendar/media/${item.id}`, { method: 'DELETE' });
+      loadMedia(eventId);
+    });
+    grid.appendChild(thumb);
+  });
+
+  // ライトボックス用データを保存
+  grid._items = items;
+}
+
+function openLightbox(eventId, idx) {
+  const grid = document.getElementById(`grid-${eventId}`);
+  lbItems = grid._items || [];
+  lbIndex = idx;
+  showLightboxItem();
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function showLightboxItem() {
+  const item = lbItems[lbIndex];
+  if (!item) return;
+  const content = document.getElementById('lbContent');
+  if (item.media_type === 'video') {
+    content.innerHTML = `<video src="${item.url}" controls autoplay style="max-width:92vw;max-height:85vh;border-radius:8px;"></video>`;
+  } else {
+    content.innerHTML = `<img src="${item.url}" alt="${item.file_name}">`;
+  }
+  document.getElementById('lbInfo').textContent = `${lbIndex + 1} / ${lbItems.length}  ${item.user_name}`;
+}
+
+document.getElementById('lbClose').addEventListener('click', () => {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lbContent').innerHTML = '';
+});
+document.getElementById('lightbox').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('lightbox')) {
+    document.getElementById('lightbox').classList.remove('open');
+    document.getElementById('lbContent').innerHTML = '';
+  }
+});
+document.getElementById('lbPrev').addEventListener('click', () => {
+  lbIndex = (lbIndex - 1 + lbItems.length) % lbItems.length;
+  showLightboxItem();
+});
+document.getElementById('lbNext').addEventListener('click', () => {
+  lbIndex = (lbIndex + 1) % lbItems.length;
+  showLightboxItem();
+});
+document.addEventListener('keydown', (e) => {
+  if (!document.getElementById('lightbox').classList.contains('open')) return;
+  if (e.key === 'ArrowLeft') { lbIndex = (lbIndex - 1 + lbItems.length) % lbItems.length; showLightboxItem(); }
+  if (e.key === 'ArrowRight') { lbIndex = (lbIndex + 1) % lbItems.length; showLightboxItem(); }
+  if (e.key === 'Escape') { document.getElementById('lightbox').classList.remove('open'); }
+});
+
+function setupUpload(eventId) {
+  const input = document.getElementById(`fileInput-${eventId}`);
+  input.addEventListener('change', () => uploadFiles(eventId, input.files));
+}
+
+async function uploadFiles(eventId, files) {
+  if (!files.length) return;
+  if (!currentUser) {
+    const name = prompt('あなたの名前を入力してください');
+    if (!name) return;
+    currentUser = name;
+  }
+
+  const progress = document.getElementById(`progress-${eventId}`);
+  const fill = document.getElementById(`fill-${eventId}`);
+  const text = document.getElementById(`progressText-${eventId}`);
+  progress.style.display = 'block';
+
+  for (let i = 0; i < files.length; i++) {
+    text.textContent = `${i + 1} / ${files.length} アップロード中...`;
+    fill.style.width = `${((i) / files.length) * 100}%`;
+
+    const form = new FormData();
+    form.append('user_name', currentUser);
+    form.append('file', files[i]);
+
+    await fetch(`${API}/events/${eventId}/media`, { method: 'POST', body: form });
+  }
+
+  fill.style.width = '100%';
+  text.textContent = '完了！';
+  setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 1500);
+  loadMedia(eventId);
+}
+
+loadAlbum();
+</script>
+</body>
+</html>
