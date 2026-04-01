@@ -1,4 +1,8 @@
 *.pem
 *.pdf
 .DS_Store
+.env
 */.env
+__pycache__/
+*.pyc
+*.log
