@@ -383,6 +383,43 @@
 
     .form-row textarea { resize: vertical; min-height: 70px; }
 
+    .time-picker-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .time-picker-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .time-sel-h {
+      width: 64px !important;
+      padding: 8px 4px !important;
+      text-align: center;
+    }
+
+    .time-sel-m {
+      width: 56px !important;
+      padding: 8px 4px !important;
+      text-align: center;
+    }
+
+    .time-sep {
+      font-size: 13px;
+      color: #555;
+      font-weight: 600;
+    }
+
+    .time-range-sep {
+      font-size: 16px;
+      color: #aaa;
+      font-weight: 300;
+    }
+
     .time-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -675,14 +712,22 @@
       <label>日付</label>
       <input type="date" id="eventDate">
     </div>
-    <div class="form-row time-row">
-      <div>
-        <label>開始時刻</label>
-        <select id="eventStart"></select>
-      </div>
-      <div>
-        <label>終了時刻</label>
-        <select id="eventEnd"></select>
+    <div class="form-row">
+      <label>時刻</label>
+      <div class="time-picker-row">
+        <div class="time-picker-group">
+          <select id="eventStartH" class="time-sel-h"></select>
+          <span class="time-sep">時</span>
+          <select id="eventStartM" class="time-sel-m"></select>
+          <span class="time-sep">分</span>
+        </div>
+        <span class="time-range-sep">〜</span>
+        <div class="time-picker-group">
+          <select id="eventEndH" class="time-sel-h"></select>
+          <span class="time-sep">時</span>
+          <select id="eventEndM" class="time-sel-m"></select>
+          <span class="time-sep">分</span>
+        </div>
       </div>
     </div>
     <div class="form-row">
@@ -895,8 +940,8 @@ async function saveEvent() {
   const body = {
     title,
     date,
-    start_time: document.getElementById('eventStart').value || null,
-    end_time:   document.getElementById('eventEnd').value   || null,
+    start_time: getTimeValue('eventStart'),
+    end_time:   getTimeValue('eventEnd'),
     description: document.getElementById('eventDesc').value.trim() || null,
     user_name: user,
     color: getModalColor(),
@@ -1122,22 +1167,37 @@ function toDateStr(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-// ========== 時刻セレクト（10分刻み）==========
+// ========== 時刻セレクト（5〜20時、10分刻み）==========
 function buildTimeSelects() {
-  ['eventStart', 'eventEnd'].forEach(id => {
-    const sel = document.getElementById(id);
-    sel.innerHTML = '<option value="">--:--</option>';
-    for (let h = 0; h < 24; h++) {
-      for (let m = 0; m < 60; m += 10) {
-        const hh = String(h).padStart(2, '0');
-        const mm = String(m).padStart(2, '0');
-        const val = `${hh}:${mm}`;
-        sel.innerHTML += `<option value="${val}">${val}</option>`;
-      }
-    }
-  });
+  const blankH = '<option value="">--</option>';
+  const blankM = '<option value="">--</option>';
+  let hoursHTML = blankH;
+  for (let h = 5; h <= 20; h++) hoursHTML += `<option value="${String(h).padStart(2,'0')}">${h}</option>`;
+  let minsHTML = blankM;
+  for (let m = 0; m < 60; m += 10) minsHTML += `<option value="${String(m).padStart(2,'0')}">${String(m).padStart(2,'0')}</option>`;
+
+  ['eventStartH','eventEndH'].forEach(id => document.getElementById(id).innerHTML = hoursHTML);
+  ['eventStartM','eventEndM'].forEach(id => document.getElementById(id).innerHTML = minsHTML);
 }
 buildTimeSelects();
+
+function getTimeValue(prefix) {
+  const h = document.getElementById(`${prefix}H`).value;
+  const m = document.getElementById(`${prefix}M`).value;
+  return (h && m) ? `${h}:${m}` : null;
+}
+
+function setTimeValue(prefix, val) {
+  const hEl = document.getElementById(`${prefix}H`);
+  const mEl = document.getElementById(`${prefix}M`);
+  if (val && val.length >= 5) {
+    hEl.value = val.slice(0, 2);
+    mEl.value = val.slice(3, 5);
+  } else {
+    hEl.value = '';
+    mEl.value = '';
+  }
+}
 
 // ========== タイトルサジェスト ==========
 const FIXED_SUGGESTION = 'この日ゴルフしたい';
@@ -1196,8 +1256,8 @@ function openAddModal(dateStr) {
   document.getElementById('addModalTitle').textContent = 'イベントを追加';
   document.getElementById('eventTitle').value = '';
   document.getElementById('eventDate').value  = dateStr;
-  document.getElementById('eventStart').value = '';
-  document.getElementById('eventEnd').value   = '';
+  setTimeValue('eventStart', '');
+  setTimeValue('eventEnd', '');
   document.getElementById('eventDesc').value  = '';
   setModalColor(selectedColor);
   document.getElementById('addOverlay').classList.add('open');
@@ -1362,8 +1422,8 @@ function openEditFromDetail() {
   document.getElementById('addModalTitle').textContent = 'イベントを編集';
   document.getElementById('eventTitle').value = ev.title;
   document.getElementById('eventDate').value  = ev.date;
-  document.getElementById('eventStart').value = ev.start_time || '';
-  document.getElementById('eventEnd').value   = ev.end_time   || '';
+  setTimeValue('eventStart', ev.start_time || '');
+  setTimeValue('eventEnd', ev.end_time || '');
   document.getElementById('eventDesc').value  = ev.description || '';
   setModalColor(ev.color);
   document.getElementById('addOverlay').classList.add('open');
