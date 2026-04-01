@@ -666,7 +666,7 @@ function renderMedia(eventId, items) {
         ${item.comment ? `<div class="media-comment">${item.comment}</div>` : ''}
       </div>`;
 
-    const canDelete = currentUser && currentUser === item.user_name;
+    const canDelete = currentUser && (currentUser === item.user_name || currentUser === 'tamura');
     const deleteBtnHTML = canDelete ? `<button class="delete-btn">✕</button>` : '';
 
     if (item.media_type === 'video') {
