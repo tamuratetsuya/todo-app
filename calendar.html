@@ -923,11 +923,14 @@ function appendDay(grid, dayNum, otherMonth, dayEvents, dow, dateStr, isToday) {
     (dayEvents || []).slice(0, MAX).forEach(ev => {
       const chip = document.createElement('div');
       chip.className = `event-chip c-${ev.color}`;
+      const pCount = (ev.participants || []).length;
+      const timePrefix = ev.start_time ? ev.start_time.slice(0,5) + ' ' : '';
+      const maxTitleLen = pCount > 0 ? (timePrefix ? 4 : 7) : (timePrefix ? 6 : 10);
+      const titleShort = ev.title.length > maxTitleLen ? ev.title.slice(0, maxTitleLen) + '…' : ev.title;
       const chipText = document.createElement('span');
       chipText.className = 'chip-title';
-      chipText.textContent = (ev.start_time ? ev.start_time.slice(0,5) + ' ' : '') + ev.title;
+      chipText.textContent = timePrefix + titleShort;
       chip.appendChild(chipText);
-      const pCount = (ev.participants || []).length;
       if (pCount > 0) {
         const badge = document.createElement('span');
         badge.className = 'chip-participants';
