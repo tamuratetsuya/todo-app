@@ -5,6 +5,8 @@ from typing import Optional
 import os
 import pymysql
 from dotenv import load_dotenv
+import requests as http_requests
+from bs4 import BeautifulSoup
 
 load_dotenv()
 
@@ -197,3 +199,26 @@ def delete_event(event_id: int):
         cur.execute("DELETE FROM events WHERE id = %s", (event_id,))
         conn.commit()
     conn.close()
+
+
+@app.get("/og")
+def get_og(url: str):
+    try:
+        res = http_requests.get(url, timeout=6, headers={
+            'User-Agent': 'Mozilla/5.0 (compatible; CalendarBot/1.0)'
+        })
+        res.encoding = res.apparent_encoding
+        soup = BeautifulSoup(res.text, 'html.parser')
+        def og(prop):
+            tag = soup.find('meta', property=f'og:{prop}')
+            if not tag:
+                tag = soup.find('meta', attrs={'name': prop})
+            return tag.get('content') if tag else None
+        title = og('title') or (soup.title.string.strip() if soup.title else None)
+        image = og('image')
+        description = og('description') or soup.find('meta', attrs={'name': 'description'})
+        if hasattr(description, 'get'):
+            description = description.get('content')
+        return {'title': title, 'description': description, 'image': image}
+    except Exception:
+        raise HTTPException(status_code=400, detail='Failed to fetch OG data')
