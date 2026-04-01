@@ -340,10 +340,46 @@
     }
 
     .form-row input:focus,
-    .form-row textarea:focus {
+    .form-row textarea:focus,
+    .form-row select:focus {
       outline: none;
       border-color: #3498db;
     }
+
+    .title-wrapper { position: relative; }
+
+    .title-suggestions {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0; right: 0;
+      background: white;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+      z-index: 100;
+      overflow: hidden;
+    }
+
+    .title-suggestions.open { display: block; }
+
+    .title-suggestion-item {
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+      color: #333;
+      transition: background 0.1s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .title-suggestion-item:hover,
+    .title-suggestion-item.active { background: #f0f7ff; }
+
+    .title-suggestion-item .sug-icon { font-size: 13px; color: #aaa; }
+
+    .title-suggestion-item.fixed-item { color: #2ecc71; font-weight: 600; border-top: 1px solid #f0f0f0; }
 
     .form-row textarea { resize: vertical; min-height: 70px; }
 
@@ -630,7 +666,10 @@
     <h3 id="addModalTitle">イベントを追加</h3>
     <div class="form-row">
       <label>タイトル *</label>
-      <input type="text" id="eventTitle" placeholder="例: チームミーティング" maxlength="100">
+      <div class="title-wrapper">
+        <input type="text" id="eventTitle" placeholder="例: ○○ゴルフ場" maxlength="100" autocomplete="off">
+        <div class="title-suggestions" id="titleSuggestions"></div>
+      </div>
     </div>
     <div class="form-row">
       <label>日付</label>
@@ -639,11 +678,11 @@
     <div class="form-row time-row">
       <div>
         <label>開始時刻</label>
-        <input type="time" id="eventStart">
+        <select id="eventStart"></select>
       </div>
       <div>
         <label>終了時刻</label>
-        <input type="time" id="eventEnd">
+        <select id="eventEnd"></select>
       </div>
     </div>
     <div class="form-row">
@@ -1082,6 +1121,74 @@ function appendDay(grid, dayNum, otherMonth, dayEvents, dow, dateStr, isToday) {
 function toDateStr(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+
+// ========== 時刻セレクト（10分刻み）==========
+function buildTimeSelects() {
+  ['eventStart', 'eventEnd'].forEach(id => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = '<option value="">--:--</option>';
+    for (let h = 0; h < 24; h++) {
+      for (let m = 0; m < 60; m += 10) {
+        const hh = String(h).padStart(2, '0');
+        const mm = String(m).padStart(2, '0');
+        const val = `${hh}:${mm}`;
+        sel.innerHTML += `<option value="${val}">${val}</option>`;
+      }
+    }
+  });
+}
+buildTimeSelects();
+
+// ========== タイトルサジェスト ==========
+const FIXED_SUGGESTION = 'この日ゴルフしたい';
+
+function getTitleFrequency() {
+  const freq = {};
+  events.forEach(ev => {
+    if (ev.title && ev.title !== FIXED_SUGGESTION) {
+      freq[ev.title] = (freq[ev.title] || 0) + 1;
+    }
+  });
+  return Object.entries(freq).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+}
+
+function showSuggestions(query) {
+  const box = document.getElementById('titleSuggestions');
+  const ranked = getTitleFrequency();
+  let items;
+  if (query) {
+    const q = query.toLowerCase();
+    items = ranked.filter(t => t.toLowerCase().includes(q)).slice(0, 8);
+  } else {
+    items = ranked.slice(0, 5);
+  }
+
+  const html = items.map(t =>
+    `<div class="title-suggestion-item" data-val="${t}"><span class="sug-icon">🕐</span>${t}</div>`
+  ).join('') +
+  `<div class="title-suggestion-item fixed-item" data-val="${FIXED_SUGGESTION}"><span class="sug-icon">⛳</span>${FIXED_SUGGESTION}</div>`;
+
+  box.innerHTML = html;
+  box.classList.add('open');
+
+  box.querySelectorAll('.title-suggestion-item').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      document.getElementById('eventTitle').value = el.dataset.val;
+      box.classList.remove('open');
+    });
+  });
+}
+
+function initTitleSuggest() {
+  const input = document.getElementById('eventTitle');
+  const box = document.getElementById('titleSuggestions');
+
+  input.addEventListener('focus', () => showSuggestions(input.value));
+  input.addEventListener('input', () => showSuggestions(input.value));
+  input.addEventListener('blur', () => setTimeout(() => box.classList.remove('open'), 150));
+}
+initTitleSuggest();
 
 // ========== モーダル ==========
 function openAddModal(dateStr) {
