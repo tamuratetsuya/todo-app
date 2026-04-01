@@ -340,7 +340,6 @@ def get_album():
             FROM events e
             LEFT JOIN event_media m ON e.id = m.event_id
             GROUP BY e.id
-            HAVING media_count > 0
             ORDER BY e.date DESC
         """)
         rows = cur.fetchall()
