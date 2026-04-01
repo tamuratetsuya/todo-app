@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ブログ</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+
+    header {
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header h1 { font-size: 20px; color: #1a1a2e; }
+
+    .admin-btn {
+      padding: 8px 16px;
+      background: #4f7df3;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .admin-btn:hover { background: #3a65d8; }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 32px 16px;
+    }
+
+    /* 投稿カード */
+    .post-card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      margin-bottom: 24px;
+      overflow: hidden;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .post-card .media-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 4px;
+    }
+
+    .post-card .media-grid img,
+    .post-card .media-grid video {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      display: block;
+      cursor: pointer;
+    }
+
+    .post-body {
+      padding: 20px 24px;
+    }
+
+    .post-meta {
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 8px;
+    }
+
+    .post-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 12px;
+    }
+
+    .post-text {
+      font-size: 15px;
+      color: #444;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .post-actions {
+      margin-top: 16px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .delete-btn {
+      background: none;
+      border: none;
+      color: #ccc;
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .delete-btn:hover { color: #e53935; }
+
+    .empty {
+      text-align: center;
+      color: #bbb;
+      padding: 64px 0;
+      font-size: 16px;
+    }
+
+    /* モーダル共通 */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      padding: 16px;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: white;
+      border-radius: 12px;
+      padding: 28px;
+      width: 100%;
+      max-width: 560px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal h2 { font-size: 18px; margin-bottom: 20px; color: #1a1a2e; }
+
+    .form-group { margin-bottom: 16px; }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="password"],
+    .form-group textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus { border-color: #4f7df3; }
+
+    .form-group textarea { min-height: 120px; resize: vertical; }
+
+    .file-drop {
+      border: 2px dashed #e0e0e0;
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      color: #aaa;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .file-drop:hover, .file-drop.dragover { border-color: #4f7df3; color: #4f7df3; }
+
+    .file-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .file-preview .thumb {
+      position: relative;
+      width: 80px;
+      height: 80px;
+    }
+
+    .file-preview .thumb img,
+    .file-preview .thumb video {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 6px;
+    }
+
+    .file-preview .thumb .remove {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: #e53935;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      line-height: 20px;
+      text-align: center;
+      padding: 0;
+    }
+
+    .modal-btns {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+
+    .btn-primary {
+      padding: 10px 20px;
+      background: #4f7df3;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-primary:hover { background: #3a65d8; }
+    .btn-primary:disabled { background: #aaa; cursor: not-allowed; }
+
+    .btn-secondary {
+      padding: 10px 20px;
+      background: #f0f0f0;
+      color: #555;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .btn-secondary:hover { background: #e0e0e0; }
+
+    .error-msg {
+      color: #e53935;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    /* 画像ライトボックス */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+    }
+
+    .lightbox.open { display: flex; }
+
+    .lightbox img, .lightbox video {
+      max-width: 95vw;
+      max-height: 95vh;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    .lightbox-close {
+      position: absolute;
+      top: 16px;
+      right: 20px;
+      color: white;
+      font-size: 32px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Blog</h1>
+  <button class="admin-btn" onclick="openPostModal()">+ 新しい記事</button>
+</header>
+
+<main>
+  <div id="postList"></div>
+</main>
+
+<!-- 投稿モーダル -->
+<div class="modal-overlay" id="postModal">
+  <div class="modal">
+    <h2>新しい記事を投稿</h2>
+    <div class="form-group">
+      <label>タイトル</label>
+      <input type="text" id="postTitle" placeholder="タイトルを入力..." />
+    </div>
+    <div class="form-group">
+      <label>本文</label>
+      <textarea id="postBody" placeholder="本文を入力..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>写真・動画</label>
+      <div class="file-drop" id="fileDrop" onclick="document.getElementById('fileInput').click()">
+        クリックまたはドラッグ&ドロップで追加
+      </div>
+      <input type="file" id="fileInput" accept="image/*,video/*" multiple style="display:none" onchange="handleFiles(this.files)" />
+      <div class="file-preview" id="filePreview"></div>
+    </div>
+    <div class="form-group">
+      <label>管理者パスワード</label>
+      <input type="password" id="postPassword" placeholder="パスワードを入力..." />
+    </div>
+    <div class="error-msg" id="postError"></div>
+    <div class="modal-btns">
+      <button class="btn-secondary" onclick="closePostModal()">キャンセル</button>
+      <button class="btn-primary" id="submitBtn" onclick="submitPost()">投稿する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ライトボックス -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">×</button>
+  <div id="lightboxContent"></div>
+</div>
+
+<script>
+  const API = 'http://57.183.7.38:8001';
+  let selectedFiles = [];
+
+  // 投稿一覧取得
+  async function loadPosts() {
+    const list = document.getElementById('postList');
+    try {
+      const res = await fetch(`${API}/posts`);
+      const posts = await res.json();
+      if (posts.length === 0) {
+        list.innerHTML = '<div class="empty">まだ記事がありません</div>';
+        return;
+      }
+      list.innerHTML = posts.map(p => renderPost(p)).join('');
+    } catch {
+      list.innerHTML = '<div class="empty">サーバーに接続できません</div>';
+    }
+  }
+
+  function renderPost(p) {
+    const date = new Date(p.created_at).toLocaleDateString('ja-JP', {
+      year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    const mediaHtml = p.media && p.media.length > 0 ? `
+      <div class="media-grid">
+        ${p.media.map(m => m.media_type === 'video'
+          ? `<video src="${m.url}" onclick="openLightbox('video','${m.url}')" muted playsinline></video>`
+          : `<img src="${m.url}" onclick="openLightbox('image','${m.url}')" loading="lazy" />`
+        ).join('')}
+      </div>` : '';
+    return `
+      <div class="post-card">
+        ${mediaHtml}
+        <div class="post-body">
+          <div class="post-meta">${date}</div>
+          <div class="post-title">${escapeHtml(p.title)}</div>
+          <div class="post-text">${escapeHtml(p.body)}</div>
+          <div class="post-actions">
+            <button class="delete-btn" onclick="deletePost(${p.id})">削除</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // 投稿モーダル
+  function openPostModal() {
+    document.getElementById('postModal').classList.add('open');
+    document.getElementById('postTitle').focus();
+  }
+
+  function closePostModal() {
+    document.getElementById('postModal').classList.remove('open');
+    document.getElementById('postTitle').value = '';
+    document.getElementById('postBody').value = '';
+    document.getElementById('postPassword').value = '';
+    document.getElementById('postError').textContent = '';
+    selectedFiles = [];
+    document.getElementById('filePreview').innerHTML = '';
+  }
+
+  // ファイル選択
+  function handleFiles(files) {
+    for (const f of files) {
+      selectedFiles.push(f);
+    }
+    renderPreviews();
+  }
+
+  function renderPreviews() {
+    const preview = document.getElementById('filePreview');
+    preview.innerHTML = selectedFiles.map((f, i) => {
+      const url = URL.createObjectURL(f);
+      const isVideo = f.type.startsWith('video/');
+      return `<div class="thumb">
+        ${isVideo
+          ? `<video src="${url}" muted></video>`
+          : `<img src="${url}" />`}
+        <button class="remove" onclick="removeFile(${i})">×</button>
+      </div>`;
+    }).join('');
+  }
+
+  function removeFile(i) {
+    selectedFiles.splice(i, 1);
+    renderPreviews();
+  }
+
+  // ドラッグ&ドロップ
+  const fileDrop = document.getElementById('fileDrop');
+  fileDrop.addEventListener('dragover', e => { e.preventDefault(); fileDrop.classList.add('dragover'); });
+  fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('dragover'));
+  fileDrop.addEventListener('drop', e => {
+    e.preventDefault();
+    fileDrop.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+  });
+
+  // 投稿送信
+  async function submitPost() {
+    const title = document.getElementById('postTitle').value.trim();
+    const body = document.getElementById('postBody').value.trim();
+    const password = document.getElementById('postPassword').value;
+    const errEl = document.getElementById('postError');
+    errEl.textContent = '';
+
+    if (!title) { errEl.textContent = 'タイトルを入力してください'; return; }
+    if (!body)  { errEl.textContent = '本文を入力してください'; return; }
+    if (!password) { errEl.textContent = 'パスワードを入力してください'; return; }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = '投稿中...';
+
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('body', body);
+    fd.append('password', password);
+    for (const f of selectedFiles) fd.append('files', f);
+
+    try {
+      const res = await fetch(`${API}/posts`, { method: 'POST', body: fd });
+      if (res.status === 401) { errEl.textContent = 'パスワードが違います'; return; }
+      if (!res.ok) throw new Error();
+      closePostModal();
+      loadPosts();
+    } catch {
+      errEl.textContent = '投稿に失敗しました';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '投稿する';
+    }
+  }
+
+  // 削除
+  async function deletePost(id) {
+    const password = prompt('管理者パスワードを入力してください：');
+    if (!password) return;
+    try {
+      const res = await fetch(`${API}/posts/${id}?password=${encodeURIComponent(password)}`, { method: 'DELETE' });
+      if (res.status === 401) { alert('パスワードが違います'); return; }
+      loadPosts();
+    } catch {
+      alert('削除に失敗しました');
+    }
+  }
+
+  // ライトボックス
+  function openLightbox(type, url) {
+    const content = document.getElementById('lightboxContent');
+    content.innerHTML = type === 'video'
+      ? `<video src="${url}" controls autoplay style="max-width:95vw;max-height:95vh;"></video>`
+      : `<img src="${url}" />`;
+    document.getElementById('lightbox').classList.add('open');
+  }
+
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+    document.getElementById('lightboxContent').innerHTML = '';
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  loadPosts();
+</script>
+</body>
+</html>
