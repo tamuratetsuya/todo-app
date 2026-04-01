@@ -388,109 +388,30 @@
     .btn-join   { background: #27ae60; color: white; }
     .btn-leave  { background: #95a5a6; color: white; }
 
-    /* ミニカレンダー */
-    .mini-calendars {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
+    /* サブカレンダー（今月・来月） */
+    .sub-cal-wrapper {
       margin-top: 16px;
     }
 
-    .mini-calendar {
+    .sub-cal-header {
       background: white;
-      border-radius: 12px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-      overflow: hidden;
-    }
-
-    .mini-header {
-      background: #f8f9fa;
-      padding: 10px 14px;
-      font-size: 14px;
+      border-radius: 12px 12px 0 0;
+      padding: 14px 24px;
+      font-size: 18px;
       font-weight: 700;
       color: #1a1a2e;
       border-bottom: 1px solid #eee;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
     }
 
-    .mini-weekdays {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      background: #fafafa;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    .mini-weekday {
-      text-align: center;
-      padding: 5px 0;
-      font-size: 10px;
-      font-weight: 600;
-      color: #aaa;
-    }
-
-    .mini-weekday.sun { color: #e74c3c; }
-    .mini-weekday.sat { color: #3498db; }
-
-    .mini-days {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-    }
-
-    .mini-day {
-      min-height: 52px;
-      border-right: 1px solid #f5f5f5;
-      border-bottom: 1px solid #f5f5f5;
-      padding: 3px;
-      cursor: pointer;
-      transition: background 0.1s;
-    }
-
-    .mini-day:hover { background: #fafafa; }
-    .mini-day:nth-child(7n) { border-right: none; }
-    .mini-day.other-month { background: #fafafa; }
-    .mini-day.other-month .mini-day-num { color: #ddd; }
-    .mini-day.today { background: #fff8e1; }
-    .mini-day.today .mini-day-num {
-      background: #f39c12;
-      color: white;
-      border-radius: 50%;
-    }
-
-    .mini-day-num {
-      font-size: 11px;
-      font-weight: 600;
-      color: #555;
-      width: 20px;
-      height: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 2px;
-    }
-
-    .mini-day.sun .mini-day-num { color: #e74c3c; }
-    .mini-day.sat .mini-day-num { color: #3498db; }
-    .mini-day.today.sun .mini-day-num,
-    .mini-day.today.sat .mini-day-num { color: white; }
-
-    .mini-event-dot {
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-      display: inline-block;
-      margin: 1px;
-    }
-
-    .mini-event-dots {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1px;
+    .sub-cal-wrapper .calendar {
+      border-radius: 0 0 12px 12px;
     }
 
     @media (max-width: 600px) {
       .day { min-height: 70px; padding: 4px; }
       .event-chip { font-size: 10px; padding: 1px 4px; }
       .nav h2 { font-size: 16px; }
-      .mini-calendars { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -528,33 +449,37 @@
     <div class="days" id="calendarDays"></div>
   </div>
 
-  <!-- ミニカレンダー（今月・来月） -->
-  <div class="mini-calendars">
-    <div class="mini-calendar">
-      <div class="mini-header" id="miniLabel0"></div>
-      <div class="mini-weekdays">
-        <div class="mini-weekday sun">日</div>
-        <div class="mini-weekday">月</div>
-        <div class="mini-weekday">火</div>
-        <div class="mini-weekday">水</div>
-        <div class="mini-weekday">木</div>
-        <div class="mini-weekday">金</div>
-        <div class="mini-weekday sat">土</div>
+  <!-- サブカレンダー（今月） -->
+  <div class="sub-cal-wrapper">
+    <div class="sub-cal-header" id="subLabel0"></div>
+    <div class="calendar">
+      <div class="weekdays">
+        <div class="weekday sun">日</div>
+        <div class="weekday">月</div>
+        <div class="weekday">火</div>
+        <div class="weekday">水</div>
+        <div class="weekday">木</div>
+        <div class="weekday">金</div>
+        <div class="weekday sat">土</div>
       </div>
-      <div class="mini-days" id="miniDays0"></div>
+      <div class="days" id="subDays0"></div>
     </div>
-    <div class="mini-calendar">
-      <div class="mini-header" id="miniLabel1"></div>
-      <div class="mini-weekdays">
-        <div class="mini-weekday sun">日</div>
-        <div class="mini-weekday">月</div>
-        <div class="mini-weekday">火</div>
-        <div class="mini-weekday">水</div>
-        <div class="mini-weekday">木</div>
-        <div class="mini-weekday">金</div>
-        <div class="mini-weekday sat">土</div>
+  </div>
+
+  <!-- サブカレンダー（来月） -->
+  <div class="sub-cal-wrapper">
+    <div class="sub-cal-header" id="subLabel1"></div>
+    <div class="calendar">
+      <div class="weekdays">
+        <div class="weekday sun">日</div>
+        <div class="weekday">月</div>
+        <div class="weekday">火</div>
+        <div class="weekday">水</div>
+        <div class="weekday">木</div>
+        <div class="weekday">金</div>
+        <div class="weekday sat">土</div>
       </div>
-      <div class="mini-days" id="miniDays1"></div>
+      <div class="days" id="subDays1"></div>
     </div>
   </div>
 
@@ -1026,103 +951,61 @@ function deleteEventFromDetail(eventId) {
   deleteEvent(eventId || detailEventId);
 }
 
-// ========== ミニカレンダー ==========
-let miniEvents = [{}, {}]; // [今月, 来月] date→events[]
-
-async function loadMiniCalendars() {
+// ========== サブカレンダー（今月・来月） ==========
+async function loadSubCalendars() {
   const now = new Date();
   const months = [
     { year: now.getFullYear(), month: now.getMonth() + 1 },
   ];
-  // 来月
   let ny = now.getFullYear(), nm = now.getMonth() + 2;
   if (nm > 12) { nm = 1; ny++; }
   months.push({ year: ny, month: nm });
 
   for (let i = 0; i < 2; i++) {
     const { year, month } = months[i];
+    let evs = [];
     try {
       const res = await fetch(`${API}/events?year=${year}&month=${month}`);
-      const evs = await res.json();
-      const map = {};
-      evs.forEach(e => {
-        if (!map[e.date]) map[e.date] = [];
-        map[e.date].push(e);
-      });
-      miniEvents[i] = map;
-    } catch { miniEvents[i] = {}; }
-    renderMiniCalendar(i, year, month, miniEvents[i]);
+      evs = await res.json();
+    } catch { evs = []; }
+    renderSubCalendar(i, year, month, evs);
   }
 }
 
-function renderMiniCalendar(idx, year, month, evMap) {
-  document.getElementById(`miniLabel${idx}`).textContent = `${year}年 ${month}月`;
+function renderSubCalendar(idx, year, month, evs) {
+  document.getElementById(`subLabel${idx}`).textContent = `${year}年 ${month}月`;
 
-  const grid = document.getElementById(`miniDays${idx}`);
+  const grid = document.getElementById(`subDays${idx}`);
   grid.innerHTML = '';
 
-  const first   = new Date(year, month - 1, 1);
-  const last    = new Date(year, month, 0);
-  const today   = new Date();
+  const first = new Date(year, month - 1, 1);
+  const last  = new Date(year, month, 0);
+  const today = new Date();
   const todayStr = toDateStr(today);
   const startDow = first.getDay();
 
-  // 前月埋め
   const prevLast = new Date(year, month - 1, 0);
   for (let i = startDow - 1; i >= 0; i--) {
-    appendMiniDay(grid, prevLast.getDate() - i, true, null, -1);
+    appendDay(grid, prevLast.getDate() - i, true, null, -1);
   }
 
-  // 当月
   for (let d = 1; d <= last.getDate(); d++) {
     const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayEvents = evs.filter(e => e.date === dateStr);
     const dow = new Date(year, month - 1, d).getDay();
-    appendMiniDay(grid, d, false, evMap[dateStr] || [], dow, dateStr, dateStr === todayStr);
+    appendDay(grid, d, false, dayEvents, dow, dateStr, dateStr === todayStr);
   }
 
-  // 翌月埋め
   const total = startDow + last.getDate();
   const remaining = Math.ceil(total / 7) * 7 - total;
   for (let d = 1; d <= remaining; d++) {
-    appendMiniDay(grid, d, true, null, -1);
+    appendDay(grid, d, true, null, -1);
   }
-}
-
-function appendMiniDay(grid, dayNum, otherMonth, dayEvents, dow, dateStr, isToday) {
-  const cell = document.createElement('div');
-  cell.className = 'mini-day'
-    + (otherMonth ? ' other-month' : '')
-    + (isToday    ? ' today' : '')
-    + (dow === 0  ? ' sun' : dow === 6 ? ' sat' : '');
-
-  const numEl = document.createElement('div');
-  numEl.className = 'mini-day-num';
-  numEl.textContent = dayNum;
-  cell.appendChild(numEl);
-
-  if (!otherMonth && dateStr && dayEvents && dayEvents.length > 0) {
-    cell.addEventListener('click', () => openAddModal(dateStr));
-    const dotsEl = document.createElement('div');
-    dotsEl.className = 'mini-event-dots';
-    dayEvents.slice(0, 5).forEach(ev => {
-      const dot = document.createElement('span');
-      dot.className = 'mini-event-dot';
-      const colorHex = COLORS.find(c => c.key === ev.color)?.hex || '#999';
-      dot.style.background = colorHex;
-      dot.title = ev.title;
-      dotsEl.appendChild(dot);
-    });
-    cell.appendChild(dotsEl);
-  } else if (!otherMonth && dateStr) {
-    cell.addEventListener('click', () => openAddModal(dateStr));
-  }
-
-  grid.appendChild(cell);
 }
 
 // ========== 起動 ==========
 init();
-loadMiniCalendars();
+loadSubCalendars();
 </script>
 </body>
 </html>
