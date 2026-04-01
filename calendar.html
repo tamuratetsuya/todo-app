@@ -178,6 +178,19 @@
     .day.sat .day-num { color: #3498db; }
     .day.today.sun .day-num, .day.today.sat .day-num { color: white; }
 
+    /* 祝日 */
+    .day.holiday .day-num { color: #e74c3c; }
+    .day.today.holiday .day-num { color: white; }
+    .holiday-label {
+      font-size: 9px;
+      color: #e74c3c;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+    }
+
     /* イベントチップ */
     .event-chip {
       font-size: 11px;
@@ -526,6 +539,50 @@
 <script>
 const API = 'https://www.golfspace.jp/api/calendar';
 
+// 日本の祝日
+const HOLIDAYS = {
+  '2024': {
+    '01-01':'元日','01-08':'成人の日','02-11':'建国記念の日',
+    '02-12':'建国記念の日 振替','02-23':'天皇誕生日','03-20':'春分の日',
+    '04-29':'昭和の日','05-03':'憲法記念日','05-04':'みどりの日',
+    '05-05':'こどもの日','05-06':'こどもの日 振替','07-15':'海の日',
+    '08-11':'山の日','08-12':'山の日 振替','09-16':'敬老の日',
+    '09-22':'秋分の日','10-14':'スポーツの日','11-03':'文化の日',
+    '11-04':'文化の日 振替','11-23':'勤労感謝の日',
+  },
+  '2025': {
+    '01-01':'元日','01-13':'成人の日','02-11':'建国記念の日',
+    '02-23':'天皇誕生日','02-24':'天皇誕生日 振替','03-20':'春分の日',
+    '04-29':'昭和の日','05-03':'憲法記念日','05-04':'みどりの日',
+    '05-05':'こどもの日','05-06':'こどもの日 振替','07-21':'海の日',
+    '08-11':'山の日','09-15':'敬老の日','09-23':'秋分の日',
+    '10-13':'スポーツの日','11-03':'文化の日','11-23':'勤労感謝の日',
+    '11-24':'勤労感謝の日 振替',
+  },
+  '2026': {
+    '01-01':'元日','01-12':'成人の日','02-11':'建国記念の日',
+    '02-23':'天皇誕生日','03-20':'春分の日','04-29':'昭和の日',
+    '05-03':'憲法記念日','05-04':'みどりの日','05-05':'こどもの日',
+    '05-06':'みどりの日 振替','07-20':'海の日','08-11':'山の日',
+    '09-21':'敬老の日','09-23':'秋分の日','10-12':'スポーツの日',
+    '11-03':'文化の日','11-23':'勤労感謝の日',
+  },
+  '2027': {
+    '01-01':'元日','01-11':'成人の日','02-11':'建国記念の日',
+    '02-23':'天皇誕生日','03-21':'春分の日','04-29':'昭和の日',
+    '05-03':'憲法記念日','05-04':'みどりの日','05-05':'こどもの日',
+    '07-19':'海の日','08-11':'山の日','09-20':'敬老の日',
+    '09-23':'秋分の日','10-11':'スポーツの日','11-03':'文化の日',
+    '11-23':'勤労感謝の日',
+  },
+};
+
+function getHoliday(dateStr) {
+  if (!dateStr) return null;
+  const [year, mm, dd] = dateStr.split('-');
+  return (HOLIDAYS[year] || {})[`${mm}-${dd}`] || null;
+}
+
 const COLORS = [
   { key: 'blue',   hex: '#3498db' },
   { key: 'red',    hex: '#e74c3c' },
@@ -776,16 +833,25 @@ function changeMonth(delta) {
 }
 
 function appendDay(grid, dayNum, otherMonth, dayEvents, dow, dateStr, isToday) {
+  const holiday = getHoliday(dateStr);
   const cell = document.createElement('div');
   cell.className = 'day'
     + (otherMonth ? ' other-month' : '')
     + (isToday    ? ' today' : '')
+    + (holiday    ? ' holiday' : '')
     + (dow === 0  ? ' sun' : dow === 6 ? ' sat' : '');
 
   const numEl = document.createElement('div');
   numEl.className = 'day-num';
   numEl.textContent = dayNum;
   cell.appendChild(numEl);
+
+  if (holiday && !otherMonth) {
+    const hLabel = document.createElement('div');
+    hLabel.className = 'holiday-label';
+    hLabel.textContent = holiday;
+    cell.appendChild(hLabel);
+  }
 
   if (!otherMonth && dateStr) {
     cell.addEventListener('click', () => openAddModal(dateStr));
