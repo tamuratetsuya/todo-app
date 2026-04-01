@@ -19,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "tamuratetsuya")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 S3_BUCKET = os.getenv("S3_BUCKET")
 AWS_REGION = os.getenv("AWS_REGION", "ap-northeast-1")
 
