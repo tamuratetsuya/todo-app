@@ -435,21 +435,7 @@
     <button id="nextMonth">›</button>
   </div>
 
-  <!-- カレンダー -->
-  <div class="calendar">
-    <div class="weekdays">
-      <div class="weekday sun">日</div>
-      <div class="weekday">月</div>
-      <div class="weekday">火</div>
-      <div class="weekday">水</div>
-      <div class="weekday">木</div>
-      <div class="weekday">金</div>
-      <div class="weekday sat">土</div>
-    </div>
-    <div class="days" id="calendarDays"></div>
-  </div>
-
-  <!-- サブカレンダー（今月） -->
+  <!-- カレンダー（今月） -->
   <div class="sub-cal-wrapper">
     <div class="sub-cal-header" id="subLabel0"></div>
     <div class="calendar">
@@ -584,7 +570,6 @@ function init() {
   document.getElementById('detailOverlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDetailModal(); });
 
   renderModalColorPicker();
-  loadEvents();
 }
 
 function saveUser() {
@@ -641,16 +626,6 @@ function setModalColor(color) {
 }
 
 // ========== API ==========
-async function loadEvents() {
-  try {
-    const res = await fetch(`${API}/events?year=${currentYear}&month=${currentMonth}`);
-    events = await res.json();
-  } catch (e) {
-    events = [];
-  }
-  renderCalendar();
-}
-
 async function saveEvent() {
   const title = document.getElementById('eventTitle').value.trim();
   const date  = document.getElementById('eventDate').value;
@@ -685,7 +660,7 @@ async function saveEvent() {
       });
     }
     closeAddModal();
-    loadEvents();
+    loadSubCalendars();
   } catch (e) {
     alert('保存に失敗しました');
   }
@@ -695,7 +670,7 @@ async function deleteEvent(id) {
   if (!confirm('このイベントを削除しますか？')) return;
   await fetch(`${API}/events/${id}`, { method: 'DELETE' });
   closeDetailModal();
-  loadEvents();
+  loadSubCalendars();
 }
 
 async function joinEvent(eventId) {
@@ -708,7 +683,7 @@ async function joinEvent(eventId) {
   });
   const data = await res.json();
   updateParticipants(eventId, data.participants);
-  loadEvents();
+  loadSubCalendars();
 }
 
 async function leaveEvent(eventId) {
@@ -721,7 +696,7 @@ async function leaveEvent(eventId) {
   });
   const data = await res.json();
   updateParticipants(eventId, data.participants);
-  loadEvents();
+  loadSubCalendars();
 }
 
 function updateParticipants(eventId, participants) {
@@ -797,45 +772,7 @@ function changeMonth(delta) {
   currentMonth += delta;
   if (currentMonth > 12) { currentMonth = 1; currentYear++; }
   if (currentMonth < 1)  { currentMonth = 12; currentYear--; }
-  loadEvents();
-}
-
-function renderCalendar() {
-  document.getElementById('monthLabel').textContent =
-    `${currentYear}年 ${currentMonth}月`;
-
-  const grid = document.getElementById('calendarDays');
-  grid.innerHTML = '';
-
-  const first = new Date(currentYear, currentMonth - 1, 1);
-  const last  = new Date(currentYear, currentMonth, 0);
-  const today = new Date();
-  const todayStr = toDateStr(today);
-
-  // 月初の曜日 (0=日)
-  let startDow = first.getDay();
-
-  // 前月の日を埋める
-  const prevLast = new Date(currentYear, currentMonth - 1, 0);
-  for (let i = startDow - 1; i >= 0; i--) {
-    const d = prevLast.getDate() - i;
-    appendDay(grid, d, true, null, -1);
-  }
-
-  // 当月
-  for (let d = 1; d <= last.getDate(); d++) {
-    const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const dayEvents = events.filter(e => e.date === dateStr);
-    const dow = new Date(currentYear, currentMonth - 1, d).getDay();
-    appendDay(grid, d, false, dayEvents, dow, dateStr, dateStr === todayStr);
-  }
-
-  // 翌月の日を埋める（6行になるよう調整）
-  const total = startDow + last.getDate();
-  const remaining = Math.ceil(total / 7) * 7 - total;
-  for (let d = 1; d <= remaining; d++) {
-    appendDay(grid, d, true, null, -1);
-  }
+  loadSubCalendars();
 }
 
 function appendDay(grid, dayNum, otherMonth, dayEvents, dow, dateStr, isToday) {
@@ -953,14 +890,18 @@ function deleteEventFromDetail(eventId) {
 
 // ========== サブカレンダー（今月・来月） ==========
 async function loadSubCalendars() {
-  const now = new Date();
-  const months = [
-    { year: now.getFullYear(), month: now.getMonth() + 1 },
-  ];
-  let ny = now.getFullYear(), nm = now.getMonth() + 2;
+  let ny = currentYear, nm = currentMonth + 1;
   if (nm > 12) { nm = 1; ny++; }
-  months.push({ year: ny, month: nm });
+  const months = [
+    { year: currentYear, month: currentMonth },
+    { year: ny, month: nm },
+  ];
 
+  // nav label
+  document.getElementById('monthLabel').textContent =
+    `${currentYear}年 ${currentMonth}月 〜 ${ny}年 ${nm}月`;
+
+  events = [];
   for (let i = 0; i < 2; i++) {
     const { year, month } = months[i];
     let evs = [];
@@ -968,6 +909,7 @@ async function loadSubCalendars() {
       const res = await fetch(`${API}/events?year=${year}&month=${month}`);
       evs = await res.json();
     } catch { evs = []; }
+    events = events.concat(evs);
     renderSubCalendar(i, year, month, evs);
   }
 }
