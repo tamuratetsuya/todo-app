@@ -6,3 +6,4 @@ pydantic
 requests
 beautifulsoup4
 boto3
+python-multipart
