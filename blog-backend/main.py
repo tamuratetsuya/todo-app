@@ -201,6 +201,68 @@ async def create_post(
     return post
 
 
+# メディア追加
+@app.post("/posts/{post_id}/media", status_code=201)
+async def add_post_media(
+    post_id: int,
+    password: str,
+    files: List[UploadFile] = File(default=[]),
+):
+    if password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="パスワードが違います")
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM posts WHERE id = %s", (post_id,))
+        if not cur.fetchone():
+            conn.close()
+            raise HTTPException(status_code=404, detail="Not found")
+        added = []
+        for file in files:
+            if not file.filename:
+                continue
+            ext = file.filename.rsplit(".", 1)[-1].lower()
+            key = f"blog/{uuid.uuid4()}.{ext}"
+            content = await file.read()
+            s3.put_object(
+                Bucket=S3_BUCKET,
+                Key=key,
+                Body=content,
+                ContentType=file.content_type,
+            )
+            url = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{key}"
+            media_type = "video" if ext in ("mp4", "mov", "avi", "webm") else "image"
+            cur.execute(
+                "INSERT INTO media (post_id, url, media_type) VALUES (%s, %s, %s)",
+                (post_id, url, media_type),
+            )
+            added.append({"url": url, "media_type": media_type})
+        conn.commit()
+    conn.close()
+    return added
+
+
+# メディア削除
+@app.delete("/media/{media_id}", status_code=204)
+def delete_media(media_id: int, password: str):
+    if password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="パスワードが違います")
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT url FROM media WHERE id = %s", (media_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Not found")
+        key = row["url"].split(".amazonaws.com/")[-1]
+        try:
+            s3.delete_object(Bucket=S3_BUCKET, Key=key)
+        except Exception:
+            pass
+        cur.execute("DELETE FROM media WHERE id = %s", (media_id,))
+        conn.commit()
+    conn.close()
+
+
 # 投稿削除
 @app.delete("/posts/{post_id}", status_code=204)
 def delete_post(post_id: int, password: str):

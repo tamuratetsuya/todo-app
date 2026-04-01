@@ -402,6 +402,63 @@
 
     .form-group textarea { min-height: 120px; resize: vertical; }
 
+    .file-drop {
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      text-align: center;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 13px;
+      letter-spacing: 1px;
+      transition: all 0.2s;
+      background: var(--surface2);
+    }
+
+    .file-drop:hover, .file-drop.dragover {
+      border-color: var(--green-dim);
+      color: var(--green);
+    }
+
+    .file-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .file-preview .thumb {
+      position: relative;
+      width: 72px;
+      height: 72px;
+    }
+
+    .file-preview .thumb img,
+    .file-preview .thumb video {
+      width: 72px;
+      height: 72px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .file-preview .thumb .remove {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: #f87171;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      line-height: 20px;
+      text-align: center;
+      padding: 0;
+    }
+
     .modal-btns {
       display: flex;
       gap: 10px;
@@ -515,6 +572,14 @@
     <div class="form-group">
       <label>本文</label>
       <textarea id="editBody" placeholder="本文を入力..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>写真・動画を追加</label>
+      <div class="file-drop" id="editFileDrop" onclick="document.getElementById('editFileInput').click()">
+        クリックまたはドラッグ&ドロップで追加
+      </div>
+      <input type="file" id="editFileInput" accept="image/*,video/*" multiple style="display:none" onchange="handleEditFiles(this.files)" />
+      <div class="file-preview" id="editFilePreview"></div>
     </div>
     <div class="form-group">
       <label>パスワード</label>
@@ -641,12 +706,39 @@
     });
   }
 
+  let editSelectedFiles = [];
+
+  function handleEditFiles(files) {
+    for (const f of files) editSelectedFiles.push(f);
+    renderEditPreviews();
+  }
+
+  function renderEditPreviews() {
+    const preview = document.getElementById('editFilePreview');
+    preview.innerHTML = editSelectedFiles.map((f, i) => {
+      const url = URL.createObjectURL(f);
+      const isVideo = f.type.startsWith('video/');
+      return `<div class="thumb">
+        ${isVideo ? `<video src="${url}" muted></video>` : `<img src="${url}" />`}
+        <button class="remove" onclick="removeEditFile(${i})">×</button>
+      </div>`;
+    }).join('');
+  }
+
+  function removeEditFile(i) {
+    editSelectedFiles.splice(i, 1);
+    renderEditPreviews();
+  }
+
   function openEditModal(id, title, body) {
     document.getElementById('editPostId').value = id;
     document.getElementById('editTitle').value = title;
     document.getElementById('editBody').value = body;
     document.getElementById('editPassword').value = '';
     document.getElementById('editError').textContent = '';
+    editSelectedFiles = [];
+    document.getElementById('editFilePreview').innerHTML = '';
+    document.getElementById('editFileInput').value = '';
     document.getElementById('editModal').classList.add('open');
     document.getElementById('editTitle').focus();
   }
@@ -654,6 +746,15 @@
   function closeEditModal() {
     document.getElementById('editModal').classList.remove('open');
   }
+
+  const editFileDrop = document.getElementById('editFileDrop');
+  editFileDrop.addEventListener('dragover', e => { e.preventDefault(); editFileDrop.classList.add('dragover'); });
+  editFileDrop.addEventListener('dragleave', () => editFileDrop.classList.remove('dragover'));
+  editFileDrop.addEventListener('drop', e => {
+    e.preventDefault();
+    editFileDrop.classList.remove('dragover');
+    handleEditFiles(e.dataTransfer.files);
+  });
 
   async function submitEdit() {
     const id = document.getElementById('editPostId').value;
@@ -679,6 +780,14 @@
       });
       if (res.status === 401) { errEl.textContent = 'パスワードが違います'; return; }
       if (!res.ok) throw new Error();
+
+      if (editSelectedFiles.length > 0) {
+        const fd = new FormData();
+        fd.append('password', password);
+        for (const f of editSelectedFiles) fd.append('files', f);
+        await fetch(`${API}/posts/${id}/media`, { method: 'POST', body: fd });
+      }
+
       closeEditModal();
       loadPost();
     } catch {
