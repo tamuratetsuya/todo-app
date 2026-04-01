@@ -3,133 +3,298 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ブログ</title>
+  <title>Golf Space | ゴルフブログ</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg: #f0f7f2;
+      --surface: #ffffff;
+      --surface2: #f5faf6;
+      --border: rgba(0,0,0,0.08);
+      --green: #1a7a3e;
+      --green-dim: #2d8a50;
+      --text: #1a2e22;
+      --text-muted: rgba(26,46,34,0.45);
+      --radius: 20px;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f5f5f5;
+      font-family: 'ヒラギノ角ゴ ProN', 'Hiragino Kaku Gothic ProN', 'ヒラギノ角ゴ Pro', 'Hiragino Kaku Gothic Pro', 'メイリオ', sans-serif;
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
     }
 
+    /* ── ヘッダー ── */
     header {
-      background: white;
-      border-bottom: 1px solid #e0e0e0;
-      padding: 16px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      position: sticky;
-      top: 0;
-      z-index: 10;
+      padding: 20px 40px;
+      background: rgba(240,247,242,0.85);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-bottom: 1px solid var(--border);
     }
 
-    header h1 { font-size: 20px; color: #1a1a2e; }
+    .logo {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .logo h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 30px;
+      font-weight: 400;
+      letter-spacing: 5px;
+      color: var(--text);
+      text-transform: uppercase;
+    }
+
+    .logo-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+      margin-bottom: 2px;
+      box-shadow: 0 0 8px var(--green);
+    }
+
+    .logo sub {
+      font-size: 11px;
+      font-weight: 300;
+      letter-spacing: 4px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
 
     .admin-btn {
-      padding: 8px 16px;
-      background: #4f7df3;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 22px;
+      background: transparent;
+      color: var(--green);
+      border: 1px solid var(--green-dim);
+      border-radius: 100px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 1px;
       cursor: pointer;
+      transition: all 0.3s ease;
     }
 
-    .admin-btn:hover { background: #3a65d8; }
+    .admin-btn:hover {
+      background: var(--green);
+      color: var(--bg);
+      box-shadow: 0 0 24px rgba(74,222,128,0.3);
+    }
 
+    /* ── メイン ── */
     main {
-      max-width: 760px;
+      max-width: 720px;
       margin: 0 auto;
-      padding: 32px 16px;
+      padding: 48px 24px 80px;
     }
 
-    /* 投稿カード */
+    .feed-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    .feed-header-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .feed-header-label {
+      font-size: 11px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    /* ── 投稿カード ── */
     .post-card {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-      margin-bottom: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 20px;
       overflow: hidden;
-      animation: fadeIn 0.3s ease;
+      animation: fadeUp 0.5s ease both;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
 
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
+    .post-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
       to   { opacity: 1; transform: translateY(0); }
     }
 
+    /* ── メディアグリッド ── */
     .post-card .media-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 4px;
+      gap: 3px;
+      padding: 16px;
+      padding-bottom: 0;
     }
+
+    .post-card .media-grid.count-1 { grid-template-columns: 33%; }
+    .post-card .media-grid.count-2 { grid-template-columns: 1fr 1fr; max-width: 66%; }
+    .post-card .media-grid.count-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .post-card .media-grid.count-many { grid-template-columns: 1fr 1fr 1fr; }
 
     .post-card .media-grid img,
     .post-card .media-grid video {
       width: 100%;
-      height: 200px;
-      object-fit: cover;
+      height: auto;
       display: block;
       cursor: pointer;
+      border-radius: 12px;
+      transition: transform 0.3s ease, opacity 0.2s;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     }
 
+    .post-card .media-grid img:hover,
+    .post-card .media-grid video:hover {
+      transform: scale(1.02);
+      opacity: 0.9;
+    }
+
+    .media-item {
+      overflow: hidden;
+      position: relative;
+      border-radius: 12px;
+    }
+
+    .media-item .more-badge {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      font-size: 26px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border-radius: 12px;
+      backdrop-filter: blur(4px);
+    }
+
+    /* ── 投稿本文 ── */
     .post-body {
-      padding: 20px 24px;
+      padding: 20px 24px 24px;
     }
 
     .post-meta {
-      font-size: 12px;
-      color: #aaa;
-      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .post-meta::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--green);
     }
 
     .post-title {
-      font-size: 20px;
-      font-weight: 700;
-      color: #1a1a2e;
-      margin-bottom: 12px;
+      font-family: 'ヒラギノ角ゴ ProN', 'Hiragino Kaku Gothic ProN', sans-serif;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 10px;
+      line-height: 1.3;
+      letter-spacing: 0.5px;
     }
 
     .post-text {
+      font-family: 'ヒラギノ角ゴ ProN', 'Hiragino Kaku Gothic ProN', sans-serif;
       font-size: 15px;
-      color: #444;
-      line-height: 1.7;
+      font-weight: 300;
+      font-style: normal;
+      color: #3a5242;
+      line-height: 1.9;
       white-space: pre-wrap;
       word-break: break-word;
+      letter-spacing: 0.3px;
     }
 
     .post-actions {
-      margin-top: 16px;
+      margin-top: 18px;
       display: flex;
       justify-content: flex-end;
     }
 
-    .delete-btn {
+    .delete-btn, .edit-btn {
       background: none;
       border: none;
-      color: #ccc;
-      font-size: 13px;
+      font-size: 12px;
       cursor: pointer;
-      text-decoration: underline;
+      letter-spacing: 1px;
+      transition: color 0.2s;
     }
 
-    .delete-btn:hover { color: #e53935; }
+    .delete-btn { color: var(--text-muted); }
+    .delete-btn:hover { color: #f87171; }
+    .edit-btn { color: var(--text-muted); margin-right: 12px; }
+    .edit-btn:hover { color: var(--green); }
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text-muted);
+      margin-right: 12px;
+      padding: 4px 10px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover { color: var(--green); border-color: var(--green-dim); }
+    .copy-btn.copied { color: var(--green); border-color: var(--green-dim); background: rgba(26,122,62,0.08); }
 
     .empty {
       text-align: center;
-      color: #bbb;
-      padding: 64px 0;
-      font-size: 16px;
+      color: var(--text-muted);
+      padding: 80px 0;
+      font-size: 14px;
+      letter-spacing: 2px;
     }
 
-    /* モーダル共通 */
+    /* ── モーダル ── */
     .modal-overlay {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.5);
+      background: rgba(26,46,34,0.5);
+      backdrop-filter: blur(12px);
       justify-content: center;
       align-items: center;
       z-index: 100;
@@ -139,55 +304,75 @@
     .modal-overlay.open { display: flex; }
 
     .modal {
-      background: white;
-      border-radius: 12px;
-      padding: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
       width: 100%;
-      max-width: 560px;
+      max-width: 540px;
       max-height: 90vh;
       overflow-y: auto;
     }
 
-    .modal h2 { font-size: 18px; margin-bottom: 20px; color: #1a1a2e; }
+    .modal h2 {
+      font-family: 'ヒラギノ明朝 ProN', 'Hiragino Mincho ProN', serif;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 24px;
+      letter-spacing: 1px;
+    }
 
-    .form-group { margin-bottom: 16px; }
+    .form-group { margin-bottom: 18px; }
 
     .form-group label {
       display: block;
-      font-size: 13px;
-      color: #666;
-      margin-bottom: 6px;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 8px;
     }
 
     .form-group input[type="text"],
     .form-group input[type="password"],
     .form-group textarea {
       width: 100%;
-      padding: 10px 14px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      font-size: 15px;
+      padding: 12px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 14px;
+      font-family: 'DM Sans', sans-serif;
+      color: var(--text);
       outline: none;
-      font-family: inherit;
       transition: border-color 0.2s;
     }
 
     .form-group input:focus,
-    .form-group textarea:focus { border-color: #4f7df3; }
+    .form-group textarea:focus {
+      border-color: var(--green-dim);
+    }
 
     .form-group textarea { min-height: 120px; resize: vertical; }
 
     .file-drop {
-      border: 2px dashed #e0e0e0;
-      border-radius: 8px;
-      padding: 24px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 28px;
       text-align: center;
-      color: #aaa;
+      color: var(--text-muted);
       cursor: pointer;
-      transition: border-color 0.2s;
+      font-size: 13px;
+      letter-spacing: 1px;
+      transition: all 0.2s;
+      background: var(--surface2);
     }
 
-    .file-drop:hover, .file-drop.dragover { border-color: #4f7df3; color: #4f7df3; }
+    .file-drop:hover, .file-drop.dragover {
+      border-color: var(--green-dim);
+      color: var(--green);
+    }
 
     .file-preview {
       display: flex;
@@ -198,23 +383,24 @@
 
     .file-preview .thumb {
       position: relative;
-      width: 80px;
-      height: 80px;
+      width: 72px;
+      height: 72px;
     }
 
     .file-preview .thumb img,
     .file-preview .thumb video {
-      width: 80px;
-      height: 80px;
+      width: 72px;
+      height: 72px;
       object-fit: cover;
-      border-radius: 6px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
     }
 
     .file-preview .thumb .remove {
       position: absolute;
       top: -6px;
       right: -6px;
-      background: #e53935;
+      background: #f87171;
       color: white;
       border: none;
       border-radius: 50%;
@@ -229,52 +415,59 @@
 
     .modal-btns {
       display: flex;
-      gap: 8px;
+      gap: 10px;
       justify-content: flex-end;
-      margin-top: 20px;
+      margin-top: 24px;
     }
 
     .btn-primary {
-      padding: 10px 20px;
-      background: #4f7df3;
-      color: white;
+      padding: 11px 24px;
+      background: var(--green);
+      color: var(--bg);
       border: none;
-      border-radius: 8px;
-      font-size: 14px;
+      border-radius: 100px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
       font-weight: 600;
+      letter-spacing: 1px;
       cursor: pointer;
+      transition: all 0.3s;
     }
 
-    .btn-primary:hover { background: #3a65d8; }
-    .btn-primary:disabled { background: #aaa; cursor: not-allowed; }
+    .btn-primary:hover { box-shadow: 0 0 24px rgba(74,222,128,0.4); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
     .btn-secondary {
-      padding: 10px 20px;
-      background: #f0f0f0;
-      color: #555;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
+      padding: 11px 20px;
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
       cursor: pointer;
+      transition: all 0.2s;
     }
 
-    .btn-secondary:hover { background: #e0e0e0; }
+    .btn-secondary:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
 
     .error-msg {
-      color: #e53935;
-      font-size: 13px;
+      color: #f87171;
+      font-size: 12px;
       margin-top: 8px;
+      letter-spacing: 0.5px;
     }
 
-    /* 画像ライトボックス */
+    /* ── ライトボックス ── */
     .lightbox {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.9);
+      background: rgba(0,0,0,0.95);
       justify-content: center;
       align-items: center;
       z-index: 200;
+      backdrop-filter: blur(20px);
     }
 
     .lightbox.open { display: flex; }
@@ -283,37 +476,143 @@
       max-width: 95vw;
       max-height: 95vh;
       object-fit: contain;
-      border-radius: 4px;
+      border-radius: 12px;
     }
 
     .lightbox-close {
       position: absolute;
-      top: 16px;
-      right: 20px;
-      color: white;
-      font-size: 32px;
+      top: 20px;
+      right: 24px;
+      color: rgba(255,255,255,0.5);
+      font-size: 28px;
       cursor: pointer;
       background: none;
       border: none;
       line-height: 1;
+      transition: color 0.2s;
     }
+
+    .lightbox-close:hover { color: white; }
+
+    /* ── リンクプレビューカード ── */
+    .link-cards {
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .link-card {
+      display: flex;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .link-card:hover {
+      border-color: var(--green-dim);
+      box-shadow: 0 4px 20px rgba(26,122,62,0.12);
+    }
+
+    .link-card-img {
+      width: 110px;
+      min-width: 110px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .link-card-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .link-card-body {
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3px;
+      overflow: hidden;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .link-card-site {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--green);
+      font-weight: 500;
+    }
+
+    .link-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      line-height: 1.4;
+    }
+
+    .link-card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      line-height: 1.5;
+      margin-top: 2px;
+    }
+
+    .link-card-url {
+      font-size: 10px;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-top: 4px;
+      opacity: 0.6;
+    }
+
+    /* スクロールバー */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>Blog</h1>
-  <button class="admin-btn" onclick="openPostModal()">+ 新しい記事</button>
+  <div class="logo">
+    <h1>Golf Space</h1>
+    <div class="logo-dot"></div>
+    <sub>Journal</sub>
+  </div>
+  <button class="admin-btn" onclick="openPostModal()">&#43; 投稿</button>
 </header>
 
 <main>
+  <div class="feed-header">
+    <div class="feed-header-line"></div>
+    <div class="feed-header-label">Latest Posts</div>
+    <div class="feed-header-line"></div>
+  </div>
   <div id="postList"></div>
 </main>
 
 <!-- 投稿モーダル -->
 <div class="modal-overlay" id="postModal">
   <div class="modal">
-    <h2>新しい記事を投稿</h2>
+    <h2>New Post</h2>
     <div class="form-group">
       <label>タイトル</label>
       <input type="text" id="postTitle" placeholder="タイトルを入力..." />
@@ -331,13 +630,38 @@
       <div class="file-preview" id="filePreview"></div>
     </div>
     <div class="form-group">
-      <label>管理者パスワード</label>
-      <input type="password" id="postPassword" placeholder="パスワードを入力..." />
+      <label>パスワード</label>
+      <input type="password" id="postPassword" placeholder="管理者パスワード" />
     </div>
     <div class="error-msg" id="postError"></div>
     <div class="modal-btns">
       <button class="btn-secondary" onclick="closePostModal()">キャンセル</button>
       <button class="btn-primary" id="submitBtn" onclick="submitPost()">投稿する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 編集モーダル -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h2>記事を編集</h2>
+    <input type="hidden" id="editPostId" />
+    <div class="form-group">
+      <label>タイトル</label>
+      <input type="text" id="editTitle" placeholder="タイトルを入力..." />
+    </div>
+    <div class="form-group">
+      <label>本文</label>
+      <textarea id="editBody" placeholder="本文を入力..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>パスワード</label>
+      <input type="password" id="editPassword" placeholder="管理者パスワード" />
+    </div>
+    <div class="error-msg" id="editError"></div>
+    <div class="modal-btns">
+      <button class="btn-secondary" onclick="closeEditModal()">キャンセル</button>
+      <button class="btn-primary" id="editSubmitBtn" onclick="submitEdit()">保存する</button>
     </div>
   </div>
 </div>
@@ -349,51 +673,69 @@
 </div>
 
 <script>
-  const API = 'https://www.golfspace.jp/api/blog';
+  const API = 'https://blog.golfspace.jp/api/blog';
   let selectedFiles = [];
 
-  // 投稿一覧取得
   async function loadPosts() {
     const list = document.getElementById('postList');
     try {
       const res = await fetch(`${API}/posts`);
       const posts = await res.json();
       if (posts.length === 0) {
-        list.innerHTML = '<div class="empty">まだ記事がありません</div>';
+        list.innerHTML = '<div class="empty">— NO POSTS YET —</div>';
         return;
       }
-      list.innerHTML = posts.map(p => renderPost(p)).join('');
+      list.innerHTML = posts.map((p, i) => renderPost(p, i)).join('');
+      enrichWithOGP(posts);
     } catch {
-      list.innerHTML = '<div class="empty">サーバーに接続できません</div>';
+      list.innerHTML = '<div class="empty">— CONNECTION ERROR —</div>';
     }
   }
 
-  function renderPost(p) {
+  function renderPost(p, i) {
     const date = new Date(p.created_at).toLocaleDateString('ja-JP', {
-      year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      year: 'numeric', month: 'long', day: 'numeric'
     });
-    const mediaHtml = p.media && p.media.length > 0 ? `
-      <div class="media-grid">
-        ${p.media.map(m => m.media_type === 'video'
+
+    let mediaHtml = '';
+    if (p.media && p.media.length > 0) {
+      const count = p.media.length;
+      const gridClass = count === 1 ? 'count-1' : count === 2 ? 'count-2' : count === 3 ? 'count-3' : 'count-many';
+      const displayMedia = count > 4 ? p.media.slice(0, 4) : p.media;
+      const remaining = count > 4 ? count - 4 : 0;
+
+      const items = displayMedia.map((m, idx) => {
+        const isLast = remaining > 0 && idx === displayMedia.length - 1;
+        const badge = isLast ? `<div class="more-badge" onclick="openLightbox('image','${m.url}')">+${remaining}</div>` : '';
+        const media = m.media_type === 'video'
           ? `<video src="${m.url}" onclick="openLightbox('video','${m.url}')" muted playsinline></video>`
-          : `<img src="${m.url}" onclick="openLightbox('image','${m.url}')" loading="lazy" />`
-        ).join('')}
-      </div>` : '';
+          : `<img src="${m.url}" onclick="openLightbox('image','${m.url}')" loading="lazy" />`;
+        return `<div class="media-item">${media}${badge}</div>`;
+      }).join('');
+
+      mediaHtml = `<div class="media-grid ${gridClass}">${items}</div>`;
+    }
+
     return `
-      <div class="post-card">
+      <div class="post-card" style="animation-delay:${i * 0.08}s">
         ${mediaHtml}
         <div class="post-body">
           <div class="post-meta">${date}</div>
           <div class="post-title">${escapeHtml(p.title)}</div>
           <div class="post-text">${escapeHtml(p.body)}</div>
+          <div class="link-cards" id="link-cards-${p.id}"></div>
           <div class="post-actions">
+            <button class="copy-btn" id="copy-${p.id}" onclick="copyText(${p.id}, \`${escapeHtml(p.body)}\`)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              コピー
+            </button>
+            <button class="edit-btn" onclick="openEditModal(${p.id}, \`${escapeHtml(p.title)}\`, \`${escapeHtml(p.body)}\`)">編集</button>
             <button class="delete-btn" onclick="deletePost(${p.id})">削除</button>
           </div>
         </div>
       </div>`;
   }
 
-  // 投稿モーダル
   function openPostModal() {
     document.getElementById('postModal').classList.add('open');
     document.getElementById('postTitle').focus();
@@ -409,11 +751,8 @@
     document.getElementById('filePreview').innerHTML = '';
   }
 
-  // ファイル選択
   function handleFiles(files) {
-    for (const f of files) {
-      selectedFiles.push(f);
-    }
+    for (const f of files) selectedFiles.push(f);
     renderPreviews();
   }
 
@@ -423,9 +762,7 @@
       const url = URL.createObjectURL(f);
       const isVideo = f.type.startsWith('video/');
       return `<div class="thumb">
-        ${isVideo
-          ? `<video src="${url}" muted></video>`
-          : `<img src="${url}" />`}
+        ${isVideo ? `<video src="${url}" muted></video>` : `<img src="${url}" />`}
         <button class="remove" onclick="removeFile(${i})">×</button>
       </div>`;
     }).join('');
@@ -436,7 +773,6 @@
     renderPreviews();
   }
 
-  // ドラッグ&ドロップ
   const fileDrop = document.getElementById('fileDrop');
   fileDrop.addEventListener('dragover', e => { e.preventDefault(); fileDrop.classList.add('dragover'); });
   fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('dragover'));
@@ -446,7 +782,6 @@
     handleFiles(e.dataTransfer.files);
   });
 
-  // 投稿送信
   async function submitPost() {
     const title = document.getElementById('postTitle').value.trim();
     const body = document.getElementById('postBody').value.trim();
@@ -482,7 +817,66 @@
     }
   }
 
-  // 削除
+  function copyText(id, text) {
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById(`copy-${id}`);
+      btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> コピー済み`;
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> コピー`;
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+
+  function openEditModal(id, title, body) {
+    document.getElementById('editPostId').value = id;
+    document.getElementById('editTitle').value = title;
+    document.getElementById('editBody').value = body;
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editError').textContent = '';
+    document.getElementById('editModal').classList.add('open');
+    document.getElementById('editTitle').focus();
+  }
+
+  function closeEditModal() {
+    document.getElementById('editModal').classList.remove('open');
+  }
+
+  async function submitEdit() {
+    const id = document.getElementById('editPostId').value;
+    const title = document.getElementById('editTitle').value.trim();
+    const body = document.getElementById('editBody').value.trim();
+    const password = document.getElementById('editPassword').value;
+    const errEl = document.getElementById('editError');
+    errEl.textContent = '';
+
+    if (!title) { errEl.textContent = 'タイトルを入力してください'; return; }
+    if (!body)  { errEl.textContent = '本文を入力してください'; return; }
+    if (!password) { errEl.textContent = 'パスワードを入力してください'; return; }
+
+    const btn = document.getElementById('editSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+
+    try {
+      const res = await fetch(`${API}/posts/${id}?password=${encodeURIComponent(password)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, body })
+      });
+      if (res.status === 401) { errEl.textContent = 'パスワードが違います'; return; }
+      if (!res.ok) throw new Error();
+      closeEditModal();
+      loadPosts();
+    } catch {
+      errEl.textContent = '保存に失敗しました';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '保存する';
+    }
+  }
+
   async function deletePost(id) {
     const password = prompt('管理者パスワードを入力してください：');
     if (!password) return;
@@ -495,11 +889,10 @@
     }
   }
 
-  // ライトボックス
   function openLightbox(type, url) {
     const content = document.getElementById('lightboxContent');
     content.innerHTML = type === 'video'
-      ? `<video src="${url}" controls autoplay style="max-width:95vw;max-height:95vh;"></video>`
+      ? `<video src="${url}" controls autoplay style="max-width:95vw;max-height:95vh;border-radius:12px;"></video>`
       : `<img src="${url}" />`;
     document.getElementById('lightbox').classList.add('open');
   }
@@ -507,6 +900,42 @@
   function closeLightbox() {
     document.getElementById('lightbox').classList.remove('open');
     document.getElementById('lightboxContent').innerHTML = '';
+  }
+
+  const URL_REGEX = /https?:\/\/[^\s<>"'()]+/g;
+
+  async function enrichWithOGP(posts) {
+    for (const p of posts) {
+      const urls = [...new Set((p.body.match(URL_REGEX) || []))];
+      if (urls.length === 0) continue;
+      const container = document.getElementById(`link-cards-${p.id}`);
+      if (!container) continue;
+      for (const url of urls) {
+        try {
+          const res = await fetch(`${API}/ogp?url=${encodeURIComponent(url)}`);
+          if (!res.ok) continue;
+          const ogp = await res.json();
+          if (!ogp.title) continue;
+          container.insertAdjacentHTML('beforeend', renderLinkCard(ogp));
+        } catch {}
+      }
+    }
+  }
+
+  function renderLinkCard(ogp) {
+    const imgHtml = ogp.image
+      ? `<div class="link-card-img"><img src="${escapeHtml(ogp.image)}" loading="lazy" /></div>`
+      : '';
+    return `
+      <a class="link-card" href="${escapeHtml(ogp.url)}" target="_blank" rel="noopener noreferrer">
+        ${imgHtml}
+        <div class="link-card-body">
+          ${ogp.site_name ? `<div class="link-card-site">${escapeHtml(ogp.site_name)}</div>` : ''}
+          <div class="link-card-title">${escapeHtml(ogp.title)}</div>
+          ${ogp.description ? `<div class="link-card-desc">${escapeHtml(ogp.description)}</div>` : ''}
+          <div class="link-card-url">${escapeHtml(ogp.url)}</div>
+        </div>
+      </a>`;
   }
 
   function escapeHtml(str) {

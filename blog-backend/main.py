@@ -6,6 +6,8 @@ import os
 import pymysql
 import boto3
 import uuid
+import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -65,6 +67,27 @@ def startup():
     init_db()
 
 
+# OGP取得
+@app.get("/ogp")
+def get_ogp(url: str):
+    try:
+        res = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        soup = BeautifulSoup(res.text, "html.parser")
+        def og(prop):
+            tag = soup.find("meta", property=f"og:{prop}") or soup.find("meta", attrs={"name": f"og:{prop}"})
+            return tag["content"] if tag and tag.get("content") else None
+        title = og("title") or (soup.title.string.strip() if soup.title else None)
+        return {
+            "url": url,
+            "title": title,
+            "description": og("description") or "",
+            "image": og("image") or "",
+            "site_name": og("site_name") or "",
+        }
+    except Exception:
+        raise HTTPException(status_code=400, detail="OGP取得失敗")
+
+
 # 認証
 @app.post("/auth")
 def auth(password: str = Form(...)):
@@ -97,6 +120,35 @@ def get_post(post_id: int):
         if not post:
             conn.close()
             raise HTTPException(status_code=404, detail="Not found")
+        cur.execute("SELECT * FROM media WHERE post_id = %s", (post_id,))
+        post["media"] = cur.fetchall()
+    conn.close()
+    return post
+
+
+class PostUpdate(BaseModel):
+    title: Optional[str] = None
+    body: Optional[str] = None
+
+
+# 投稿編集
+@app.patch("/posts/{post_id}")
+def update_post(post_id: int, password: str, update: PostUpdate):
+    if password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="パスワードが違います")
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM posts WHERE id = %s", (post_id,))
+        if not cur.fetchone():
+            conn.close()
+            raise HTTPException(status_code=404, detail="Not found")
+        if update.title is not None:
+            cur.execute("UPDATE posts SET title = %s WHERE id = %s", (update.title, post_id))
+        if update.body is not None:
+            cur.execute("UPDATE posts SET body = %s WHERE id = %s", (update.body, post_id))
+        conn.commit()
+        cur.execute("SELECT * FROM posts WHERE id = %s", (post_id,))
+        post = cur.fetchone()
         cur.execute("SELECT * FROM media WHERE post_id = %s", (post_id,))
         post["media"] = cur.fetchall()
     conn.close()
