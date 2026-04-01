@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import os
 import uuid
+import tempfile
 import pymysql
 from dotenv import load_dotenv
 import requests as http_requests
@@ -86,6 +87,10 @@ def init_db():
         """)
         try:
             cur.execute("ALTER TABLE event_media ADD COLUMN comment TEXT")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE event_media ADD COLUMN thumbnail_key VARCHAR(500)")
         except Exception:
             pass
     conn.commit()
@@ -288,17 +293,43 @@ async def upload_media(event_id: int, user_name: str = Form(...), file: UploadFi
         ContentType=file.content_type or 'application/octet-stream',
     )
 
+    # 動画の場合は最初のフレームをサムネイルとして保存
+    thumbnail_key = None
+    if media_type == 'video':
+        try:
+            import cv2
+            import numpy as np
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                tmp.write(content)
+                tmp_path = tmp.name
+            cap = cv2.VideoCapture(tmp_path)
+            ret, frame = cap.read()
+            cap.release()
+            os.unlink(tmp_path)
+            if ret and frame is not None:
+                _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                thumbnail_key = f"events/{event_id}/thumbs/{uuid.uuid4().hex}.jpg"
+                s3_client.put_object(
+                    Bucket=S3_BUCKET,
+                    Key=thumbnail_key,
+                    Body=buf.tobytes(),
+                    ContentType='image/jpeg',
+                )
+        except Exception:
+            thumbnail_key = None
+
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO event_media (event_id, user_name, s3_key, file_name, media_type, comment) VALUES (%s, %s, %s, %s, %s, %s)",
-            (event_id, user_name, s3_key, file.filename, media_type, comment or None),
+            "INSERT INTO event_media (event_id, user_name, s3_key, file_name, media_type, comment, thumbnail_key) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (event_id, user_name, s3_key, file.filename, media_type, comment or None, thumbnail_key),
         )
         conn.commit()
         media_id = cur.lastrowid
     conn.close()
 
     url = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': s3_key}, ExpiresIn=3600)
-    return {'id': media_id, 'url': url, 'media_type': media_type, 'file_name': file.filename, 's3_key': s3_key, 'comment': comment or None}
+    thumb_url = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': thumbnail_key}, ExpiresIn=3600) if thumbnail_key else None
+    return {'id': media_id, 'url': url, 'media_type': media_type, 'file_name': file.filename, 's3_key': s3_key, 'comment': comment or None, 'thumbnail_url': thumb_url}
 
 
 @app.get("/events/{event_id}/media")
@@ -313,8 +344,11 @@ def list_media(event_id: int):
     conn.close()
     result = []
     for row in rows:
-        url = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': row['s3_key']}, ExpiresIn=3600)
-        row['url'] = url
+        row['url'] = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': row['s3_key']}, ExpiresIn=3600)
+        if row.get('thumbnail_key'):
+            row['thumbnail_url'] = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': row['thumbnail_key']}, ExpiresIn=3600)
+        else:
+            row['thumbnail_url'] = None
         row['created_at'] = row['created_at'].isoformat()
         result.append(row)
     return result

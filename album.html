@@ -682,9 +682,12 @@ function renderMedia(eventId, items) {
     const deleteBtnHTML = canDelete ? `<button class="delete-btn">✕</button>` : '';
 
     if (item.media_type === 'video') {
+      const thumbContent = item.thumbnail_url
+        ? `<img src="${item.thumbnail_url}" alt="thumbnail" style="width:100%;height:100%;object-fit:cover;display:block;">`
+        : `<div class="video-placeholder"></div>`;
       el.innerHTML = `
         <div class="media-item-inner">
-          <div class="video-placeholder"></div>
+          ${thumbContent}
           <div class="video-play-btn">▶</div>
           ${deleteBtnHTML}
           ${overlayHTML}
