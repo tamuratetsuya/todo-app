@@ -79,10 +79,15 @@ def init_db():
                 s3_key VARCHAR(500) NOT NULL,
                 file_name VARCHAR(300) NOT NULL,
                 media_type VARCHAR(20) NOT NULL,
+                comment TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             )
         """)
+        try:
+            cur.execute("ALTER TABLE event_media ADD COLUMN comment TEXT")
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -263,7 +268,7 @@ def get_og(url: str):
 # ========== メディア ==========
 
 @app.post("/events/{event_id}/media", status_code=201)
-async def upload_media(event_id: int, user_name: str = Form(...), file: UploadFile = File(...)):
+async def upload_media(event_id: int, user_name: str = Form(...), file: UploadFile = File(...), comment: str = Form("")):
     conn = get_conn()
     with conn.cursor() as cur:
         cur.execute("SELECT id FROM events WHERE id = %s", (event_id,))
@@ -285,15 +290,15 @@ async def upload_media(event_id: int, user_name: str = Form(...), file: UploadFi
 
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO event_media (event_id, user_name, s3_key, file_name, media_type) VALUES (%s, %s, %s, %s, %s)",
-            (event_id, user_name, s3_key, file.filename, media_type),
+            "INSERT INTO event_media (event_id, user_name, s3_key, file_name, media_type, comment) VALUES (%s, %s, %s, %s, %s, %s)",
+            (event_id, user_name, s3_key, file.filename, media_type, comment or None),
         )
         conn.commit()
         media_id = cur.lastrowid
     conn.close()
 
     url = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': s3_key}, ExpiresIn=3600)
-    return {'id': media_id, 'url': url, 'media_type': media_type, 'file_name': file.filename, 's3_key': s3_key}
+    return {'id': media_id, 'url': url, 'media_type': media_type, 'file_name': file.filename, 's3_key': s3_key, 'comment': comment or None}
 
 
 @app.get("/events/{event_id}/media")

@@ -223,6 +223,48 @@
       margin-top: 6px;
     }
 
+    .comment-input {
+      width: 100%;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      resize: none;
+      margin-top: 8px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .comment-input:focus { border-color: #2ecc71; }
+
+    .media-thumb .comment-indicator {
+      position: absolute;
+      bottom: 4px;
+      left: 4px;
+      background: rgba(0,0,0,0.55);
+      color: white;
+      border-radius: 8px;
+      padding: 2px 5px;
+      font-size: 10px;
+      max-width: calc(100% - 8px);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      pointer-events: none;
+    }
+
+    .lightbox-comment {
+      color: rgba(255,255,255,0.9);
+      font-size: 14px;
+      margin-top: 6px;
+      max-width: 80vw;
+      text-align: center;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 6px 14px;
+    }
+
     .upload-progress {
       display: none;
       margin-top: 10px;
@@ -354,8 +396,9 @@ async function loadAlbum() {
   const events = await res.json();
   const container = document.getElementById('albumList');
 
-  const today = new Date(new Date().toDateString());
-  const pastEvents = events.filter(ev => new Date(ev.date) <= today);
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const pastEvents = events.filter(ev => ev.date <= todayStr);
 
   if (!pastEvents.length) {
     container.innerHTML = `
@@ -392,6 +435,7 @@ async function loadAlbum() {
           <div style="font-size:24px">📤</div>
           <div class="upload-area-text">写真・動画をアップロード<br><span style="font-size:11px">タップまたはドラッグ＆ドロップ</span></div>
         </label>
+        <textarea class="comment-input" id="comment-${ev.id}" rows="2" placeholder="コメントを追加... (任意)"></textarea>
         <div class="upload-progress" id="progress-${ev.id}">
           <div class="progress-bar"><div class="progress-fill" id="fill-${ev.id}"></div></div>
           <div style="font-size:11px;color:#888;margin-top:4px" id="progressText-${ev.id}"></div>
@@ -417,15 +461,18 @@ function renderMedia(eventId, items) {
   items.forEach((item, idx) => {
     const thumb = document.createElement('div');
     thumb.className = 'media-thumb';
+    const commentBadge = item.comment ? `<div class="comment-indicator">💬 ${item.comment}</div>` : '';
     if (item.media_type === 'video') {
       thumb.innerHTML = `
         <video src="${item.url}" preload="metadata"></video>
         <div class="video-badge">▶</div>
-        <button class="delete-btn" data-id="${item.id}" data-event="${eventId}">✕</button>`;
+        <button class="delete-btn" data-id="${item.id}" data-event="${eventId}">✕</button>
+        ${commentBadge}`;
     } else {
       thumb.innerHTML = `
         <img src="${item.url}" alt="${item.file_name}" loading="lazy">
-        <button class="delete-btn" data-id="${item.id}" data-event="${eventId}">✕</button>`;
+        <button class="delete-btn" data-id="${item.id}" data-event="${eventId}">✕</button>
+        ${commentBadge}`;
     }
     thumb.addEventListener('click', (e) => {
       if (e.target.classList.contains('delete-btn')) return;
@@ -461,7 +508,8 @@ function showLightboxItem() {
   } else {
     content.innerHTML = `<img src="${item.url}" alt="${item.file_name}">`;
   }
-  document.getElementById('lbInfo').textContent = `${lbIndex + 1} / ${lbItems.length}  ${item.user_name}`;
+  const infoEl = document.getElementById('lbInfo');
+  infoEl.innerHTML = `<span>${lbIndex + 1} / ${lbItems.length}　${item.user_name}</span>${item.comment ? `<div class="lightbox-comment">💬 ${item.comment}</div>` : ''}`;
 }
 
 document.getElementById('lbClose').addEventListener('click', () => {
@@ -502,6 +550,9 @@ async function uploadFiles(eventId, files) {
     currentUser = name;
   }
 
+  const commentEl = document.getElementById(`comment-${eventId}`);
+  const comment = commentEl ? commentEl.value.trim() : '';
+
   const progress = document.getElementById(`progress-${eventId}`);
   const fill = document.getElementById(`fill-${eventId}`);
   const text = document.getElementById(`progressText-${eventId}`);
@@ -514,12 +565,14 @@ async function uploadFiles(eventId, files) {
     const form = new FormData();
     form.append('user_name', currentUser);
     form.append('file', files[i]);
+    if (comment) form.append('comment', comment);
 
     await fetch(`${API}/events/${eventId}/media`, { method: 'POST', body: form });
   }
 
   fill.style.width = '100%';
   text.textContent = '完了！';
+  if (commentEl) commentEl.value = '';
   setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 1500);
   loadMedia(eventId);
 }

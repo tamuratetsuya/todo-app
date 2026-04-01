@@ -678,6 +678,7 @@
         <span>写真・動画をアップロード</span>
         <input type="file" id="modalFileInput" accept="image/*,video/*" multiple style="display:none">
       </label>
+      <textarea id="modalUploadComment" rows="2" placeholder="コメントを追加... (任意)" style="width:100%;margin-top:6px;border:1.5px solid #e0e0e0;border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;resize:none;outline:none;"></textarea>
     </div>
     <div class="modal-actions" id="detailActions"></div>
   </div>
@@ -1166,7 +1167,9 @@ function openDetailModal(ev) {
   renderDetailActions(ev.id);
 
   // 過去の予定のみアップロードボタンを表示
-  const isPast = new Date(ev.date) <= new Date(new Date().toDateString());
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const isPast = ev.date <= todayStr;
   const uploadArea = document.getElementById('modalUploadArea').parentElement;
   uploadArea.style.display = isPast ? 'block' : 'none';
   if (isPast) {
@@ -1188,6 +1191,9 @@ async function modalUploadFiles(eventId, files) {
   const user = document.getElementById('userName').value.trim();
   if (!user) { alert('名前を入力してください'); return; }
 
+  const commentEl = document.getElementById('modalUploadComment');
+  const comment = commentEl ? commentEl.value.trim() : '';
+
   const area = document.getElementById('modalUploadArea');
   area.style.borderColor = '#2ecc71';
   area.querySelector('span:last-of-type').textContent = `0 / ${files.length} アップロード中...`;
@@ -1197,10 +1203,12 @@ async function modalUploadFiles(eventId, files) {
     const form = new FormData();
     form.append('user_name', user);
     form.append('file', files[i]);
+    if (comment) form.append('comment', comment);
     await fetch(`${API}/events/${eventId}/media`, { method: 'POST', body: form });
   }
 
   area.querySelector('span:last-of-type').textContent = '✅ アップロード完了！';
+  if (commentEl) commentEl.value = '';
   setTimeout(() => {
     area.style.borderColor = '#ccc';
     area.querySelector('span:last-of-type').textContent = '写真・動画をアップロード';
