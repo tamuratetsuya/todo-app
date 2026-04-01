@@ -413,11 +413,53 @@
     .detail-desc {
       font-size: 14px;
       color: #444;
-      white-space: pre-wrap;
       background: #f8f9fa;
       border-radius: 8px;
       padding: 10px 12px;
       margin-top: 10px;
+    }
+
+    .link-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: white;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-top: 8px;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .link-card:hover {
+      border-color: #3498db;
+      box-shadow: 0 2px 8px rgba(52,152,219,0.15);
+    }
+
+    .link-card-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .link-card-body {
+      overflow: hidden;
+    }
+
+    .link-card-domain {
+      font-size: 11px;
+      color: #3498db;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .link-card-url {
+      font-size: 11px;
+      color: #888;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .participants-section {
@@ -994,10 +1036,46 @@ function openDetailModal(ev) {
 
   const descEl = document.getElementById('detailDesc');
   if (ev.description) {
-    descEl.innerHTML = ev.description
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:#3498db;word-break:break-all;">$1</a>')
-      .replace(/\n/g,'<br>');
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = ev.description.split(urlRegex);
+    descEl.innerHTML = '';
+
+    // テキスト部分
+    const textParts = parts.filter((_, i) => i % 2 === 0).join('').trim();
+    if (textParts) {
+      const textEl = document.createElement('div');
+      textEl.style.whiteSpace = 'pre-wrap';
+      textEl.textContent = textParts;
+      descEl.appendChild(textEl);
+    }
+
+    // URLをカード表示
+    const urls = ev.description.match(urlRegex) || [];
+    urls.forEach(url => {
+      let domain = '';
+      try { domain = new URL(url).hostname.replace('www.', ''); } catch {}
+      const siteIcons = {
+        'gora.golf.rakuten.co.jp': '⛳',
+        'google.com': '🔍',
+        'youtube.com': '▶️',
+        'maps.google.com': '📍',
+      };
+      const icon = Object.entries(siteIcons).find(([k]) => domain.includes(k))?.[1] || '🔗';
+      const card = document.createElement('a');
+      card.className = 'link-card';
+      card.href = url;
+      card.target = '_blank';
+      card.rel = 'noopener';
+      card.innerHTML = `
+        <span class="link-card-icon">${icon}</span>
+        <span class="link-card-body">
+          <div class="link-card-domain">${domain}</div>
+          <div class="link-card-url">${url}</div>
+        </span>
+      `;
+      descEl.appendChild(card);
+    });
+
     descEl.style.display = 'block';
   } else {
     descEl.style.display = 'none';
