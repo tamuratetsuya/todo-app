@@ -994,7 +994,10 @@ function openDetailModal(ev) {
 
   const descEl = document.getElementById('detailDesc');
   if (ev.description) {
-    descEl.textContent = ev.description;
+    descEl.innerHTML = ev.description
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:#3498db;word-break:break-all;">$1</a>')
+      .replace(/\n/g,'<br>');
     descEl.style.display = 'block';
   } else {
     descEl.style.display = 'none';
