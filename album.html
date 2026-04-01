@@ -11,18 +11,14 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: #f0f2f5;
       min-height: 100vh;
-      padding: 24px 16px;
+      padding: 0 0 40px;
     }
 
-    .container { max-width: 960px; margin: 0 auto; }
-
-    /* ヘッダー */
+    /* ========== ヘッダー ========== */
     .header {
       background: linear-gradient(135deg, #1a6b3a 0%, #2ecc71 60%, #a8e063 100%);
-      border-radius: 16px;
       box-shadow: 0 4px 20px rgba(46,204,113,0.35);
-      padding: 22px 28px;
-      margin-bottom: 16px;
+      padding: 20px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -30,47 +26,45 @@
       gap: 12px;
       position: relative;
       overflow: hidden;
+      margin-bottom: 24px;
     }
 
     .header::before {
       content: '📷';
       position: absolute;
-      right: 20px;
+      right: 24px;
       top: 50%;
       transform: translateY(-50%);
-      font-size: 64px;
-      opacity: 0.15;
+      font-size: 72px;
+      opacity: 0.12;
       pointer-events: none;
     }
 
     .header h1 {
-      font-size: 26px;
+      font-size: 24px;
       font-weight: 800;
       color: white;
-      letter-spacing: 1px;
+      letter-spacing: 0.5px;
       text-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
 
     .header h1 .sub-title {
       display: block;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 500;
-      letter-spacing: 2px;
-      opacity: 0.85;
-      margin-top: 2px;
+      letter-spacing: 3px;
+      opacity: 0.8;
+      margin-top: 3px;
     }
 
-    .header-nav {
-      display: flex;
-      gap: 10px;
-    }
+    .header-nav { display: flex; gap: 10px; }
 
     .nav-btn {
-      background: rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.22);
       color: white;
-      border: 1.5px solid rgba(255,255,255,0.5);
-      border-radius: 8px;
-      padding: 7px 16px;
+      border: 1.5px solid rgba(255,255,255,0.45);
+      border-radius: 20px;
+      padding: 7px 18px;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
@@ -78,33 +72,60 @@
       transition: background 0.15s;
     }
 
-    .nav-btn:hover { background: rgba(255,255,255,0.4); }
+    .nav-btn:hover { background: rgba(255,255,255,0.38); }
 
-    /* アルバムカード */
+    /* ========== コンテナ ========== */
+    .container { max-width: 900px; margin: 0 auto; padding: 0 16px; }
+
+    /* ========== アルバムカード ========== */
     .album-card {
       background: white;
-      border-radius: 16px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-      margin-bottom: 20px;
+      border-radius: 20px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.07);
+      margin-bottom: 28px;
       overflow: hidden;
     }
 
+    .card-top-bar {
+      height: 5px;
+      width: 100%;
+    }
+
     .album-card-header {
-      padding: 16px 20px 14px;
-      border-bottom: 1px solid #f0f0f0;
+      padding: 18px 20px 14px;
+    }
+
+    .event-title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
     }
 
     .event-title {
-      font-size: 18px;
-      font-weight: 700;
+      font-size: 19px;
+      font-weight: 800;
       color: #1a1a2e;
-      margin-bottom: 8px;
+      line-height: 1.3;
+    }
+
+    .media-count-badge {
+      flex-shrink: 0;
+      background: #f0f2f5;
+      color: #555;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 12px;
+      padding: 3px 10px;
+      white-space: nowrap;
     }
 
     .event-meta {
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 10px;
+      margin-bottom: 10px;
     }
 
     .event-meta-item {
@@ -115,155 +136,259 @@
       gap: 4px;
     }
 
-    .participants-chips {
+    .participants-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px;
-      margin-top: 8px;
+      gap: 6px;
     }
 
     .p-chip {
       font-size: 11px;
-      background: #e8f4fd;
-      color: #2980b9;
-      border-radius: 10px;
-      padding: 2px 8px;
-      font-weight: 500;
+      background: #e8f5e9;
+      color: #2e7d52;
+      border-radius: 12px;
+      padding: 3px 10px;
+      font-weight: 600;
     }
 
-    /* メディアグリッド */
+    /* ========== メディアグリッド ========== */
     .media-grid {
-      padding: 14px 16px;
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
-    }
-
-    @media (max-width: 600px) {
-      .media-grid { grid-template-columns: repeat(3, 1fr); }
-    }
-
-    .media-thumb {
-      aspect-ratio: 1;
-      border-radius: 8px;
-      overflow: hidden;
-      cursor: pointer;
-      position: relative;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
       background: #f0f0f0;
     }
 
-    .media-thumb img,
-    .media-thumb video {
+    @media (max-width: 540px) {
+      .media-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .media-item {
+      position: relative;
+      background: #e8e8e8;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .media-item::before {
+      content: '';
+      display: block;
+      padding-top: 100%;
+    }
+
+    .media-item-inner {
+      position: absolute;
+      inset: 0;
+    }
+
+    .media-item img,
+    .media-item video {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
+      transition: transform 0.25s;
     }
 
-    .media-thumb .video-badge {
+    .media-item:hover img,
+    .media-item:hover video {
+      transform: scale(1.04);
+    }
+
+    /* コメント・ユーザーオーバーレイ */
+    .media-overlay {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0,0,0,0.55);
-      color: white;
-      border-radius: 50%;
-      width: 36px;
-      height: 36px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 16px;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.72));
+      padding: 28px 10px 8px;
       pointer-events: none;
     }
 
-    .media-thumb .delete-btn {
+    .media-uploader {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 3px;
+    }
+
+    .uploader-avatar {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.35);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .uploader-name {
+      font-size: 11px;
+      color: rgba(255,255,255,0.85);
+      font-weight: 600;
+    }
+
+    .media-comment {
+      font-size: 11px;
+      color: white;
+      line-height: 1.4;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    /* 動画バッジ */
+    .video-badge {
       position: absolute;
-      top: 4px;
-      right: 4px;
-      background: rgba(0,0,0,0.5);
+      top: 8px;
+      left: 8px;
+      background: rgba(0,0,0,0.55);
+      color: white;
+      border-radius: 6px;
+      padding: 3px 7px;
+      font-size: 11px;
+      pointer-events: none;
+    }
+
+    /* 削除ボタン */
+    .delete-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: rgba(0,0,0,0.55);
       color: white;
       border: none;
       border-radius: 50%;
-      width: 24px;
-      height: 24px;
+      width: 26px;
+      height: 26px;
       font-size: 12px;
       cursor: pointer;
       display: none;
       align-items: center;
       justify-content: center;
+      pointer-events: auto;
+      z-index: 2;
     }
 
-    .media-thumb:hover .delete-btn { display: flex; }
+    .media-item:hover .delete-btn { display: flex; }
 
-    .album-card-footer {
-      padding: 12px 16px 16px;
+    /* 写真なし状態 */
+    .media-empty {
+      padding: 32px 20px;
+      text-align: center;
+      color: #bbb;
+      font-size: 13px;
+      background: #fafafa;
+    }
+
+    /* ========== アップロードセクション ========== */
+    .upload-section {
+      padding: 14px 18px 18px;
       border-top: 1px solid #f0f0f0;
     }
 
-    .upload-area {
-      border: 2px dashed #d0d0d0;
-      border-radius: 10px;
-      padding: 16px;
-      text-align: center;
+    .upload-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #f7fdf9;
+      border: 2px dashed #b2dfcb;
+      border-radius: 12px;
+      padding: 12px 16px;
       cursor: pointer;
       transition: border-color 0.15s, background 0.15s;
     }
 
-    .upload-area:hover {
+    .upload-label:hover {
       border-color: #2ecc71;
-      background: #f0fff4;
+      background: #edfaf3;
     }
 
-    .upload-area input { display: none; }
+    .upload-label input { display: none; }
 
-    .upload-area-text {
+    .upload-icon {
+      width: 36px;
+      height: 36px;
+      background: #d4f5e2;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .upload-text strong {
+      display: block;
       font-size: 13px;
+      color: #1a6b3a;
+      font-weight: 700;
+    }
+
+    .upload-text span {
+      font-size: 11px;
       color: #888;
-      margin-top: 6px;
+    }
+
+    .comment-area {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .comment-area-icon {
+      padding-top: 9px;
+      font-size: 16px;
+      flex-shrink: 0;
     }
 
     .comment-input {
-      width: 100%;
+      flex: 1;
       border: 1.5px solid #e0e0e0;
-      border-radius: 8px;
+      border-radius: 10px;
       padding: 8px 12px;
       font-size: 13px;
       font-family: inherit;
       resize: none;
-      margin-top: 8px;
       outline: none;
       transition: border-color 0.15s;
+      line-height: 1.5;
     }
 
     .comment-input:focus { border-color: #2ecc71; }
 
-    .media-thumb .comment-indicator {
-      position: absolute;
-      bottom: 4px;
-      left: 4px;
-      background: rgba(0,0,0,0.55);
-      color: white;
+    .staging-info {
+      font-size: 13px;
+      color: #2e7d52;
+      font-weight: 600;
+      margin-bottom: 8px;
+      padding: 6px 10px;
+      background: #e8f5e9;
       border-radius: 8px;
-      padding: 2px 5px;
-      font-size: 10px;
-      max-width: calc(100% - 8px);
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      pointer-events: none;
     }
 
-    .lightbox-comment {
-      color: rgba(255,255,255,0.9);
+    .send-btn {
+      margin-top: 10px;
+      width: 100%;
+      background: linear-gradient(135deg, #1a6b3a, #2ecc71);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 11px;
       font-size: 14px;
-      margin-top: 6px;
-      max-width: 80vw;
-      text-align: center;
-      background: rgba(255,255,255,0.1);
-      border-radius: 8px;
-      padding: 6px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
     }
+
+    .send-btn:hover { opacity: 0.88; }
 
     .upload-progress {
       display: none;
@@ -272,35 +397,42 @@
 
     .progress-bar {
       height: 4px;
-      background: #e0e0e0;
+      background: #e8e8e8;
       border-radius: 2px;
       overflow: hidden;
     }
 
     .progress-fill {
       height: 100%;
-      background: #2ecc71;
+      background: linear-gradient(90deg, #2ecc71, #a8e063);
       width: 0%;
       transition: width 0.2s;
     }
 
-    /* 空状態 */
-    .empty-state {
-      text-align: center;
-      padding: 60px 20px;
-      color: #aaa;
+    .progress-text {
+      font-size: 11px;
+      color: #888;
+      margin-top: 5px;
     }
 
-    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
-    .empty-state p { font-size: 14px; }
+    /* ========== 空状態 ========== */
+    .empty-state {
+      text-align: center;
+      padding: 70px 20px;
+      color: #bbb;
+    }
 
-    /* ライトボックス */
+    .empty-state .icon { font-size: 52px; margin-bottom: 14px; }
+    .empty-state p { font-size: 15px; margin-bottom: 4px; }
+    .empty-state .sub { font-size: 12px; color: #ccc; }
+
+    /* ========== ライトボックス ========== */
     .lightbox {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.9);
-      z-index: 200;
+      background: rgba(0,0,0,0.93);
+      z-index: 300;
       align-items: center;
       justify-content: center;
       flex-direction: column;
@@ -308,9 +440,9 @@
 
     .lightbox.open { display: flex; }
 
-    .lightbox img, .lightbox video {
-      max-width: 92vw;
-      max-height: 85vh;
+    .lightbox-media {
+      max-width: 90vw;
+      max-height: 78vh;
       border-radius: 8px;
       object-fit: contain;
     }
@@ -319,16 +451,34 @@
       position: absolute;
       top: 16px;
       right: 20px;
-      color: white;
-      font-size: 32px;
+      color: rgba(255,255,255,0.8);
+      font-size: 28px;
       cursor: pointer;
       line-height: 1;
+      transition: color 0.15s;
     }
 
-    .lightbox-info {
-      color: rgba(255,255,255,0.7);
+    .lightbox-close:hover { color: white; }
+
+    .lightbox-footer {
+      margin-top: 14px;
+      text-align: center;
+    }
+
+    .lightbox-meta {
+      color: rgba(255,255,255,0.55);
       font-size: 12px;
-      margin-top: 10px;
+      margin-bottom: 6px;
+    }
+
+    .lightbox-comment-box {
+      background: rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 8px 18px;
+      color: white;
+      font-size: 14px;
+      max-width: 70vw;
+      line-height: 1.5;
     }
 
     .lightbox-nav {
@@ -336,20 +486,25 @@
       top: 50%;
       transform: translateY(-50%);
       color: white;
-      font-size: 36px;
+      font-size: 32px;
       cursor: pointer;
-      padding: 10px;
+      padding: 12px 10px;
       background: rgba(255,255,255,0.1);
       border-radius: 50%;
       line-height: 1;
+      transition: background 0.15s;
     }
 
-    .lightbox-prev { left: 12px; }
-    .lightbox-next { right: 12px; }
+    .lightbox-nav:hover { background: rgba(255,255,255,0.22); }
+    .lightbox-prev { left: 14px; }
+    .lightbox-next { right: 14px; }
+
+    @media (max-width: 600px) {
+      .lightbox-nav { display: none; }
+    }
   </style>
 </head>
 <body>
-<div class="container">
 
   <div class="header">
     <h1>⛳ ゴルフはじめました<span class="sub-title">PHOTO ALBUM</span></h1>
@@ -358,16 +513,16 @@
     </div>
   </div>
 
-  <div id="albumList"></div>
-
-</div>
+  <div class="container">
+    <div id="albumList"></div>
+  </div>
 
 <!-- ライトボックス -->
 <div class="lightbox" id="lightbox">
   <span class="lightbox-close" id="lbClose">✕</span>
   <span class="lightbox-nav lightbox-prev" id="lbPrev">‹</span>
   <div id="lbContent"></div>
-  <div class="lightbox-info" id="lbInfo"></div>
+  <div class="lightbox-footer" id="lbFooter"></div>
   <span class="lightbox-nav lightbox-next" id="lbNext">›</span>
 </div>
 
@@ -377,7 +532,6 @@ let currentUser = '';
 let lbItems = [];
 let lbIndex = 0;
 
-// ユーザー名をlocalStorageから取得
 const saved = localStorage.getItem('calendarUser');
 if (saved) {
   try { currentUser = JSON.parse(saved).name || ''; } catch {}
@@ -385,27 +539,43 @@ if (saved) {
 
 const WEEKDAYS = ['日','月','火','水','木','金','土'];
 
+const COLOR_MAP = {
+  blue:   '#3498db', green:  '#2ecc71', red:    '#e74c3c',
+  orange: '#e67e22', purple: '#9b59b6', pink:   '#e91e8c',
+  teal:   '#1abc9c', yellow: '#f1c40f', gray:   '#95a5a6',
+};
+
+function eventColor(c) { return COLOR_MAP[c] || '#2ecc71'; }
+
 function formatDate(dateStr) {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T00:00:00');
   const w = WEEKDAYS[d.getDay()];
   return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${w}）`;
 }
 
+function initials(name) {
+  return name ? name.charAt(0).toUpperCase() : '?';
+}
+
 async function loadAlbum() {
+  const container = document.getElementById('albumList');
+  container.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><p>読み込み中...</p></div>`;
+
   const res = await fetch(`${API}/album`);
   const events = await res.json();
-  const container = document.getElementById('albumList');
 
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const pastEvents = events.filter(ev => ev.date <= todayStr);
+
+  container.innerHTML = '';
 
   if (!pastEvents.length) {
     container.innerHTML = `
       <div class="empty-state">
         <div class="icon">📷</div>
         <p>まだ過去の予定がありません</p>
-        <p style="margin-top:6px;font-size:12px;">ラウンド後に写真・動画をアップロードできます</p>
+        <p class="sub">ラウンド後に写真・動画をアップロードできます</p>
       </div>`;
     return;
   }
@@ -415,30 +585,45 @@ async function loadAlbum() {
     card.className = 'album-card';
     card.dataset.eventId = ev.id;
 
+    const color = eventColor(ev.color);
     const timeStr = ev.start_time ? ev.start_time.slice(0,5) + '〜' : '';
     const pChips = (ev.participants || []).map(p =>
-      `<span class="p-chip">${p}</span>`).join('');
+      `<span class="p-chip">👤 ${p}</span>`).join('');
 
     card.innerHTML = `
+      <div class="card-top-bar" style="background:${color}"></div>
       <div class="album-card-header">
-        <div class="event-title">⛳ ${ev.title}</div>
+        <div class="event-title-row">
+          <div class="event-title">⛳ ${ev.title}</div>
+          <span class="media-count-badge" id="badge-${ev.id}">📷 0</span>
+        </div>
         <div class="event-meta">
           <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
           ${timeStr ? `<span class="event-meta-item">⏰ ${timeStr}</span>` : ''}
         </div>
-        ${pChips ? `<div class="participants-chips">${pChips}</div>` : ''}
+        ${pChips ? `<div class="participants-row">${pChips}</div>` : ''}
       </div>
       <div class="media-grid" id="grid-${ev.id}"></div>
-      <div class="album-card-footer">
-        <label class="upload-area" id="uploadArea-${ev.id}">
+      <div class="upload-section">
+        <label class="upload-label" id="uploadArea-${ev.id}">
           <input type="file" accept="image/*,video/*" multiple id="fileInput-${ev.id}">
-          <div style="font-size:24px">📤</div>
-          <div class="upload-area-text">写真・動画をアップロード<br><span style="font-size:11px">タップまたはドラッグ＆ドロップ</span></div>
+          <div class="upload-icon">📤</div>
+          <div class="upload-text">
+            <strong>写真・動画をアップロード</strong>
+            <span>タップまたはドラッグ＆ドロップ</span>
+          </div>
         </label>
-        <textarea class="comment-input" id="comment-${ev.id}" rows="2" placeholder="コメントを追加... (任意)"></textarea>
+        <div id="stagingArea-${ev.id}" style="display:none;margin-top:10px;">
+          <div class="staging-info" id="stagingInfo-${ev.id}"></div>
+          <div class="comment-area">
+            <div class="comment-area-icon">💬</div>
+            <textarea class="comment-input" id="comment-${ev.id}" rows="2" placeholder="コメントを追加（任意）"></textarea>
+          </div>
+          <button class="send-btn" id="sendBtn-${ev.id}">📤 アップロードする</button>
+        </div>
         <div class="upload-progress" id="progress-${ev.id}">
           <div class="progress-bar"><div class="progress-fill" id="fill-${ev.id}"></div></div>
-          <div style="font-size:11px;color:#888;margin-top:4px" id="progressText-${ev.id}"></div>
+          <div class="progress-text" id="progressText-${ev.id}"></div>
         </div>
       </div>`;
 
@@ -456,38 +641,62 @@ async function loadMedia(eventId) {
 
 function renderMedia(eventId, items) {
   const grid = document.getElementById(`grid-${eventId}`);
+  const badge = document.getElementById(`badge-${eventId}`);
   if (!grid) return;
+
+  if (badge) badge.textContent = `📷 ${items.length}`;
+
+  if (!items.length) {
+    grid.innerHTML = `<div class="media-empty" style="grid-column:1/-1">まだ写真・動画はありません</div>`;
+    grid._items = [];
+    return;
+  }
+
   grid.innerHTML = '';
   items.forEach((item, idx) => {
-    const thumb = document.createElement('div');
-    thumb.className = 'media-thumb';
-    const commentBadge = item.comment ? `<div class="comment-indicator">💬 ${item.comment}</div>` : '';
+    const el = document.createElement('div');
+    el.className = 'media-item';
+
+    const overlayHTML = `
+      <div class="media-overlay">
+        <div class="media-uploader">
+          <div class="uploader-avatar">${initials(item.user_name)}</div>
+          <span class="uploader-name">${item.user_name}</span>
+        </div>
+        ${item.comment ? `<div class="media-comment">${item.comment}</div>` : ''}
+      </div>`;
+
     if (item.media_type === 'video') {
-      thumb.innerHTML = `
-        <video src="${item.url}" preload="metadata"></video>
-        <div class="video-badge">▶</div>
-        <button class="delete-btn" data-id="${item.id}" data-event="${eventId}">✕</button>
-        ${commentBadge}`;
+      el.innerHTML = `
+        <div class="media-item-inner">
+          <video src="${item.url}" preload="metadata"></video>
+          <div class="video-badge">▶ 動画</div>
+          <button class="delete-btn">✕</button>
+          ${overlayHTML}
+        </div>`;
     } else {
-      thumb.innerHTML = `
-        <img src="${item.url}" alt="${item.file_name}" loading="lazy">
-        <button class="delete-btn" data-id="${item.id}" data-event="${eventId}">✕</button>
-        ${commentBadge}`;
+      el.innerHTML = `
+        <div class="media-item-inner">
+          <img src="${item.url}" alt="${item.file_name}" loading="lazy">
+          <button class="delete-btn">✕</button>
+          ${overlayHTML}
+        </div>`;
     }
-    thumb.addEventListener('click', (e) => {
+
+    el.addEventListener('click', (e) => {
       if (e.target.classList.contains('delete-btn')) return;
       openLightbox(eventId, idx);
     });
-    thumb.querySelector('.delete-btn').addEventListener('click', async (e) => {
+    el.querySelector('.delete-btn').addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!confirm('削除しますか？')) return;
-      await fetch(`${API.replace('/api/calendar','')}/api/calendar/media/${item.id}`, { method: 'DELETE' });
+      await fetch(`${API}/media/${item.id}`, { method: 'DELETE' });
       loadMedia(eventId);
     });
-    grid.appendChild(thumb);
+
+    grid.appendChild(el);
   });
 
-  // ライトボックス用データを保存
   grid._items = items;
 }
 
@@ -503,24 +712,22 @@ function showLightboxItem() {
   const item = lbItems[lbIndex];
   if (!item) return;
   const content = document.getElementById('lbContent');
+  const footer = document.getElementById('lbFooter');
+
   if (item.media_type === 'video') {
-    content.innerHTML = `<video src="${item.url}" controls autoplay style="max-width:92vw;max-height:85vh;border-radius:8px;"></video>`;
+    content.innerHTML = `<video src="${item.url}" controls autoplay class="lightbox-media"></video>`;
   } else {
-    content.innerHTML = `<img src="${item.url}" alt="${item.file_name}">`;
+    content.innerHTML = `<img src="${item.url}" alt="${item.file_name}" class="lightbox-media">`;
   }
-  const infoEl = document.getElementById('lbInfo');
-  infoEl.innerHTML = `<span>${lbIndex + 1} / ${lbItems.length}　${item.user_name}</span>${item.comment ? `<div class="lightbox-comment">💬 ${item.comment}</div>` : ''}`;
+
+  footer.innerHTML = `
+    <div class="lightbox-meta">${lbIndex + 1} / ${lbItems.length}　👤 ${item.user_name}</div>
+    ${item.comment ? `<div class="lightbox-comment-box">💬 ${item.comment}</div>` : ''}`;
 }
 
-document.getElementById('lbClose').addEventListener('click', () => {
-  document.getElementById('lightbox').classList.remove('open');
-  document.getElementById('lbContent').innerHTML = '';
-});
+document.getElementById('lbClose').addEventListener('click', closeLightbox);
 document.getElementById('lightbox').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('lightbox')) {
-    document.getElementById('lightbox').classList.remove('open');
-    document.getElementById('lbContent').innerHTML = '';
-  }
+  if (e.target === document.getElementById('lightbox')) closeLightbox();
 });
 document.getElementById('lbPrev').addEventListener('click', () => {
   lbIndex = (lbIndex - 1 + lbItems.length) % lbItems.length;
@@ -534,12 +741,29 @@ document.addEventListener('keydown', (e) => {
   if (!document.getElementById('lightbox').classList.contains('open')) return;
   if (e.key === 'ArrowLeft') { lbIndex = (lbIndex - 1 + lbItems.length) % lbItems.length; showLightboxItem(); }
   if (e.key === 'ArrowRight') { lbIndex = (lbIndex + 1) % lbItems.length; showLightboxItem(); }
-  if (e.key === 'Escape') { document.getElementById('lightbox').classList.remove('open'); }
+  if (e.key === 'Escape') closeLightbox();
 });
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lbContent').innerHTML = '';
+}
 
 function setupUpload(eventId) {
   const input = document.getElementById(`fileInput-${eventId}`);
-  input.addEventListener('change', () => uploadFiles(eventId, input.files));
+  const staging = document.getElementById(`stagingArea-${eventId}`);
+  const info = document.getElementById(`stagingInfo-${eventId}`);
+  const sendBtn = document.getElementById(`sendBtn-${eventId}`);
+
+  input.addEventListener('change', () => {
+    if (!input.files.length) return;
+    const count = input.files.length;
+    const names = Array.from(input.files).map(f => f.name).join('、');
+    info.textContent = `📎 ${count}件選択中：${names}`;
+    staging.style.display = 'block';
+  });
+
+  sendBtn.addEventListener('click', () => uploadFiles(eventId, input.files));
 }
 
 async function uploadFiles(eventId, files) {
@@ -548,10 +772,14 @@ async function uploadFiles(eventId, files) {
     const name = prompt('あなたの名前を入力してください');
     if (!name) return;
     currentUser = name;
+    localStorage.setItem('calendarUser', JSON.stringify({ name }));
   }
 
   const commentEl = document.getElementById(`comment-${eventId}`);
+  const stagingEl = document.getElementById(`stagingArea-${eventId}`);
   const comment = commentEl ? commentEl.value.trim() : '';
+
+  stagingEl.style.display = 'none';
 
   const progress = document.getElementById(`progress-${eventId}`);
   const fill = document.getElementById(`fill-${eventId}`);
@@ -560,7 +788,7 @@ async function uploadFiles(eventId, files) {
 
   for (let i = 0; i < files.length; i++) {
     text.textContent = `${i + 1} / ${files.length} アップロード中...`;
-    fill.style.width = `${((i) / files.length) * 100}%`;
+    fill.style.width = `${(i / files.length) * 100}%`;
 
     const form = new FormData();
     form.append('user_name', currentUser);
@@ -571,9 +799,9 @@ async function uploadFiles(eventId, files) {
   }
 
   fill.style.width = '100%';
-  text.textContent = '完了！';
+  text.textContent = '✅ アップロード完了！';
   if (commentEl) commentEl.value = '';
-  setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 1500);
+  setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
   loadMedia(eventId);
 }
 
