@@ -291,6 +291,52 @@
 
     .media-item:hover .delete-btn { display: flex; }
 
+    /* もっと見るセル */
+    .media-item-more {
+      position: relative;
+      background: #1a1a2e;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .media-item-more::before {
+      content: '';
+      display: block;
+      padding-top: 100%;
+    }
+
+    .media-item-more-inner {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+
+    .media-item-more-inner img {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      opacity: 0.3;
+    }
+
+    .media-item-more-count {
+      position: relative;
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .media-item-more-label {
+      position: relative;
+      font-size: 12px;
+      margin-top: 4px;
+      opacity: 0.8;
+    }
+
     /* 写真なし状態 */
     .media-empty {
       padding: 32px 20px;
@@ -652,74 +698,98 @@ async function loadMedia(eventId) {
   renderMedia(eventId, items);
 }
 
+const MEDIA_INITIAL = 9;
+
+function createMediaEl(eventId, item, idx) {
+  const el = document.createElement('div');
+  el.className = 'media-item';
+
+  const overlayHTML = `
+    <div class="media-overlay">
+      <div class="media-uploader">
+        <div class="uploader-avatar">${initials(item.user_name)}</div>
+        <span class="uploader-name">${item.user_name}</span>
+      </div>
+      ${item.comment ? `<div class="media-comment">${item.comment}</div>` : ''}
+    </div>`;
+
+  const canDelete = currentUser && (currentUser === item.user_name || currentUser === 'tamura');
+  const deleteBtnHTML = canDelete ? `<button class="delete-btn">✕</button>` : '';
+
+  if (item.media_type === 'video') {
+    const thumbContent = item.thumbnail_url
+      ? `<img src="${item.thumbnail_url}" alt="thumbnail" style="width:100%;height:100%;object-fit:cover;display:block;">`
+      : `<div class="video-placeholder"></div>`;
+    el.innerHTML = `
+      <div class="media-item-inner">
+        ${thumbContent}
+        <div class="video-play-btn">▶</div>
+        ${deleteBtnHTML}
+        ${overlayHTML}
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <div class="media-item-inner">
+        <img src="${item.url}" alt="${item.file_name}" loading="lazy">
+        ${deleteBtnHTML}
+        ${overlayHTML}
+      </div>`;
+  }
+
+  el.addEventListener('click', (e) => {
+    if (e.target.classList.contains('delete-btn')) return;
+    openLightbox(eventId, idx);
+  });
+  const deleteBtn = el.querySelector('.delete-btn');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('削除しますか？')) return;
+      await fetch(`${API}/media/${item.id}`, { method: 'DELETE' });
+      loadMedia(eventId);
+    });
+  }
+  return el;
+}
+
 function renderMedia(eventId, items) {
   const grid = document.getElementById(`grid-${eventId}`);
   const badge = document.getElementById(`badge-${eventId}`);
   if (!grid) return;
 
   if (badge) badge.textContent = `📷 ${items.length}`;
+  grid._items = items;
 
   if (!items.length) {
     grid.innerHTML = `<div class="media-empty" style="grid-column:1/-1">まだ写真・動画はありません</div>`;
-    grid._items = [];
     return;
   }
 
   grid.innerHTML = '';
-  items.forEach((item, idx) => {
-    const el = document.createElement('div');
-    el.className = 'media-item';
+  const showAll = items.length <= MEDIA_INITIAL;
+  const visibleItems = showAll ? items : items.slice(0, MEDIA_INITIAL - 1);
 
-    const overlayHTML = `
-      <div class="media-overlay">
-        <div class="media-uploader">
-          <div class="uploader-avatar">${initials(item.user_name)}</div>
-          <span class="uploader-name">${item.user_name}</span>
-        </div>
-        ${item.comment ? `<div class="media-comment">${item.comment}</div>` : ''}
-      </div>`;
-
-    const canDelete = currentUser && (currentUser === item.user_name || currentUser === 'tamura');
-    const deleteBtnHTML = canDelete ? `<button class="delete-btn">✕</button>` : '';
-
-    if (item.media_type === 'video') {
-      const thumbContent = item.thumbnail_url
-        ? `<img src="${item.thumbnail_url}" alt="thumbnail" style="width:100%;height:100%;object-fit:cover;display:block;">`
-        : `<div class="video-placeholder"></div>`;
-      el.innerHTML = `
-        <div class="media-item-inner">
-          ${thumbContent}
-          <div class="video-play-btn">▶</div>
-          ${deleteBtnHTML}
-          ${overlayHTML}
-        </div>`;
-    } else {
-      el.innerHTML = `
-        <div class="media-item-inner">
-          <img src="${item.url}" alt="${item.file_name}" loading="lazy">
-          ${deleteBtnHTML}
-          ${overlayHTML}
-        </div>`;
-    }
-
-    el.addEventListener('click', (e) => {
-      if (e.target.classList.contains('delete-btn')) return;
-      openLightbox(eventId, idx);
-    });
-    const deleteBtn = el.querySelector('.delete-btn');
-    if (deleteBtn) {
-      deleteBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (!confirm('削除しますか？')) return;
-        await fetch(`${API}/media/${item.id}`, { method: 'DELETE' });
-        loadMedia(eventId);
-      });
-    }
-
-    grid.appendChild(el);
+  visibleItems.forEach((item, idx) => {
+    grid.appendChild(createMediaEl(eventId, item, idx));
   });
 
-  grid._items = items;
+  if (!showAll) {
+    const remaining = items.length - (MEDIA_INITIAL - 1);
+    const more = document.createElement('div');
+    more.className = 'media-item-more';
+    const previewImg = items[MEDIA_INITIAL - 1].thumbnail_url || (items[MEDIA_INITIAL - 1].media_type === 'image' ? items[MEDIA_INITIAL - 1].url : '');
+    more.innerHTML = `
+      <div class="media-item-more-inner">
+        ${previewImg ? `<img src="${previewImg}" alt="">` : ''}
+        <div class="media-item-more-count">+${remaining}</div>
+        <div class="media-item-more-label">すべて見る</div>
+      </div>`;
+    more.addEventListener('click', () => {
+      grid.innerHTML = '';
+      items.forEach((item, idx) => grid.appendChild(createMediaEl(eventId, item, idx)));
+    });
+    grid.appendChild(more);
+  }
 }
 
 function openLightbox(eventId, idx) {
@@ -823,6 +893,8 @@ async function uploadFiles(eventId, files) {
   fill.style.width = '100%';
   text.textContent = '✅ アップロード完了！';
   if (commentEl) commentEl.value = '';
+  const inputEl = document.getElementById(`fileInput-${eventId}`);
+  if (inputEl) inputEl.value = '';
   setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
   loadMedia(eventId);
 }
