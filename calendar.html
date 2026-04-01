@@ -421,12 +421,11 @@
 
     .link-card {
       display: flex;
-      align-items: center;
-      gap: 10px;
+      gap: 12px;
       background: white;
       border: 1.5px solid #e0e0e0;
       border-radius: 10px;
-      padding: 10px 14px;
+      overflow: hidden;
       margin-top: 8px;
       text-decoration: none;
       color: inherit;
@@ -438,25 +437,48 @@
       box-shadow: 0 2px 8px rgba(52,152,219,0.15);
     }
 
-    .link-card-icon {
-      font-size: 20px;
-      flex-shrink: 0;
+    .link-card-img {
+      width: 90px;
+      min-width: 90px;
+      object-fit: cover;
+      background: #f0f0f0;
     }
 
     .link-card-body {
+      padding: 10px 12px 10px 0;
       overflow: hidden;
+      flex: 1;
+    }
+
+    .link-card-no-img .link-card-body {
+      padding: 10px 12px;
+    }
+
+    .link-card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a1a2e;
+      margin-bottom: 4px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .link-card-desc {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 6px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
     }
 
     .link-card-domain {
       font-size: 11px;
       color: #3498db;
       font-weight: 600;
-      margin-bottom: 2px;
-    }
-
-    .link-card-url {
-      font-size: 11px;
-      color: #888;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -1054,26 +1076,39 @@ function openDetailModal(ev) {
     urls.forEach(url => {
       let domain = '';
       try { domain = new URL(url).hostname.replace('www.', ''); } catch {}
-      const siteIcons = {
-        'gora.golf.rakuten.co.jp': '⛳',
-        'google.com': '🔍',
-        'youtube.com': '▶️',
-        'maps.google.com': '📍',
-      };
-      const icon = Object.entries(siteIcons).find(([k]) => domain.includes(k))?.[1] || '🔗';
+
       const card = document.createElement('a');
-      card.className = 'link-card';
+      card.className = 'link-card link-card-no-img';
       card.href = url;
       card.target = '_blank';
       card.rel = 'noopener';
       card.innerHTML = `
-        <span class="link-card-icon">${icon}</span>
-        <span class="link-card-body">
+        <div class="link-card-body">
+          <div class="link-card-title">${domain}</div>
           <div class="link-card-domain">${domain}</div>
-          <div class="link-card-url">${url}</div>
-        </span>
+        </div>
       `;
       descEl.appendChild(card);
+
+      // OGPを非同期取得してカードを更新
+      fetch(`${API}/og?url=${encodeURIComponent(url)}`)
+        .then(r => r.json())
+        .then(og => {
+          card.classList.remove('link-card-no-img');
+          let html = '';
+          if (og.image) {
+            html += `<img class="link-card-img" src="${og.image}" alt="" onerror="this.style.display='none'">`;
+          } else {
+            card.classList.add('link-card-no-img');
+          }
+          html += `<div class="link-card-body">`;
+          if (og.title) html += `<div class="link-card-title">${og.title}</div>`;
+          if (og.description) html += `<div class="link-card-desc">${og.description}</div>`;
+          html += `<div class="link-card-domain">${domain}</div>`;
+          html += `</div>`;
+          card.innerHTML = html;
+        })
+        .catch(() => {});
     });
 
     descEl.style.display = 'block';
