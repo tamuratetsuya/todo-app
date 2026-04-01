@@ -205,7 +205,7 @@ async def create_post(
 @app.post("/posts/{post_id}/media", status_code=201)
 async def add_post_media(
     post_id: int,
-    password: str,
+    password: str = Form(...),
     files: List[UploadFile] = File(default=[]),
 ):
     if password != ADMIN_PASSWORD:
