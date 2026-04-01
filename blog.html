@@ -583,6 +583,32 @@
       opacity: 0.6;
     }
 
+    .post-title-link {
+      display: block;
+      text-decoration: none;
+      color: var(--text);
+      transition: color 0.2s;
+    }
+
+    .post-title-link:hover {
+      color: var(--green);
+    }
+
+    .read-more {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--green);
+      text-decoration: none;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid rgba(26,122,62,0.3);
+      transition: border-color 0.2s;
+    }
+
+    .read-more:hover {
+      border-color: var(--green);
+    }
+
     /* スクロールバー */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -692,6 +718,8 @@
     }
   }
 
+  const BODY_LIMIT = 100;
+
   function renderPost(p, i) {
     const date = new Date(p.created_at).toLocaleDateString('ja-JP', {
       year: 'numeric', month: 'long', day: 'numeric'
@@ -716,19 +744,21 @@
       mediaHtml = `<div class="media-grid ${gridClass}">${items}</div>`;
     }
 
+    const bodyFull = p.body;
+    const bodyTruncated = bodyFull.length > BODY_LIMIT ? bodyFull.slice(0, BODY_LIMIT) + '…' : bodyFull;
+    const readMoreHtml = bodyFull.length > BODY_LIMIT
+      ? `<a class="read-more" href="blog-post.html?id=${p.id}">続きを読む</a>`
+      : '';
+
     return `
       <div class="post-card" style="animation-delay:${i * 0.08}s">
         ${mediaHtml}
         <div class="post-body">
           <div class="post-meta">${date}</div>
-          <div class="post-title">${escapeHtml(p.title)}</div>
-          <div class="post-text">${escapeHtml(p.body)}</div>
-          <div class="link-cards" id="link-cards-${p.id}"></div>
+          <a class="post-title post-title-link" href="blog-post.html?id=${p.id}">${escapeHtml(p.title)}</a>
+          <div class="post-text">${escapeHtml(bodyTruncated)}</div>
+          ${readMoreHtml}
           <div class="post-actions">
-            <button class="copy-btn" id="copy-${p.id}" onclick="copyText(${p.id}, \`${escapeHtml(p.body)}\`)">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              コピー
-            </button>
             <button class="edit-btn" onclick="openEditModal(${p.id}, \`${escapeHtml(p.title)}\`, \`${escapeHtml(p.body)}\`)">編集</button>
             <button class="delete-btn" onclick="deletePost(${p.id})">削除</button>
           </div>

@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Golf Space | 記事詳細</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f0f7f2;
+      --surface: #ffffff;
+      --surface2: #f5faf6;
+      --border: rgba(0,0,0,0.08);
+      --green: #1a7a3e;
+      --green-dim: #2d8a50;
+      --text: #1a2e22;
+      --text-muted: rgba(26,46,34,0.45);
+      --radius: 20px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'ヒラギノ角ゴ ProN', 'Hiragino Kaku Gothic ProN', 'ヒラギノ角ゴ Pro', 'Hiragino Kaku Gothic Pro', 'メイリオ', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── ヘッダー ── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 40px;
+      background: rgba(240,247,242,0.85);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .logo h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 30px;
+      font-weight: 400;
+      letter-spacing: 5px;
+      color: var(--text);
+      text-transform: uppercase;
+    }
+
+    .logo-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+      margin-bottom: 2px;
+      box-shadow: 0 0 8px var(--green);
+    }
+
+    .logo sub {
+      font-size: 11px;
+      font-weight: 300;
+      letter-spacing: 4px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 22px;
+      background: transparent;
+      color: var(--green);
+      border: 1px solid var(--green-dim);
+      border-radius: 100px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 1px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.3s ease;
+    }
+
+    .back-btn:hover {
+      background: var(--green);
+      color: var(--bg);
+      box-shadow: 0 0 24px rgba(74,222,128,0.3);
+    }
+
+    /* ── メイン ── */
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    .article {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      animation: fadeUp 0.5s ease both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── メディアグリッド ── */
+    .media-grid {
+      display: grid;
+      gap: 3px;
+      padding: 16px;
+      padding-bottom: 0;
+    }
+
+    .media-grid.count-1 { grid-template-columns: 1fr; }
+    .media-grid.count-2 { grid-template-columns: 1fr 1fr; }
+    .media-grid.count-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .media-grid.count-many { grid-template-columns: 1fr 1fr 1fr; }
+
+    .media-grid img,
+    .media-grid video {
+      width: 100%;
+      height: auto;
+      display: block;
+      cursor: pointer;
+      border-radius: 12px;
+      transition: transform 0.3s ease, opacity 0.2s;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    .media-grid img:hover,
+    .media-grid video:hover {
+      transform: scale(1.02);
+      opacity: 0.9;
+    }
+
+    .media-item {
+      overflow: hidden;
+      position: relative;
+      border-radius: 12px;
+    }
+
+    /* ── 記事本文 ── */
+    .article-body {
+      padding: 28px 32px 32px;
+    }
+
+    .article-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .article-meta::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    .article-title {
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 20px;
+      line-height: 1.3;
+      letter-spacing: 0.5px;
+    }
+
+    .article-text {
+      font-size: 16px;
+      font-weight: 300;
+      color: #3a5242;
+      line-height: 2;
+      white-space: pre-wrap;
+      word-break: break-word;
+      letter-spacing: 0.3px;
+    }
+
+    .article-actions {
+      margin-top: 24px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .delete-btn, .edit-btn {
+      background: none;
+      border: none;
+      font-size: 12px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: color 0.2s;
+    }
+
+    .delete-btn { color: var(--text-muted); }
+    .delete-btn:hover { color: #f87171; }
+    .edit-btn { color: var(--text-muted); }
+    .edit-btn:hover { color: var(--green); }
+
+    /* ── リンクプレビューカード ── */
+    .link-cards {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .link-card {
+      display: flex;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .link-card:hover {
+      border-color: var(--green-dim);
+      box-shadow: 0 4px 20px rgba(26,122,62,0.12);
+    }
+
+    .link-card-img {
+      width: 110px;
+      min-width: 110px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .link-card-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .link-card-body {
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3px;
+      overflow: hidden;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .link-card-site {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--green);
+      font-weight: 500;
+    }
+
+    .link-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      line-height: 1.4;
+    }
+
+    .link-card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      line-height: 1.5;
+      margin-top: 2px;
+    }
+
+    .link-card-url {
+      font-size: 10px;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-top: 4px;
+      opacity: 0.6;
+    }
+
+    .error {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 80px 0;
+      font-size: 14px;
+      letter-spacing: 2px;
+    }
+
+    /* ── 編集モーダル ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(26,46,34,0.5);
+      backdrop-filter: blur(12px);
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      padding: 16px;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      width: 100%;
+      max-width: 540px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal h2 {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 24px;
+      letter-spacing: 1px;
+    }
+
+    .form-group { margin-bottom: 18px; }
+
+    .form-group label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="password"],
+    .form-group textarea {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 14px;
+      font-family: 'DM Sans', sans-serif;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus { border-color: var(--green-dim); }
+
+    .form-group textarea { min-height: 120px; resize: vertical; }
+
+    .modal-btns {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+
+    .btn-primary {
+      padding: 11px 24px;
+      background: var(--green);
+      color: var(--bg);
+      border: none;
+      border-radius: 100px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary:hover { box-shadow: 0 0 24px rgba(74,222,128,0.4); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-secondary {
+      padding: 11px 20px;
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover { color: var(--text); }
+
+    .error-msg {
+      color: #f87171;
+      font-size: 12px;
+      margin-top: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── ライトボックス ── */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.95);
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      backdrop-filter: blur(20px);
+    }
+
+    .lightbox.open { display: flex; }
+
+    .lightbox img, .lightbox video {
+      max-width: 95vw;
+      max-height: 95vh;
+      object-fit: contain;
+      border-radius: 12px;
+    }
+
+    .lightbox-close {
+      position: absolute;
+      top: 20px;
+      right: 24px;
+      color: rgba(255,255,255,0.5);
+      font-size: 28px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      line-height: 1;
+      transition: color 0.2s;
+    }
+
+    .lightbox-close:hover { color: white; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="blog.html">
+    <h1>Golf Space</h1>
+    <div class="logo-dot"></div>
+    <sub>Journal</sub>
+  </a>
+  <a class="back-btn" href="blog.html">&#8592; 一覧に戻る</a>
+</header>
+
+<main>
+  <div id="content"></div>
+</main>
+
+<!-- 編集モーダル -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h2>記事を編集</h2>
+    <input type="hidden" id="editPostId" />
+    <div class="form-group">
+      <label>タイトル</label>
+      <input type="text" id="editTitle" placeholder="タイトルを入力..." />
+    </div>
+    <div class="form-group">
+      <label>本文</label>
+      <textarea id="editBody" placeholder="本文を入力..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>パスワード</label>
+      <input type="password" id="editPassword" placeholder="管理者パスワード" />
+    </div>
+    <div class="error-msg" id="editError"></div>
+    <div class="modal-btns">
+      <button class="btn-secondary" onclick="closeEditModal()">キャンセル</button>
+      <button class="btn-primary" id="editSubmitBtn" onclick="submitEdit()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ライトボックス -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">×</button>
+  <div id="lightboxContent"></div>
+</div>
+
+<script>
+  const API = 'https://blog.golfspace.jp/api/blog';
+  const URL_REGEX = /https?:\/\/[^\s<>"'()]+/g;
+
+  const params = new URLSearchParams(location.search);
+  const postId = params.get('id');
+
+  async function loadPost() {
+    const content = document.getElementById('content');
+    if (!postId) {
+      content.innerHTML = '<div class="error">— 記事が見つかりません —</div>';
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/posts/${postId}`);
+      if (!res.ok) throw new Error();
+      const p = await res.json();
+      document.title = `${p.title} | Golf Space Journal`;
+      content.innerHTML = renderPost(p);
+      enrichWithOGP(p);
+    } catch {
+      content.innerHTML = '<div class="error">— 記事の取得に失敗しました —</div>';
+    }
+  }
+
+  function renderPost(p) {
+    const date = new Date(p.created_at).toLocaleDateString('ja-JP', {
+      year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    let mediaHtml = '';
+    if (p.media && p.media.length > 0) {
+      const count = p.media.length;
+      const gridClass = count === 1 ? 'count-1' : count === 2 ? 'count-2' : count === 3 ? 'count-3' : 'count-many';
+      const items = p.media.map(m => {
+        const media = m.media_type === 'video'
+          ? `<video src="${m.url}" onclick="openLightbox('video','${m.url}')" muted playsinline></video>`
+          : `<img src="${m.url}" onclick="openLightbox('image','${m.url}')" loading="lazy" />`;
+        return `<div class="media-item">${media}</div>`;
+      }).join('');
+      mediaHtml = `<div class="media-grid ${gridClass}">${items}</div>`;
+    }
+
+    return `
+      <div class="article">
+        ${mediaHtml}
+        <div class="article-body">
+          <div class="article-meta">${date}</div>
+          <div class="article-title">${escapeHtml(p.title)}</div>
+          <div class="article-text">${escapeHtml(p.body)}</div>
+          <div class="link-cards" id="link-cards"></div>
+          <div class="article-actions">
+            <button class="edit-btn" onclick="openEditModal(${p.id}, \`${escapeHtml(p.title)}\`, \`${escapeHtml(p.body)}\`)">編集</button>
+            <button class="delete-btn" onclick="deletePost(${p.id})">削除</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  async function enrichWithOGP(p) {
+    const urls = [...new Set((p.body.match(URL_REGEX) || []))];
+    if (urls.length === 0) return;
+    const container = document.getElementById('link-cards');
+    if (!container) return;
+    for (const url of urls) {
+      try {
+        const res = await fetch(`${API}/ogp?url=${encodeURIComponent(url)}`);
+        if (!res.ok) continue;
+        const ogp = await res.json();
+        if (!ogp.title) continue;
+        container.insertAdjacentHTML('beforeend', renderLinkCard(ogp));
+      } catch {}
+    }
+  }
+
+  function renderLinkCard(ogp) {
+    const imgHtml = ogp.image
+      ? `<div class="link-card-img"><img src="${escapeHtml(ogp.image)}" loading="lazy" /></div>`
+      : '';
+    return `
+      <a class="link-card" href="${escapeHtml(ogp.url)}" target="_blank" rel="noopener noreferrer">
+        ${imgHtml}
+        <div class="link-card-body">
+          ${ogp.site_name ? `<div class="link-card-site">${escapeHtml(ogp.site_name)}</div>` : ''}
+          <div class="link-card-title">${escapeHtml(ogp.title)}</div>
+          ${ogp.description ? `<div class="link-card-desc">${escapeHtml(ogp.description)}</div>` : ''}
+          <div class="link-card-url">${escapeHtml(ogp.url)}</div>
+        </div>
+      </a>`;
+  }
+
+  function openEditModal(id, title, body) {
+    document.getElementById('editPostId').value = id;
+    document.getElementById('editTitle').value = title;
+    document.getElementById('editBody').value = body;
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editError').textContent = '';
+    document.getElementById('editModal').classList.add('open');
+    document.getElementById('editTitle').focus();
+  }
+
+  function closeEditModal() {
+    document.getElementById('editModal').classList.remove('open');
+  }
+
+  async function submitEdit() {
+    const id = document.getElementById('editPostId').value;
+    const title = document.getElementById('editTitle').value.trim();
+    const body = document.getElementById('editBody').value.trim();
+    const password = document.getElementById('editPassword').value;
+    const errEl = document.getElementById('editError');
+    errEl.textContent = '';
+
+    if (!title) { errEl.textContent = 'タイトルを入力してください'; return; }
+    if (!body)  { errEl.textContent = '本文を入力してください'; return; }
+    if (!password) { errEl.textContent = 'パスワードを入力してください'; return; }
+
+    const btn = document.getElementById('editSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+
+    try {
+      const res = await fetch(`${API}/posts/${id}?password=${encodeURIComponent(password)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, body })
+      });
+      if (res.status === 401) { errEl.textContent = 'パスワードが違います'; return; }
+      if (!res.ok) throw new Error();
+      closeEditModal();
+      loadPost();
+    } catch {
+      errEl.textContent = '保存に失敗しました';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '保存する';
+    }
+  }
+
+  async function deletePost(id) {
+    const password = prompt('管理者パスワードを入力してください：');
+    if (!password) return;
+    try {
+      const res = await fetch(`${API}/posts/${id}?password=${encodeURIComponent(password)}`, { method: 'DELETE' });
+      if (res.status === 401) { alert('パスワードが違います'); return; }
+      location.href = 'blog.html';
+    } catch {
+      alert('削除に失敗しました');
+    }
+  }
+
+  function openLightbox(type, url) {
+    const content = document.getElementById('lightboxContent');
+    content.innerHTML = type === 'video'
+      ? `<video src="${url}" controls autoplay style="max-width:95vw;max-height:95vh;border-radius:12px;"></video>`
+      : `<img src="${url}" />`;
+    document.getElementById('lightbox').classList.add('open');
+  }
+
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+    document.getElementById('lightboxContent').innerHTML = '';
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  loadPost();
+</script>
+</body>
+</html>
