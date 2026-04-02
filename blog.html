@@ -635,6 +635,9 @@
     .ql-snow.ql-toolbar button.ql-active .ql-stroke { stroke: var(--green) !important; }
     .ql-snow.ql-toolbar button:hover .ql-fill,
     .ql-snow.ql-toolbar button.ql-active .ql-fill { fill: var(--green) !important; }
+    .ql-snow .ql-color-picker .ql-picker-label { padding: 0 4px; }
+    .ql-snow .ql-picker.ql-color-picker .ql-picker-options { width: 152px; }
+    .ql-snow .ql-color-picker .ql-picker-item { width: 16px; height: 16px; border-radius: 3px; }
 
     /* 表示側のリッチテキスト */
     .post-text {
@@ -749,6 +752,7 @@
 
   const QUILL_TOOLBAR = [
     ['bold', 'italic', 'underline'],
+    [{ 'color': [] }],
     [{ 'header': [2, 3, false] }],
     [{ 'list': 'ordered' }, { 'list': 'bullet' }],
     ['link'],
