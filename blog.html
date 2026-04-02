@@ -575,9 +575,15 @@
       opacity: 0.6;
     }
 
-    .post-card:hover .post-title {
-      color: var(--green);
+    .post-title-link {
+      display: block;
+      text-decoration: none;
+      color: var(--text);
       transition: color 0.2s;
+    }
+
+    .post-title-link:hover {
+      color: var(--green);
     }
 
     .read-more {
@@ -820,7 +826,7 @@
         ${mediaHtml}
         <div class="post-body">
           <div class="post-meta">${date}</div>
-          <div class="post-title">${escapeHtml(p.title)}</div>
+          <a class="post-title post-title-link" href="blog-post.html?id=${p.id}" onclick="event.stopPropagation()">${escapeHtml(p.title)}</a>
           <div class="post-text post-text-${p.id}"></div>
           ${readMoreHtml}
           <div class="post-actions" onclick="event.stopPropagation();">
