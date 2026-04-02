@@ -13,6 +13,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ゴルフ">
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
   <style>
     :root {
       --bg: #f0f7f2;
@@ -197,7 +198,6 @@
       font-weight: 300;
       color: #3a5242;
       line-height: 2;
-      white-space: pre-wrap;
       word-break: break-word;
       letter-spacing: 0.3px;
     }
@@ -536,6 +536,45 @@
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Quill エディタ */
+    .ql-toolbar.ql-snow {
+      border: 1px solid var(--border) !important;
+      border-bottom: none !important;
+      border-radius: 12px 12px 0 0 !important;
+      background: var(--surface2);
+      padding: 6px 8px !important;
+    }
+    .ql-container.ql-snow {
+      border: 1px solid var(--border) !important;
+      border-radius: 0 0 12px 12px !important;
+      background: var(--surface2);
+      font-family: 'ヒラギノ角ゴ ProN', sans-serif;
+      font-size: 14px;
+    }
+    .ql-editor {
+      min-height: 140px;
+      color: var(--text);
+      line-height: 1.8;
+    }
+    .ql-editor.ql-blank::before {
+      color: var(--text-muted);
+      font-style: normal;
+    }
+    .ql-snow .ql-stroke { stroke: var(--text-muted) !important; }
+    .ql-snow .ql-fill { fill: var(--text-muted) !important; }
+    .ql-snow.ql-toolbar button:hover .ql-stroke,
+    .ql-snow.ql-toolbar button.ql-active .ql-stroke { stroke: var(--green) !important; }
+    .ql-snow.ql-toolbar button:hover .ql-fill,
+    .ql-snow.ql-toolbar button.ql-active .ql-fill { fill: var(--green) !important; }
+
+    /* 記事本文のリッチテキスト表示 */
+    .article-text p { margin-bottom: 0.5em; }
+    .article-text h1, .article-text h2 { font-weight: 700; margin-bottom: 0.4em; color: var(--text); }
+    .article-text strong { font-weight: 700; }
+    .article-text em { font-style: italic; }
+    .article-text ul, .article-text ol { padding-left: 1.4em; margin-bottom: 0.5em; }
+    .article-text a { color: var(--green); text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -563,7 +602,7 @@
     </div>
     <div class="form-group">
       <label>本文</label>
-      <textarea id="editBody" placeholder="本文を入力..."></textarea>
+      <div id="editBodyEditor"></div>
     </div>
     <div class="form-group">
       <label>写真・動画を追加</label>
@@ -591,8 +630,21 @@
   <div id="lightboxContent"></div>
 </div>
 
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script>
   const API = 'https://blog.golfspace.jp/api/blog';
+
+  const editQuill = new Quill('#editBodyEditor', {
+    theme: 'snow',
+    placeholder: '本文を入力...',
+    modules: { toolbar: [
+      ['bold', 'italic', 'underline'],
+      [{ 'header': [2, 3, false] }],
+      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+      ['link'],
+      ['clean']
+    ]}
+  });
   const URL_REGEX = /https?:\/\/[^\s<>"'()]+/g;
 
   const params = new URLSearchParams(location.search);
@@ -610,6 +662,8 @@
       const p = await res.json();
       document.title = `${p.title} | Golf Space Journal`;
       content.innerHTML = renderPost(p);
+      const articleBody = document.getElementById('article-body');
+      if (articleBody) articleBody.innerHTML = bodyToHtml(p.body);
       enrichWithOGP(p);
     } catch {
       content.innerHTML = '<div class="error">— 記事の取得に失敗しました —</div>';
@@ -641,14 +695,14 @@
         <div class="article-body">
           <div class="article-meta">${date}</div>
           <div class="article-title">${escapeHtml(p.title)}</div>
-          <div class="article-text">${escapeHtml(p.body)}</div>
+          <div class="article-text" id="article-body"></div>
           <div class="link-cards" id="link-cards"></div>
           <div class="article-actions">
             <button class="copy-btn" id="copy-${p.id}" onclick="copyText(${p.id}, \`${escapeHtml(p.body)}\`)">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               コピー
             </button>
-            <button class="edit-btn" onclick="openEditModal(${p.id}, \`${escapeHtml(p.title)}\`, \`${escapeHtml(p.body)}\`)">編集</button>
+            <button class="edit-btn" data-id="${p.id}" data-title="${escapeHtml(p.title)}" data-body="${escapeHtml(p.body)}" onclick="openEditModal(this.dataset.id, this.dataset.title, this.dataset.body)">編集</button>
             <button class="delete-btn" onclick="deletePost(${p.id})">削除</button>
           </div>
         </div>
@@ -726,7 +780,7 @@
   function openEditModal(id, title, body) {
     document.getElementById('editPostId').value = id;
     document.getElementById('editTitle').value = title;
-    document.getElementById('editBody').value = body;
+    editQuill.root.innerHTML = body;
     document.getElementById('editPassword').value = '';
     document.getElementById('editError').textContent = '';
     editSelectedFiles = [];
@@ -752,13 +806,13 @@
   async function submitEdit() {
     const id = document.getElementById('editPostId').value;
     const title = document.getElementById('editTitle').value.trim();
-    const body = document.getElementById('editBody').value.trim();
+    const body = editQuill.root.innerHTML;
     const password = document.getElementById('editPassword').value;
     const errEl = document.getElementById('editError');
     errEl.textContent = '';
 
     if (!title) { errEl.textContent = 'タイトルを入力してください'; return; }
-    if (!body)  { errEl.textContent = '本文を入力してください'; return; }
+    if (!editQuill.getText().trim()) { errEl.textContent = '本文を入力してください'; return; }
     if (!password) { errEl.textContent = 'パスワードを入力してください'; return; }
 
     const btn = document.getElementById('editSubmitBtn');
@@ -820,6 +874,11 @@
     return String(str)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  function bodyToHtml(body) {
+    if (/<[a-z][\s\S]*>/i.test(body)) return body;
+    return body.replace(/\n/g, '<br>');
   }
 
   loadPost();
