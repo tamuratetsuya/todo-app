@@ -112,6 +112,7 @@
       overflow: hidden;
       animation: fadeUp 0.5s ease both;
       transition: transform 0.3s ease, box-shadow 0.3s ease;
+      cursor: pointer;
     }
 
     .post-card:hover {
@@ -574,15 +575,9 @@
       opacity: 0.6;
     }
 
-    .post-title-link {
-      display: block;
-      text-decoration: none;
-      color: var(--text);
-      transition: color 0.2s;
-    }
-
-    .post-title-link:hover {
+    .post-card:hover .post-title {
       color: var(--green);
+      transition: color 0.2s;
     }
 
     .read-more {
@@ -821,14 +816,14 @@
     const titleAttr = escapeAttr(p.title);
 
     return `
-      <div class="post-card" style="animation-delay:${i * 0.08}s">
+      <div class="post-card" style="animation-delay:${i * 0.08}s" onclick="location.href='blog-post.html?id=${p.id}'">
         ${mediaHtml}
         <div class="post-body">
           <div class="post-meta">${date}</div>
-          <a class="post-title post-title-link" href="blog-post.html?id=${p.id}">${escapeHtml(p.title)}</a>
+          <div class="post-title">${escapeHtml(p.title)}</div>
           <div class="post-text post-text-${p.id}"></div>
           ${readMoreHtml}
-          <div class="post-actions">
+          <div class="post-actions" onclick="event.stopPropagation();">
             <button class="copy-btn" id="copy-${p.id}" onclick="copyText(${p.id}, this)">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               コピー
