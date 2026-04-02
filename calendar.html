@@ -874,27 +874,6 @@
       <div class="participants-label">参加者</div>
       <div class="participants-list" id="participantsList"></div>
     </div>
-    <div style="margin-top:12px;" id="modalUploadWrapper">
-      <label id="modalUploadArea" style="display:flex;align-items:center;gap:10px;background:#f7fdf9;border:2px dashed #b2dfcb;border-radius:12px;padding:12px 16px;cursor:pointer;font-size:13px;color:#1a6b3a;font-weight:600;transition:border-color 0.15s,background 0.15s;">
-        <span style="width:36px;height:36px;background:#d4f5e2;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📤</span>
-        <span>写真・動画をアップロード<br><span style="font-size:11px;color:#888;font-weight:400;">タップまたはドラッグ＆ドロップ</span></span>
-        <input type="file" id="modalFileInput" accept="image/*,video/*" multiple style="display:none">
-      </label>
-      <div id="modalStagingArea" style="display:none;margin-top:10px;">
-        <div id="modalStagingInfo" style="font-size:13px;color:#2e7d52;font-weight:600;padding:6px 10px;background:#e8f5e9;border-radius:8px;margin-bottom:8px;"></div>
-        <div style="display:flex;gap:8px;align-items:flex-start;">
-          <span style="padding-top:9px;font-size:16px;">💬</span>
-          <textarea id="modalUploadComment" rows="2" placeholder="コメントを追加（任意）" style="flex:1;border:1.5px solid #e0e0e0;border-radius:10px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none;outline:none;transition:border-color 0.15s;" onfocus="this.style.borderColor='#2ecc71'" onblur="this.style.borderColor='#e0e0e0'"></textarea>
-        </div>
-        <button id="modalSendBtn" style="margin-top:10px;width:100%;background:linear-gradient(135deg,#1a6b3a,#2ecc71);color:white;border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;">📤 アップロードする</button>
-      </div>
-      <div id="modalUploadProgress" style="display:none;margin-top:10px;">
-        <div style="height:4px;background:#e8e8e8;border-radius:2px;overflow:hidden;">
-          <div id="modalProgressFill" style="height:100%;background:linear-gradient(90deg,#2ecc71,#a8e063);width:0%;transition:width 0.2s;"></div>
-        </div>
-        <div id="modalProgressText" style="font-size:11px;color:#888;margin-top:5px;"></div>
-      </div>
-    </div>
     <div class="modal-actions" id="detailActions"></div>
   </div>
 </div>
@@ -1500,35 +1479,6 @@ function openDetailModal(ev) {
   renderParticipants(ev.id, ev.participants || [], ev.pending || []);
   renderDetailActions(ev.id);
 
-  // 過去の予定のみアップロードボタンを表示
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  const isPast = ev.date <= todayStr;
-  const uploadWrapper = document.getElementById('modalUploadWrapper');
-  uploadWrapper.style.display = isPast ? 'block' : 'none';
-  if (isPast) {
-    // ステージングをリセット
-    document.getElementById('modalStagingArea').style.display = 'none';
-    document.getElementById('modalUploadComment').value = '';
-    document.getElementById('modalUploadProgress').style.display = 'none';
-
-    const fileInput = document.getElementById('modalFileInput');
-    const newInput = fileInput.cloneNode(true);
-    fileInput.parentNode.replaceChild(newInput, fileInput);
-    newInput.addEventListener('change', () => {
-      if (!newInput.files.length) return;
-      const count = newInput.files.length;
-      const names = Array.from(newInput.files).map(f => f.name).join('、');
-      document.getElementById('modalStagingInfo').textContent = `📎 ${count}件選択中：${names}`;
-      document.getElementById('modalStagingArea').style.display = 'block';
-    });
-
-    const sendBtn = document.getElementById('modalSendBtn');
-    const newBtn = sendBtn.cloneNode(true);
-    sendBtn.parentNode.replaceChild(newBtn, sendBtn);
-    newBtn.addEventListener('click', () => modalUploadFiles(ev.id, newInput.files));
-  }
-
   document.getElementById('detailOverlay').classList.add('open');
 }
 
@@ -1536,36 +1486,6 @@ function closeDetailModal() {
   document.getElementById('detailOverlay').classList.remove('open');
 }
 
-async function modalUploadFiles(eventId, files) {
-  if (!files.length) return;
-  const user = document.getElementById('userName').value.trim();
-  if (!user) { alert('名前を入力してください'); return; }
-
-  const commentEl = document.getElementById('modalUploadComment');
-  const comment = commentEl ? commentEl.value.trim() : '';
-
-  document.getElementById('modalStagingArea').style.display = 'none';
-
-  const progress = document.getElementById('modalUploadProgress');
-  const fill = document.getElementById('modalProgressFill');
-  const text = document.getElementById('modalProgressText');
-  progress.style.display = 'block';
-
-  for (let i = 0; i < files.length; i++) {
-    text.textContent = `${i+1} / ${files.length} アップロード中...`;
-    fill.style.width = `${(i / files.length) * 100}%`;
-    const form = new FormData();
-    form.append('user_name', user);
-    form.append('file', files[i]);
-    if (comment) form.append('comment', comment);
-    await fetch(`${API}/events/${eventId}/media`, { method: 'POST', body: form });
-  }
-
-  fill.style.width = '100%';
-  text.textContent = '✅ アップロード完了！';
-  if (commentEl) commentEl.value = '';
-  setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
-}
 
 function openEditFromDetail() {
   const ev = events.find(e => e.id === detailEventId);

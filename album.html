@@ -376,6 +376,124 @@
       background: #fafafa;
     }
 
+    /* ========== スコアセクション ========== */
+    .score-section {
+      padding: 14px 18px;
+      border-top: 1px solid #f0f0f0;
+      background: #fffdf5;
+    }
+
+    .score-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #b8860b;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .score-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .score-img-wrap {
+      position: relative;
+      width: 90px;
+      height: 90px;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      background: #e8e8e8;
+    }
+
+    .score-img-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.2s;
+    }
+
+    .score-img-wrap:hover img { transform: scale(1.05); }
+
+    .score-img-wrap .delete-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      display: none;
+    }
+
+    .score-img-wrap:hover .delete-btn { display: flex; }
+
+    .score-upload-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fffbea;
+      border: 2px dashed #f0c040;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      font-size: 12px;
+      color: #b8860b;
+      font-weight: 600;
+    }
+
+    .score-upload-label:hover {
+      border-color: #d4a017;
+      background: #fef9e0;
+    }
+
+    .score-upload-label input { display: none; }
+
+    .score-upload-icon {
+      width: 30px;
+      height: 30px;
+      background: #fde68a;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+
+    .score-staging {
+      margin-top: 8px;
+      display: none;
+    }
+
+    .score-staging-info {
+      font-size: 12px;
+      color: #b8860b;
+      font-weight: 600;
+      padding: 5px 8px;
+      background: #fef9e0;
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+
+    .score-send-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #b8860b, #f0c040);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 9px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .score-send-btn:hover { opacity: 0.88; }
+
     /* ========== アップロードセクション ========== */
     .upload-section {
       padding: 14px 18px 18px;
@@ -736,18 +854,39 @@ async function loadAlbum() {
           <div class="progress-bar"><div class="progress-fill" id="fill-${ev.id}"></div></div>
           <div class="progress-text" id="progressText-${ev.id}"></div>
         </div>
+      </div>
+      <div class="score-section">
+        <div class="score-section-title">🏌️ スコア画像</div>
+        <div class="score-grid" id="scoreGrid-${ev.id}"></div>
+        <label class="score-upload-label" id="scoreUploadArea-${ev.id}">
+          <input type="file" accept="image/*" id="scoreInput-${ev.id}">
+          <div class="score-upload-icon">📊</div>
+          <span>スコア画像をアップロード</span>
+        </label>
+        <div class="score-staging" id="scoreStaging-${ev.id}">
+          <div class="score-staging-info" id="scoreStagingInfo-${ev.id}"></div>
+          <button class="score-send-btn" id="scoreSendBtn-${ev.id}">📊 アップロードする</button>
+        </div>
+        <div class="upload-progress" id="scoreProgress-${ev.id}" style="margin-top:8px;">
+          <div class="progress-bar"><div class="progress-fill" id="scoreFill-${ev.id}"></div></div>
+          <div class="progress-text" id="scoreProgressText-${ev.id}"></div>
+        </div>
       </div>`;
 
     container.appendChild(card);
     loadMedia(ev.id);
     setupUpload(ev.id);
+    setupScoreUpload(ev.id);
   }
 }
 
 async function loadMedia(eventId) {
   const res = await fetch(`${API}/events/${eventId}/media`);
   const items = await res.json();
-  renderMedia(eventId, items);
+  const photos = items.filter(i => (i.category || 'photo') === 'photo');
+  const scores = items.filter(i => i.category === 'score');
+  renderMedia(eventId, photos);
+  renderScoreGrid(eventId, scores);
 }
 
 const MEDIA_INITIAL = 9;
@@ -891,6 +1030,76 @@ document.addEventListener('keydown', (e) => {
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('open');
   document.getElementById('lbContent').innerHTML = '';
+}
+
+function renderScoreGrid(eventId, scores) {
+  const grid = document.getElementById(`scoreGrid-${eventId}`);
+  if (!grid) return;
+  grid.innerHTML = '';
+  scores.forEach(item => {
+    const wrap = document.createElement('div');
+    wrap.className = 'score-img-wrap';
+    const canDelete = currentUser && (currentUser === item.user_name || currentUser === 'tamura');
+    wrap.innerHTML = `
+      <img src="${item.url}" alt="score" loading="lazy">
+      ${canDelete ? `<button class="delete-btn">✕</button>` : ''}`;
+    wrap.querySelector('img').addEventListener('click', () => {
+      lbItems = scores;
+      lbIndex = scores.indexOf(item);
+      showLightboxItem();
+      document.getElementById('lightbox').classList.add('open');
+    });
+    const delBtn = wrap.querySelector('.delete-btn');
+    if (delBtn) {
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('削除しますか？')) return;
+        await fetch(`${API}/media/${item.id}`, { method: 'DELETE' });
+        loadMedia(eventId);
+      });
+    }
+    grid.appendChild(wrap);
+  });
+}
+
+function setupScoreUpload(eventId) {
+  const input = document.getElementById(`scoreInput-${eventId}`);
+  const staging = document.getElementById(`scoreStaging-${eventId}`);
+  const info = document.getElementById(`scoreStagingInfo-${eventId}`);
+  const sendBtn = document.getElementById(`scoreSendBtn-${eventId}`);
+
+  input.addEventListener('change', () => {
+    if (!input.files.length) return;
+    info.textContent = `📎 ${input.files[0].name}`;
+    staging.style.display = 'block';
+  });
+
+  sendBtn.addEventListener('click', async () => {
+    if (!input.files.length) return;
+    if (!currentUser) {
+      const inp = document.getElementById('albumUserName');
+      if (inp) { inp.focus(); inp.style.borderColor = '#f39c12'; setTimeout(() => { inp.style.borderColor = ''; }, 2000); }
+      alert('先に名前を入力してください');
+      return;
+    }
+    staging.style.display = 'none';
+    const progress = document.getElementById(`scoreProgress-${eventId}`);
+    const fill = document.getElementById(`scoreFill-${eventId}`);
+    const text = document.getElementById(`scoreProgressText-${eventId}`);
+    progress.style.display = 'block';
+    fill.style.width = '50%';
+    text.textContent = 'アップロード中...';
+    const form = new FormData();
+    form.append('user_name', currentUser);
+    form.append('file', input.files[0]);
+    form.append('category', 'score');
+    await fetch(`${API}/events/${eventId}/media`, { method: 'POST', body: form });
+    fill.style.width = '100%';
+    text.textContent = '✅ アップロード完了！';
+    input.value = '';
+    setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
+    loadMedia(eventId);
+  });
 }
 
 function setupUpload(eventId) {

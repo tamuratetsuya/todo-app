@@ -98,6 +98,10 @@ def init_db():
             cur.execute("ALTER TABLE event_media ADD COLUMN thumbnail_key VARCHAR(500)")
         except Exception:
             pass
+        try:
+            cur.execute("ALTER TABLE event_media ADD COLUMN category VARCHAR(20) NOT NULL DEFAULT 'photo'")
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -278,7 +282,7 @@ def get_og(url: str):
 # ========== メディア ==========
 
 @app.post("/events/{event_id}/media", status_code=201)
-async def upload_media(event_id: int, user_name: str = Form(...), file: UploadFile = File(...), comment: str = Form("")):
+async def upload_media(event_id: int, user_name: str = Form(...), file: UploadFile = File(...), comment: str = Form(""), category: str = Form("photo")):
     conn = get_conn()
     with conn.cursor() as cur:
         cur.execute("SELECT id FROM events WHERE id = %s", (event_id,))
@@ -324,9 +328,10 @@ async def upload_media(event_id: int, user_name: str = Form(...), file: UploadFi
             thumbnail_key = None
 
     with conn.cursor() as cur:
+        cat = category if category in ('photo', 'score') else 'photo'
         cur.execute(
-            "INSERT INTO event_media (event_id, user_name, s3_key, file_name, media_type, comment, thumbnail_key) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (event_id, user_name, s3_key, file.filename, media_type, comment or None, thumbnail_key),
+            "INSERT INTO event_media (event_id, user_name, s3_key, file_name, media_type, comment, thumbnail_key, category) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (event_id, user_name, s3_key, file.filename, media_type, comment or None, thumbnail_key, cat),
         )
         conn.commit()
         media_id = cur.lastrowid
