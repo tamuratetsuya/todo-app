@@ -795,7 +795,7 @@ async function loadAlbum() {
 
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  const pastEvents = events.filter(ev => ev.date <= todayStr);
+  const pastEvents = events.filter(ev => ev.date <= todayStr && (ev.media_count > 0 || ev.date === todayStr));
 
   container.innerHTML = '';
 
