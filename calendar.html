@@ -86,6 +86,39 @@
       border-color: white;
       background: rgba(255,255,255,0.3);
     }
+    .header .user-section input.name-required {
+      border-color: #f39c12;
+      background: rgba(243,156,18,0.25);
+      animation: shake 0.4s ease;
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-6px); }
+      60%      { transform: translateX(6px); }
+    }
+    .name-tooltip {
+      position: fixed;
+      background: #f39c12;
+      color: white;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 8px;
+      white-space: nowrap;
+      z-index: 9999;
+      pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      max-width: calc(100vw - 24px);
+    }
+    .name-tooltip::before {
+      content: '';
+      position: absolute;
+      top: -5px;
+      left: 16px;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 5px solid #f39c12;
+    }
 
     .header .color-dot { border-color: transparent; }
     .header .color-dot.selected { border-color: white; }
@@ -98,6 +131,7 @@
       -webkit-flex-wrap: wrap;
       flex-wrap: wrap;
       gap: 8px;
+      position: relative;
     }
 
     .user-section label { font-size: 13px; color: #666; white-space: nowrap; }
@@ -1315,7 +1349,46 @@ function initTitleSuggest() {
 initTitleSuggest();
 
 // ========== モーダル ==========
+function promptName() {
+  const input = document.getElementById('userName');
+  input.classList.add('name-required');
+  input.focus();
+
+  // ツールチップ表示
+  const existing = document.querySelector('.name-tooltip');
+  if (existing) existing.remove();
+  const tip = document.createElement('div');
+  tip.className = 'name-tooltip';
+  tip.textContent = '先に名前を入力してください';
+  document.body.appendChild(tip);
+
+  // inputの位置に合わせて配置（画面右端からはみ出さないよう調整）
+  const rect = input.getBoundingClientRect();
+  const tipW = Math.min(220, window.innerWidth - 24);
+  let left = rect.left;
+  if (left + tipW > window.innerWidth - 12) left = window.innerWidth - tipW - 12;
+  if (left < 12) left = 12;
+  tip.style.top = (rect.bottom + 6) + 'px';
+  tip.style.left = left + 'px';
+
+  // 入力したら解除
+  const clear = () => {
+    input.classList.remove('name-required');
+    if (tip.parentNode) tip.remove();
+    input.removeEventListener('input', clear);
+  };
+  input.addEventListener('input', clear);
+
+  // 3秒後に自動解除
+  setTimeout(clear, 3000);
+}
+
 function openAddModal(dateStr) {
+  const user = document.getElementById('userName').value.trim();
+  if (!user) {
+    promptName();
+    return;
+  }
   editingEventId = null;
   document.getElementById('addModalTitle').textContent = 'イベントを追加';
   document.getElementById('eventTitle').value = '';
