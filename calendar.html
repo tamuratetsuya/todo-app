@@ -43,16 +43,6 @@
       overflow: hidden;
     }
 
-    .header::before {
-      content: '⛳';
-      position: absolute;
-      right: 24px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 72px;
-      opacity: 0.12;
-      pointer-events: none;
-    }
 
     .header h1 {
       font-size: 24px;
@@ -79,11 +69,13 @@
       border: 1.5px solid rgba(255,255,255,0.45);
       border-radius: 20px;
       padding: 7px 18px;
-      font-size: 13px;
+      font-size: 18px;
       font-weight: 600;
       cursor: pointer;
       text-decoration: none;
       transition: background 0.15s;
+      position: relative;
+      z-index: 1;
     }
 
     .nav-btn:hover { background: rgba(255,255,255,0.38); }
@@ -757,7 +749,7 @@
   <div class="header">
     <h1>⛳ ゴルフはじめました</h1>
     <div class="header-nav">
-      <a href="/album" class="nav-btn">📷 アルバム</a>
+      <a href="/album" class="nav-btn">📷</a>
     </div>
   </div>
 

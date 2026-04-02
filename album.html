@@ -30,16 +30,6 @@
       margin-bottom: 24px;
     }
 
-    .header::before {
-      content: '⛳';
-      position: absolute;
-      right: 24px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 72px;
-      opacity: 0.12;
-      pointer-events: none;
-    }
 
     .header h1 {
       font-size: 24px;
@@ -66,11 +56,13 @@
       border: 1.5px solid rgba(255,255,255,0.45);
       border-radius: 20px;
       padding: 7px 18px;
-      font-size: 13px;
+      font-size: 18px;
       font-weight: 600;
       cursor: pointer;
       text-decoration: none;
       transition: background 0.15s;
+      position: relative;
+      z-index: 1;
     }
 
     .nav-btn:hover { background: rgba(255,255,255,0.38); }
@@ -180,6 +172,78 @@
       border-radius: 12px;
       padding: 3px 10px;
       font-weight: 600;
+    }
+
+    /* ========== イベント説明・リンクカード ========== */
+    .event-desc {
+      font-size: 13px;
+      color: #555;
+      margin-top: 8px;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .link-card {
+      display: flex;
+      gap: 10px;
+      background: white;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 8px;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .link-card:hover {
+      border-color: #2ecc71;
+      box-shadow: 0 2px 8px rgba(46,204,113,0.15);
+    }
+
+    .link-card-img {
+      width: 80px;
+      min-width: 80px;
+      object-fit: cover;
+      background: #f0f0f0;
+    }
+
+    .link-card-body {
+      padding: 8px 10px 8px 0;
+      overflow: hidden;
+      flex: 1;
+    }
+
+    .link-card-no-img .link-card-body { padding: 8px 10px; }
+
+    .link-card-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #1a1a2e;
+      margin-bottom: 3px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .link-card-desc {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 4px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .link-card-domain {
+      font-size: 11px;
+      color: #2ecc71;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     /* ========== メディアグリッド ========== */
@@ -724,7 +788,7 @@
   <div class="header">
     <h1>⛳ ゴルフはじめました</h1>
     <div class="header-nav">
-      <a href="https://calendar.golfspace.jp" class="nav-btn">📅 カレンダー</a>
+      <a href="https://calendar.golfspace.jp" class="nav-btn">📅</a>
     </div>
   </div>
 
@@ -831,6 +895,7 @@ async function loadAlbum() {
           ${timeStr ? `<span class="event-meta-item">⏰ ${timeStr}</span>` : ''}
         </div>
         ${pChips ? `<div class="participants-row">${pChips}</div>` : ''}
+        <div id="desc-${ev.id}"></div>
       </div>
       <div class="media-grid" id="grid-${ev.id}"></div>
       <div class="upload-section">
@@ -874,6 +939,7 @@ async function loadAlbum() {
       </div>`;
 
     container.appendChild(card);
+    renderEventDesc(ev);
     loadMedia(ev.id);
     setupUpload(ev.id);
     setupScoreUpload(ev.id);
@@ -1030,6 +1096,51 @@ document.addEventListener('keydown', (e) => {
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('open');
   document.getElementById('lbContent').innerHTML = '';
+}
+
+function renderEventDesc(ev) {
+  const container = document.getElementById(`desc-${ev.id}`);
+  if (!container || !ev.description) return;
+
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const urls = ev.description.match(urlRegex) || [];
+  const textOnly = ev.description.replace(urlRegex, '').trim();
+
+  if (textOnly) {
+    const textEl = document.createElement('div');
+    textEl.className = 'event-desc';
+    textEl.textContent = textOnly;
+    container.appendChild(textEl);
+  }
+
+  urls.forEach(url => {
+    let domain = '';
+    try { domain = new URL(url).hostname.replace('www.', ''); } catch {}
+
+    const card = document.createElement('a');
+    card.className = 'link-card link-card-no-img';
+    card.href = url;
+    card.target = '_blank';
+    card.rel = 'noopener';
+    card.innerHTML = `<div class="link-card-body"><div class="link-card-title">${domain}</div><div class="link-card-domain">${domain}</div></div>`;
+    container.appendChild(card);
+
+    fetch(`${API}/og?url=${encodeURIComponent(url)}`)
+      .then(r => r.json())
+      .then(og => {
+        let html = '';
+        if (og.image) {
+          html += `<img class="link-card-img" src="${og.image}" alt="" onerror="this.style.display='none'">`;
+          card.classList.remove('link-card-no-img');
+        }
+        html += `<div class="link-card-body">`;
+        if (og.title) html += `<div class="link-card-title">${og.title}</div>`;
+        if (og.description) html += `<div class="link-card-desc">${og.description}</div>`;
+        html += `<div class="link-card-domain">${domain}</div></div>`;
+        card.innerHTML = html;
+      })
+      .catch(() => {});
+  });
 }
 
 function renderScoreGrid(eventId, scores) {
