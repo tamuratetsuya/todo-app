@@ -24,6 +24,7 @@ app.add_middleware(
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 S3_BUCKET = os.getenv("S3_BUCKET")
 AWS_REGION = os.getenv("AWS_REGION", "ap-northeast-1")
+CLOUDFRONT_DOMAIN = "dqrko08eafl5q.cloudfront.net"
 
 s3 = boto3.client("s3", region_name=AWS_REGION)
 
@@ -184,7 +185,7 @@ async def create_post(
                 Body=content,
                 ContentType=file.content_type,
             )
-            url = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{key}"
+            url = f"https://{CLOUDFRONT_DOMAIN}/{key}"
             media_type = "video" if ext in ("mp4", "mov", "avi", "webm") else "image"
             cur.execute(
                 "INSERT INTO media (post_id, url, media_type) VALUES (%s, %s, %s)",
@@ -229,7 +230,7 @@ async def add_post_media(
                 Body=content,
                 ContentType=file.content_type,
             )
-            url = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{key}"
+            url = f"https://{CLOUDFRONT_DOMAIN}/{key}"
             media_type = "video" if ext in ("mp4", "mov", "avi", "webm") else "image"
             cur.execute(
                 "INSERT INTO media (post_id, url, media_type) VALUES (%s, %s, %s)",
