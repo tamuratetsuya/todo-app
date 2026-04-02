@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog Backend テストケース一覧</title>
+  <style>
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
+      background: #f5f7fa;
+      color: #1a2e22;
+      margin: 0;
+      padding: 40px 24px 80px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 40px;
+    }
+    .section {
+      margin-bottom: 36px;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #1a7a3e;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #1a7a3e;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    }
+    thead tr {
+      background: #f0f7f2;
+    }
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #555;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+    td {
+      padding: 10px 14px;
+      font-size: 13px;
+      border-top: 1px solid #f0f0f0;
+      vertical-align: top;
+    }
+    tr:hover td { background: #f9fbfa; }
+    .num {
+      color: #aaa;
+      font-size: 12px;
+      width: 32px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .badge-200 { background: #d1fae5; color: #065f46; }
+    .badge-201 { background: #dbeafe; color: #1e40af; }
+    .badge-204 { background: #e0e7ff; color: #3730a3; }
+    .badge-400 { background: #fef3c7; color: #92400e; }
+    .badge-401 { background: #fee2e2; color: #991b1b; }
+    .badge-404 { background: #fce7f3; color: #9d174d; }
+    .badge-422 { background: #f3f4f6; color: #374151; }
+    .summary {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+    .summary-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      text-align: center;
+      min-width: 100px;
+    }
+    .summary-card .num-big {
+      font-size: 32px;
+      font-weight: 700;
+      color: #1a7a3e;
+    }
+    .summary-card .label {
+      font-size: 11px;
+      color: #888;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Blog Backend テストケース一覧</h1>
+<div class="subtitle">実行コマンド: <code>python3 -m pytest test_main.py -v</code></div>
+
+<div class="summary">
+  <div class="summary-card"><div class="num-big">41</div><div class="label">総テスト数</div></div>
+  <div class="summary-card"><div class="num-big">8</div><div class="label">エンドポイント</div></div>
+  <div class="summary-card"><div class="num-big" style="color:#065f46">41</div><div class="label">PASSED</div></div>
+  <div class="summary-card"><div class="num-big" style="color:#991b1b">0</div><div class="label">FAILED</div></div>
+</div>
+
+<!-- 認証 -->
+<div class="section">
+  <div class="section-title">認証 &nbsp; POST /auth</div>
+  <table>
+    <thead><tr><th>#</th><th>テストケース</th><th>理想値</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td>正しいパスワードで認証する</td><td><span class="badge badge-200">200</span>&nbsp; <code>{"ok": true}</code> が返る</td></tr>
+      <tr><td class="num">2</td><td>誤ったパスワードで認証する</td><td><span class="badge badge-401">401</span></td></tr>
+      <tr><td class="num">3</td><td>パスワードなしで認証する</td><td><span class="badge badge-422">422</span>&nbsp; バリデーションエラー</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 投稿一覧 -->
+<div class="section">
+  <div class="section-title">投稿一覧 &nbsp; GET /posts</div>
+  <table>
+    <thead><tr><th>#</th><th>テストケース</th><th>理想値</th></tr></thead>
+    <tbody>
+      <tr><td class="num">4</td><td>投稿が存在する場合に一覧を取得する</td><td><span class="badge badge-200">200</span>&nbsp; 配列が返る</td></tr>
+      <tr><td class="num">5</td><td>投稿が0件の場合に一覧を取得する</td><td><span class="badge badge-200">200</span>&nbsp; 空配列 <code>[]</code> が返る</td></tr>
+      <tr><td class="num">6</td><td>投稿にメディアが紐づいている場合</td><td><span class="badge badge-200">200</span>&nbsp; 各投稿に <code>media</code> フィールドが含まれる</td></tr>
+      <tr><td class="num">7</td><td>取得クエリが新しい順になっている</td><td>SQLに <code>ORDER BY created_at DESC</code> が含まれる</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 投稿詳細 -->
+<div class="section">
+  <div class="section-title">投稿詳細 &nbsp; GET /posts/{post_id}</div>
+  <table>
+    <thead><tr><th>#</th><th>テストケース</th><th>理想値</th></tr></thead>
+    <tbody>
+      <tr><td class="num">8</td><td>存在するIDで記事を取得する</td><td><span class="badge badge-200">200</span>&nbsp; 指定IDの記事が返る</td></tr>
+      <tr><td class="num">9</td><td>存在しないIDで記事を取得する</td><td><span class="badge badge-404">404</span></td></tr>
+      <tr><td class="num">10</td><td>記事にメディアが紐づいている場合</td><td><span class="badge badge-200">200</span>&nbsp; <code>media</code> フィールドにメディア情報が含まれる</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 投稿作成 -->
+<div class="section">
+  <div class="section-title">投稿作成 &nbsp; POST /posts</div>
+  <table>
+    <thead><tr><th>#</th><th>テストケース</th><th>理想値</th></tr></thead>
+    <tbody>
+      <tr><td class="num">11</td><td>タイトル・本文・パスワードのみで投稿する</td><td><span class="badge badge-201">201</span>&nbsp; 作成された記事が返る</td></tr>
+      <tr><td class="num">12</td><td>誤ったパスワードで投稿する</td><td><span class="badge badge-401">401</span></td></tr>
+      <tr><td class="num">13</td><td>タイトルなしで投稿する</td><td><span class="badge badge-422">422</span>&nbsp; バリデーションエラー</td></tr>
+      <tr><td class="num">14</td><td>本文なしで投稿する</td><td><span class="badge badge-422">422</span>&nbsp; バリデーションエラー</td></tr>
+      <tr><td class="num">15</td><td>パスワードなしで投稿する</td><td><span class="badge badge-422">422</span>&nbsp; バリデーションエラー</td></tr>
+      <tr><td class="num">16</td><td>画像ファイル付きで投稿する</td><td><span class="badge badge-201">201</span>&nbsp; S3へのアップロードが1回実行される</td></tr>
+      <tr><td class="num">17</td><td>動画ファイル付きで投稿する</td><td><span class="badge badge-201">201</span>&nbsp; DBに <code>media_type=video</code> で保存される</td></tr>
+      <tr><td class="num">18</td><td>拡張子別にmedia_typeが正しく判定される</td><td>mp4/mov/avi/webm → <code>video</code>、jpg/png → <code>image</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 投稿編集 -->
+<div class="section">
+  <div class="section-title">投稿編集 &nbsp; PATCH /posts/{post_id}</div>
+  <table>
+    <thead><tr><th>#</th><th>テストケース</th><th>理想値</th></tr></thead>
+    <tbody>
+      <tr><td class="num">19</td><td>タイトルを更新する</td><td><span class="badge badge-200">200</span></td></tr>
+      <tr><td class="num">20</td><td>本文を更新する</td><td><span class="badge badge-200">200</span></td></tr>
+      <tr><td class="num">21</td><td>誤ったパスワードで更新する</td><td><span class="badge badge-401">401</span></td></tr>
+      <tr><td class="num">22</td><td>存在しないIDで更新する</td><td><span class="badge badge-404">404</span></td></tr>
+      <tr><td class="num">23</td><td>更新後のレスポンスにメディアが含まれる</td><td><span class="badge badge-200">200</span>&nbsp; レスポンスに <code>media</code> フィールドが存在する</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 投稿削除 -->
+<div class="section">
+  <div class="section-title">投稿削除 &nbsp; DELETE /posts/{post_id}</div>
+  <table>
+    <thead><tr><th>#</th><th>テストケース</th><th>理想値</th></tr></thead>
+    <tbody>
+      <tr><td class="num">24</td><td>正常に記事を削除する</td><td><span class="badge badge-204">204</span></td></tr>
+      <tr><td class="num">25</td><td>誤ったパスワードで削除する</td><td><span class="badge badge-401">401</span></td></tr>
+      <tr><td class="num">26</td><td>記事削除時にS3のメディアも削除される</td><td><span class="badge badge-204">204</span>&nbsp; S3の <code>delete_object</code> が正しいキーで1回呼ばれる</td></tr>
+      <tr><td class="num">27</td><td>メディアが複数ある場合にすべてS3から削除される</td><td><span class="badge badge-204">204</span>&nbsp; S3の <code>delete_object</code> が2回呼ばれる</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- メディア追加 -->
+<div class="section">
+  <div class="section-title">メディア追加 &nbsp; POST /posts/{post_id}/media</div>
+  <table>
+    <thead><tr><th>#</th><th>テストケース</th><th>理想値</th></tr></thead>
+    <tbody>
+      <tr><td class="num">28</td><td>画像を既存記事に追加する</td><td><span class="badge badge-201">201</span></td></tr>
+      <tr><td class="num">29</td><td>動画を既存記事に追加する</td><td><span class="badge badge-201">201</span></td></tr>
+      <tr><td class="num">30</td><td>誤ったパスワードで追加する</td><td><span class="badge badge-401">401</span></td></tr>
+      <tr><td class="num">31</td><td>存在しない記事IDに追加する</td><td><span class="badge badge-404">404</span></td></tr>
+      <tr><td class="num">32</td><td>追加時にS3へアップロードされる</td><td>S3の <code>put_object</code> が1回呼ばれる</td></tr>
+      <tr><td class="num">33</td><td>追加したメディアのリストが返る</td><td><span class="badge badge-201">201</span>&nbsp; <code>media_type</code> と <code>url</code> を持つ配列が返る</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- メディア削除 -->
+<div class="section">
+  <div class="section-title">メディア削除 &nbsp; DELETE /media/{media_id}</div>
+  <table>
+    <thead><tr><th>#</th><th>テストケース</th><th>理想値</th></tr></thead>
+    <tbody>
+      <tr><td class="num">34</td><td>正常にメディアを削除する</td><td><span class="badge badge-204">204</span></td></tr>
+      <tr><td class="num">35</td><td>誤ったパスワードで削除する</td><td><span class="badge badge-401">401</span></td></tr>
+      <tr><td class="num">36</td><td>存在しないIDで削除する</td><td><span class="badge badge-404">404</span></td></tr>
+      <tr><td class="num">37</td><td>削除時にS3のファイルも削除される</td><td><span class="badge badge-204">204</span>&nbsp; S3の <code>delete_object</code> が正しいキーで呼ばれる</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- OGP取得 -->
+<div class="section">
+  <div class="section-title">OGP取得 &nbsp; GET /ogp</div>
+  <table>
+    <thead><tr><th>#</th><th>テストケース</th><th>理想値</th></tr></thead>
+    <tbody>
+      <tr><td class="num">38</td><td>OGPタグが揃ったページのURLを取得する</td><td><span class="badge badge-200">200</span>&nbsp; title / description / image / site_name が正しく返る</td></tr>
+      <tr><td class="num">39</td><td>OGPタグがなくtitleタグがある場合</td><td><span class="badge badge-200">200</span>&nbsp; <code>&lt;title&gt;</code> の内容が title として返る</td></tr>
+      <tr><td class="num">40</td><td>対象URLへのアクセスが失敗する</td><td><span class="badge badge-400">400</span></td></tr>
+      <tr><td class="num">41</td><td>urlパラメータなしでリクエストする</td><td><span class="badge badge-422">422</span>&nbsp; バリデーションエラー</td></tr>
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>
