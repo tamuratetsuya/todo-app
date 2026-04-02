@@ -14,7 +14,12 @@ from botocore.exceptions import ClientError
 
 S3_BUCKET = 'golfspace-media'
 S3_REGION = 'ap-northeast-1'
+CLOUDFRONT_DOMAIN = 'dy9n92jh6ihj.cloudfront.net'
 s3_client = boto3.client('s3', region_name=S3_REGION)
+
+
+def cf_url(key):
+    return f"https://{CLOUDFRONT_DOMAIN}/{key}"
 
 load_dotenv()
 
@@ -327,8 +332,8 @@ async def upload_media(event_id: int, user_name: str = Form(...), file: UploadFi
         media_id = cur.lastrowid
     conn.close()
 
-    url = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': s3_key}, ExpiresIn=3600)
-    thumb_url = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': thumbnail_key}, ExpiresIn=3600) if thumbnail_key else None
+    url = cf_url(s3_key)
+    thumb_url = cf_url(thumbnail_key) if thumbnail_key else None
     return {'id': media_id, 'url': url, 'media_type': media_type, 'file_name': file.filename, 's3_key': s3_key, 'comment': comment or None, 'thumbnail_url': thumb_url}
 
 
@@ -344,11 +349,8 @@ def list_media(event_id: int):
     conn.close()
     result = []
     for row in rows:
-        row['url'] = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': row['s3_key']}, ExpiresIn=3600)
-        if row.get('thumbnail_key'):
-            row['thumbnail_url'] = s3_client.generate_presigned_url('get_object', Params={'Bucket': S3_BUCKET, 'Key': row['thumbnail_key']}, ExpiresIn=3600)
-        else:
-            row['thumbnail_url'] = None
+        row['url'] = cf_url(row['s3_key'])
+        row['thumbnail_url'] = cf_url(row['thumbnail_key']) if row.get('thumbnail_key') else None
         row['created_at'] = row['created_at'].isoformat()
         result.append(row)
     return result
