@@ -784,7 +784,7 @@
   function openEditModal(id, title, body) {
     document.getElementById('editPostId').value = id;
     document.getElementById('editTitle').value = title;
-    editQuill.root.innerHTML = body;
+    editQuill.root.innerHTML = bodyToQuill(body);
     document.getElementById('editPassword').value = '';
     document.getElementById('editError').textContent = '';
     editSelectedFiles = [];
@@ -883,6 +883,11 @@
   function bodyToHtml(body) {
     if (/<[a-z][\s\S]*>/i.test(body)) return body;
     return body.replace(/\n/g, '<br>');
+  }
+
+  function bodyToQuill(body) {
+    if (/<[a-z][\s\S]*>/i.test(body)) return body;
+    return body.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
   }
 
   loadPost();

@@ -643,10 +643,8 @@
     .post-text {
       font-size: 14px; font-weight: 300; color: #3a5242; line-height: 1.9;
       word-break: break-word;
+      max-height: calc(1.9em * 6);
       overflow: hidden;
-      display: -webkit-box;
-      -webkit-line-clamp: 4;
-      -webkit-box-orient: vertical;
     }
     .post-text p { margin-bottom: 0.5em; }
     .post-text h1, .post-text h2 { font-weight: 700; margin-bottom: 0.4em; color: var(--text); }
@@ -950,7 +948,7 @@
   function openEditModal(id, title, body) {
     document.getElementById('editPostId').value = id;
     document.getElementById('editTitle').value = title;
-    editQuill.root.innerHTML = body;
+    editQuill.root.innerHTML = bodyToQuill(body);
     document.getElementById('editPassword').value = '';
     document.getElementById('editError').textContent = '';
     editSelectedFiles = [];
@@ -1089,6 +1087,11 @@
   function bodyToHtml(body) {
     if (/<[a-z][\s\S]*>/i.test(body)) return body;
     return body.replace(/\n/g, '<br>');
+  }
+
+  function bodyToQuill(body) {
+    if (/<[a-z][\s\S]*>/i.test(body)) return body;
+    return body.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
   }
 
   function copyText(id, btn) {
