@@ -1030,7 +1030,7 @@ async function saveEvent() {
 
   if (!title) { alert('タイトルを入力してください'); return; }
   if (!date)  { alert('日付を選択してください'); return; }
-  if (!user)  { alert('名前を入力してください'); return; }
+  if (!user)  { closeAddModal(); promptName(); return; }
 
   const body = {
     title,
@@ -1072,7 +1072,7 @@ async function deleteEvent(id) {
 
 async function joinEvent(eventId, status = 'join') {
   const user = document.getElementById('userName').value.trim();
-  if (!user) { alert('名前を入力してください'); return; }
+  if (!user) { promptName(); return; }
   const res = await fetch(`${API}/events/${eventId}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
