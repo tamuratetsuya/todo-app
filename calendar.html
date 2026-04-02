@@ -13,7 +13,7 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: #f0f2f5;
       min-height: 100vh;
-      padding: 24px 16px;
+      padding: 0 0 40px;
       overflow-x: hidden;
       -webkit-text-size-adjust: 100%;
     }
@@ -21,15 +21,15 @@
     .container {
       max-width: 960px;
       margin: 0 auto;
+      padding: 0 16px;
     }
 
     /* ヘッダー */
     .header {
       background: linear-gradient(135deg, #1a6b3a 0%, #2ecc71 60%, #a8e063 100%);
-      border-radius: 16px;
       box-shadow: 0 4px 20px rgba(46,204,113,0.35);
-      padding: 18px 20px;
-      margin-bottom: 16px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
       display: -webkit-flex;
       display: flex;
       -webkit-align-items: center;
@@ -46,49 +46,66 @@
     .header::before {
       content: '⛳';
       position: absolute;
-      right: 20px;
+      right: 24px;
       top: 50%;
       transform: translateY(-50%);
-      font-size: 64px;
-      opacity: 0.15;
+      font-size: 72px;
+      opacity: 0.12;
       pointer-events: none;
     }
 
     .header h1 {
-      font-size: 26px;
+      font-size: 24px;
       font-weight: 800;
       color: white;
-      letter-spacing: 1px;
+      letter-spacing: 0.5px;
       text-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
 
     .header h1 .sub-title {
       display: block;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 500;
-      letter-spacing: 2px;
-      opacity: 0.85;
-      margin-top: 2px;
+      letter-spacing: 3px;
+      opacity: 0.8;
+      margin-top: 3px;
     }
 
-    .header .user-section label { color: rgba(255,255,255,0.85); }
+    .header-nav { display: flex; gap: 10px; }
 
-    .header .user-section input {
-      border: 1.5px solid rgba(255,255,255,0.5);
-      background: rgba(255,255,255,0.2);
+    .nav-btn {
+      background: rgba(255,255,255,0.22);
       color: white;
-      border-radius: 8px;
+      border: 1.5px solid rgba(255,255,255,0.45);
+      border-radius: 20px;
+      padding: 7px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
     }
 
-    .header .user-section input::placeholder { color: rgba(255,255,255,0.6); }
-    .header .user-section input:focus {
-      outline: none;
-      border-color: white;
-      background: rgba(255,255,255,0.3);
+    .nav-btn:hover { background: rgba(255,255,255,0.38); }
+
+    /* 名前入力カード */
+    .user-section-card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      padding: 12px 18px;
+      margin-bottom: 16px;
+      display: -webkit-flex;
+      display: flex;
+      -webkit-align-items: center;
+      align-items: center;
+      -webkit-flex-wrap: wrap;
+      flex-wrap: wrap;
+      gap: 10px;
     }
-    .header .user-section input.name-required {
+
+    .user-section-card input.name-required {
       border-color: #f39c12;
-      background: rgba(243,156,18,0.25);
       animation: shake 0.4s ease;
     }
     @keyframes shake {
@@ -119,9 +136,6 @@
       border-right: 5px solid transparent;
       border-bottom: 5px solid #f39c12;
     }
-
-    .header .color-dot { border-color: transparent; }
-    .header .color-dot.selected { border-color: white; }
 
     .user-section {
       display: -webkit-flex;
@@ -698,7 +712,6 @@
     }
 
     @media (max-width: 600px) {
-      body { padding: 10px 8px; }
       .day { min-height: 72px; padding: 3px 2px; }
       .day-num {
         font-size: 12px;
@@ -714,10 +727,10 @@
       .nav { padding: 10px 12px; }
       .nav h2 { font-size: 15px; min-width: 120px; }
       .nav button { padding: 6px 14px; font-size: 18px; }
-      .header { padding: 12px 12px; border-radius: 12px; }
-      .header h1 { font-size: 17px; }
-      .header h1 .sub-title { font-size: 10px; }
-      .header::before { font-size: 40px; }
+      .header { padding: 14px 16px; }
+      .header h1 { font-size: 18px; }
+      .header h1 .sub-title { font-size: 9px; }
+      .header::before { font-size: 48px; }
       .user-section input { width: 100px; font-size: 14px; }
       .modal { padding: 18px 14px; border-radius: 14px; }
       .sub-cal-header { padding: 12px 14px; font-size: 15px; }
@@ -726,7 +739,6 @@
     }
 
     @media (max-width: 390px) {
-      body { padding: 8px 4px; }
       .day { min-height: 64px; padding: 2px 1px; }
       .day-num { font-size: 11px; width: 20px; height: 20px; }
       .day.today .day-num { width: 20px; height: 20px; font-size: 11px; }
@@ -740,14 +752,19 @@
   </style>
 </head>
 <body>
-<div class="container">
 
   <!-- ヘッダー -->
   <div class="header">
     <h1>⛳ ゴルフはじめました<span class="sub-title">GOLF SCHEDULE</span></h1>
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <a href="/album" style="background:rgba(255,255,255,0.25);color:white;border:1.5px solid rgba(255,255,255,0.5);border-radius:8px;padding:7px 16px;font-size:13px;font-weight:600;text-decoration:none;">📷 アルバム</a>
+    <div class="header-nav">
+      <a href="/album" class="nav-btn">📷 アルバム</a>
     </div>
+  </div>
+
+<div class="container">
+
+  <!-- 名前・カラー設定 -->
+  <div class="user-section-card">
     <div class="user-section">
       <label>あなたの名前:</label>
       <input type="text" id="userName" placeholder="名前を入力" maxlength="30">

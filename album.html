@@ -24,14 +24,14 @@
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 10px;
       position: relative;
       overflow: hidden;
       margin-bottom: 24px;
     }
 
     .header::before {
-      content: '📷';
+      content: '⛳';
       position: absolute;
       right: 24px;
       top: 50%;
@@ -77,6 +77,36 @@
 
     /* ========== コンテナ ========== */
     .container { max-width: 900px; margin: 0 auto; padding: 0 16px; }
+
+    /* ========== 名前入力カード ========== */
+    .user-section-card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      padding: 12px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .user-section-card label { font-size: 13px; color: #666; white-space: nowrap; }
+
+    .user-section-card input {
+      border: 1.5px solid #ddd;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 16px;
+      width: 160px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .user-section-card input:focus { border-color: #2ecc71; }
+
+    .user-section-hint { font-size: 12px; color: #aaa; }
 
     /* ========== アルバムカード ========== */
     .album-card {
@@ -560,19 +590,32 @@
 
     @media (max-width: 600px) {
       .lightbox-nav { display: none; }
+      .header { padding: 14px 16px; }
+      .header h1 { font-size: 18px; }
+      .header h1 .sub-title { font-size: 9px; }
+      .header::before { font-size: 48px; }
+    }
+
+    @media (max-width: 390px) {
+      .header h1 { font-size: 15px; }
     }
   </style>
 </head>
 <body>
 
   <div class="header">
-    <h1>⛳ ゴルフはじめました<span class="sub-title">PHOTO ALBUM</span></h1>
+    <h1>⛳ ゴルフはじめました<span class="sub-title">GOLF SCHEDULE</span></h1>
     <div class="header-nav">
       <a href="https://calendar.golfspace.jp" class="nav-btn">📅 カレンダー</a>
     </div>
   </div>
 
   <div class="container">
+    <div class="user-section-card">
+      <label>あなたの名前:</label>
+      <input type="text" id="albumUserName" placeholder="名前を入力" maxlength="30">
+      <span class="user-section-hint">アップロード・削除に使用します</span>
+    </div>
     <div id="albumList"></div>
   </div>
 
@@ -594,6 +637,15 @@ let lbIndex = 0;
 const saved = localStorage.getItem('calendarUser');
 if (saved) {
   try { currentUser = JSON.parse(saved).name || ''; } catch {}
+}
+
+const userInput = document.getElementById('albumUserName');
+if (userInput) {
+  userInput.value = currentUser;
+  userInput.addEventListener('input', () => {
+    currentUser = userInput.value.trim();
+    localStorage.setItem('calendarUser', JSON.stringify({ name: currentUser }));
+  });
 }
 
 const WEEKDAYS = ['日','月','火','水','木','金','土'];
@@ -861,10 +913,10 @@ function setupUpload(eventId) {
 async function uploadFiles(eventId, files) {
   if (!files.length) return;
   if (!currentUser) {
-    const name = prompt('あなたの名前を入力してください');
-    if (!name) return;
-    currentUser = name;
-    localStorage.setItem('calendarUser', JSON.stringify({ name }));
+    const input = document.getElementById('albumUserName');
+    if (input) { input.focus(); input.style.borderColor = '#f39c12'; setTimeout(() => { input.style.borderColor = ''; }, 2000); }
+    alert('先に名前を入力してください');
+    return;
   }
 
   const commentEl = document.getElementById(`comment-${eventId}`);

@@ -34,8 +34,11 @@
 ### デプロイコマンド
 
 ```bash
-# stgデプロイ（HTMLのみ）
-scp -i /Users/tamura/claude_code/tododb.pem -o StrictHostKeyChecking=no <file> ec2-user@57.183.7.38:/tmp/
+# stgデプロイ（HTMLのみ）※必ずURLを置換してからデプロイ
+sed -e "s|https://calendar.golfspace.jp/api/calendar|https://stg.calendar.golfspace.jp/api/calendar|g" \
+    -e "s|https://calendar.golfspace.jp\"|https://stg.calendar.golfspace.jp\"|g" \
+    <file> > /tmp/<file_stg>
+scp -i /Users/tamura/claude_code/tododb.pem -o StrictHostKeyChecking=no /tmp/<file_stg> ec2-user@57.183.7.38:/tmp/<file>
 ssh -i /Users/tamura/claude_code/tododb.pem -o StrictHostKeyChecking=no ec2-user@57.183.7.38 "sudo cp /tmp/<file> /usr/share/nginx/html/stg/"
 
 # stgデプロイ（calendarバックエンド）
