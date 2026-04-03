@@ -636,19 +636,19 @@
     }
 
     .participants-section {
-      margin-top: 12px;
-      padding: 10px 12px;
+      margin-top: 16px;
+      padding: 14px 14px 12px;
       background: #f8f9fa;
-      border-radius: 8px;
+      border-radius: 12px;
     }
 
     .participants-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: #888;
+      font-size: 10px;
+      font-weight: 700;
+      color: #bbb;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 6px;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
     }
 
     .participants-list {
@@ -661,8 +661,8 @@
       font-size: 12px;
       background: #e8f4fd;
       color: #2980b9;
-      border-radius: 12px;
-      padding: 3px 10px;
+      border-radius: 20px;
+      padding: 4px 12px;
       font-weight: 500;
     }
 
@@ -673,12 +673,34 @@
 
     .participants-empty {
       font-size: 12px;
-      color: #bbb;
+      color: #ccc;
     }
 
     .btn-join    { background: #27ae60; color: white; }
     .btn-pending { background: #f39c12; color: white; }
     .btn-leave   { background: #95a5a6; color: white; }
+
+    #weatherSection {
+      margin-top: 12px;
+      padding: 14px 14px 10px;
+      background: #f8f9fa;
+      border-radius: 12px;
+    }
+
+    #weatherSection .participants-label {
+      margin-bottom: 8px;
+    }
+
+    .weather-graph {
+      margin-top: 4px;
+    }
+
+    .weather-location {
+      font-size: 11px;
+      color: #bbb;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
 
     .participants-group-label {
       font-size: 10px;
@@ -871,6 +893,10 @@
     <div class="participants-section">
       <div class="participants-label">参加者</div>
       <div class="participants-list" id="participantsList"></div>
+    </div>
+    <div id="weatherSection" style="display:none">
+      <div class="participants-label">☁️ 天気（降水量）</div>
+      <div id="weatherContent"></div>
     </div>
     <div class="modal-actions" id="detailActions"></div>
   </div>
@@ -1523,7 +1549,90 @@ function openDetailModal(ev) {
   renderParticipants(ev.id, ev.participants || [], ev.pending || []);
   renderDetailActions(ev.id);
 
+  // 天気表示（今日〜7日先のみ）
+  document.getElementById('weatherSection').style.display = 'none';
+  document.getElementById('weatherContent').innerHTML = '';
+  if (ev.title && ev.title !== FIXED_SUGGESTION) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const evDate = new Date(ev.date); evDate.setHours(0,0,0,0);
+    const diffDays = (evDate - today) / 86400000;
+    if (diffDays >= 0 && diffDays <= 7) {
+      loadWeather(ev.title, ev.date, ev.id);
+    }
+  }
+
   document.getElementById('detailOverlay').classList.add('open');
+}
+
+function hideWeather() {
+  document.getElementById('weatherSection').style.display = 'none';
+}
+
+async function loadWeather(title, date, eventId) {
+  try {
+    // Nominatim（OpenStreetMap）でゴルフ場名から座標を取得
+    const geoRes = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(title)}&format=json&limit=1&accept-language=ja&countrycodes=jp`,
+      { headers: { 'User-Agent': 'GolfSpaceApp/1.0' } }
+    );
+    const geoData = await geoRes.json();
+    if (!geoData || geoData.length === 0) return hideWeather();
+
+    const latitude = parseFloat(geoData[0].lat);
+    const longitude = parseFloat(geoData[0].lon);
+
+    // 天気APIで降水量を取得（2時間ごと）
+    const weatherRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=precipitation&timezone=Asia%2FTokyo&start_date=${date}&end_date=${date}`
+    );
+    const weatherData = await weatherRes.json();
+    if (!weatherData.hourly) return hideWeather();
+
+    const times = weatherData.hourly.time;
+    const precip = weatherData.hourly.precipitation;
+
+    // 2時間おきのデータ
+    const slots = [];
+    for (let i = 0; i < times.length; i += 2) {
+      slots.push({ hour: times[i].slice(11, 13), rain: precip[i] });
+    }
+    if (slots.length === 0) return hideWeather();
+
+    const maxRain = Math.max(...slots.map(s => s.rain), 5);
+    const W = slots.length * 28 + 10;
+    const H = 80;
+    const barH = 52;
+    const barW = 18;
+
+    let bars = '';
+    let labels = '';
+    let values = '';
+    slots.forEach((s, i) => {
+      const x = i * 28 + 14;
+      const h = s.rain > 0 ? Math.max(3, (s.rain / maxRain) * barH) : 0;
+      const y = barH - h + 14;
+      const heavy = s.rain >= 5;
+      const color = heavy ? '#e74c3c' : s.rain > 0 ? '#3498db' : '#e0e0e0';
+      bars += `<rect x="${x - barW/2}" y="${y}" width="${barW}" height="${h}" rx="4" fill="${color}" opacity="0.85"/>`;
+      labels += `<text x="${x}" y="${H - 2}" text-anchor="middle" font-size="9" fill="#aaa">${s.hour}</text>`;
+      if (s.rain > 0) {
+        values += `<text x="${x}" y="${y - 3}" text-anchor="middle" font-size="9" fill="${heavy ? '#e74c3c' : '#3498db'}" font-weight="600">${s.rain.toFixed(1)}</text>`;
+      }
+    });
+
+    // 別のイベントが開かれていたら反映しない
+    if (detailEventId !== eventId) return;
+
+    const address = geoData[0].display_name.split(', ').slice(1, 4).join(' ');
+    document.getElementById('weatherContent').innerHTML = `
+      <div class="weather-location">📍 ${address}</div>
+      <div class="weather-graph">
+        <svg width="100%" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+          ${bars}${values}${labels}
+        </svg>
+      </div>`;
+    document.getElementById('weatherSection').style.display = 'block';
+  } catch { hideWeather(); }
 }
 
 function closeDetailModal() {
