@@ -169,6 +169,61 @@ class TestCreateEvent:
         assert res.status_code == 201
         assert res.json()["color"] == "blue"
 
+    def test_tamura以外の作成者は参加者に自動追加される(self):
+        cur = MagicMock()
+        cur.__enter__ = lambda s: cur
+        cur.__exit__ = MagicMock(return_value=False)
+        cur.lastrowid = 10
+        cur.fetchone.return_value = {
+            "id": 10, "title": "ABCゴルフ", "date": MagicMock(isoformat=lambda: "2026-05-01"),
+            "start_time": None, "end_time": None, "description": None,
+            "user_name": "yamada", "color": "blue", "created_at": "2026-04-01T00:00:00"
+        }
+        with patch("main.get_conn", return_value=make_conn(cur)):
+            res = client.post("/events", json={
+                "title": "ABCゴルフ", "date": "2026-05-01", "user_name": "yamada"
+            })
+        assert res.status_code == 201
+        # INSERT IGNORE INTO participants が呼ばれていること
+        calls = [str(c) for c in cur.execute.call_args_list]
+        assert any("INSERT IGNORE INTO participants" in c for c in calls)
+
+    def test_tamuraの作成者は参加者に自動追加されない(self):
+        cur = MagicMock()
+        cur.__enter__ = lambda s: cur
+        cur.__exit__ = MagicMock(return_value=False)
+        cur.lastrowid = 11
+        cur.fetchone.return_value = {
+            "id": 11, "title": "ABCゴルフ", "date": MagicMock(isoformat=lambda: "2026-05-01"),
+            "start_time": None, "end_time": None, "description": None,
+            "user_name": "tamura", "color": "blue", "created_at": "2026-04-01T00:00:00"
+        }
+        with patch("main.get_conn", return_value=make_conn(cur)):
+            res = client.post("/events", json={
+                "title": "ABCゴルフ", "date": "2026-05-01", "user_name": "tamura"
+            })
+        assert res.status_code == 201
+        calls = [str(c) for c in cur.execute.call_args_list]
+        assert not any("INSERT IGNORE INTO participants" in c for c in calls)
+
+    def test_TAMURA大文字も参加者に自動追加されない(self):
+        cur = MagicMock()
+        cur.__enter__ = lambda s: cur
+        cur.__exit__ = MagicMock(return_value=False)
+        cur.lastrowid = 12
+        cur.fetchone.return_value = {
+            "id": 12, "title": "ABCゴルフ", "date": MagicMock(isoformat=lambda: "2026-05-01"),
+            "start_time": None, "end_time": None, "description": None,
+            "user_name": "TAMURA", "color": "blue", "created_at": "2026-04-01T00:00:00"
+        }
+        with patch("main.get_conn", return_value=make_conn(cur)):
+            res = client.post("/events", json={
+                "title": "ABCゴルフ", "date": "2026-05-01", "user_name": "TAMURA"
+            })
+        assert res.status_code == 201
+        calls = [str(c) for c in cur.execute.call_args_list]
+        assert not any("INSERT IGNORE INTO participants" in c for c in calls)
+
 
 # ============================================================
 # 3. イベント更新  PATCH /events/{event_id}
