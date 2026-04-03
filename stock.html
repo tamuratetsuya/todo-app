@@ -412,20 +412,19 @@
     <button class="tf-btn" data-tf="1wk">週足</button>
     <button class="tf-btn active" data-tf="1d">日足</button>
     <button class="tf-btn" data-tf="1h">1時間</button>
-    <button class="tf-btn" data-tf="1m">1分</button>
   </div>
 
   <div class="header-sep"></div>
 
   <div class="ind-group">
     <label class="ind-label">
-      <input type="checkbox" id="chkMA"> MA
+      <input type="checkbox" id="chkMA" checked> MA
     </label>
     <label class="ind-label">
       <input type="checkbox" id="chkIchi"> 一目均衡表
     </label>
     <label class="ind-label">
-      <input type="checkbox" id="chkBB"> ボリンジャーバンド
+      <input type="checkbox" id="chkBB" checked> ボリンジャーバンド
     </label>
   </div>
 
@@ -514,7 +513,6 @@ const TF_INTERVAL = {
   '1wk': '1wk',
   '1d':  '1d',
   '1h':  '1h',
-  '1m':  '1m',
 };
 
 // ===== STATE =====
@@ -571,7 +569,7 @@ function initChart() {
     },
     timeScale: {
       borderColor: '#30363d',
-      timeVisible: currentInterval === '1h' || currentInterval === '1m',
+      timeVisible: currentInterval === '1h',
       secondsVisible: false,
     },
   });
@@ -923,7 +921,7 @@ async function loadChart() {
     // Update chart time scale
     chart.applyOptions({
       timeScale: {
-        timeVisible: interval === '1h' || interval === '1m',
+        timeVisible: interval === '1h',
         secondsVisible: false,
       },
     });

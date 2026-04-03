@@ -20,8 +20,7 @@ app.add_middleware(
 
 # yfinance fetch period per interval (limited by API)
 INTERVALS = {
-    "1m":  {"period": "7d",   "is_date": False},  # yfinance max = 7d for 1m
-    "1h":  {"period": "730d", "is_date": False},   # yfinance supports ~2y for 1h
+    "1h":  {"period": "730d", "is_date": False},
     "1d":  {"period": "2y",   "is_date": True},
     "1wk": {"period": "5y",   "is_date": True},
 }
