@@ -82,6 +82,22 @@
   #csvBtn:hover { background: #2d333b; border-color: var(--blue); }
   #csvInput { display: none; }
 
+  #clearBtn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  #clearBtn:hover { background: rgba(248,81,73,0.1); border-color: var(--red); color: var(--red); }
+
   #stockSelect {
     background: var(--bg3);
     border: 1px solid var(--border);
@@ -377,6 +393,14 @@
     CSV取引履歴
   </button>
   <input type="file" id="csvInput" accept=".csv" multiple>
+  <button id="clearBtn" onclick="clearAllData()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="3 6 5 6 21 6"></polyline>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+      <path d="M10 11v6M14 11v6"></path>
+    </svg>
+    データ削除
+  </button>
 
   <select id="stockSelect">
     <option value="">— 銘柄を選択 —</option>
@@ -450,6 +474,41 @@
 <script>
 // ===== CONSTANTS =====
 const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:8020' : '/api/stock';
+
+// ===== RDS API =====
+function rawTradeKey(t) {
+  return `${t.date}__${t.code}__${t.side}__${t.qty}__${t.price}__${t.settlement}`;
+}
+
+async function apiGetTrades() {
+  const res = await fetch(`${API}/trades`);
+  if (!res.ok) throw new Error(`GET /trades failed: ${res.status}`);
+  return res.json();
+}
+
+async function apiSaveTrades(rawList) {
+  const payload = rawList.map(t => ({ ...t, trade_key: rawTradeKey(t) }));
+  const res = await fetch(`${API}/trades`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`POST /trades failed: ${res.status}`);
+  return res.json();
+}
+
+async function clearAllData() {
+  if (!confirm('保存されたデータを全て削除しますか？')) return;
+  await fetch(`${API}/trades`, { method: 'DELETE' });
+  trades = {};
+  stockNames = {};
+  currentSymbol = '';
+  rebuildStockSelect();
+  renderPnl();
+  renderTrades();
+  if (candleSeries) candleSeries.setData([]);
+  if (volumeSeries) volumeSeries.setData([]);
+}
 
 const TF_INTERVAL = {
   '1wk': '1wk',
@@ -791,10 +850,10 @@ function applyMarkers() {
       markerMap[key] = {
         time:     mTime,
         position: t.side === 'buy' ? 'belowBar' : 'aboveBar',
-        color:    t.side === 'buy' ? '#3fb950' : '#f85149',
+        color:    t.side === 'buy' ? '#facc15' : '#fb923c',
         shape:    t.side === 'buy' ? 'arrowUp'  : 'arrowDown',
         text:     (t.side === 'buy' ? '買' : '売') + ` ¥${fmtNum(t.price)} ×${t.qty}`,
-        size:     1,
+        size:     2,
       };
     }
   }
@@ -1234,7 +1293,7 @@ async function processCSVBuffer(buffer) {
 }
 
 async function importCSV(files) {
-  let allRaw = [];
+  let newRaw = [];
 
   for (const file of files) {
     const buffer = await file.arrayBuffer();
@@ -1244,25 +1303,30 @@ async function importCSV(files) {
       alert(`${file.name}: CSVの解析に失敗しました。ヘッダー行（約定日・銘柄コード等）が見つかりません。`);
       continue;
     }
-    allRaw = allRaw.concat(parsed);
+    newRaw = newRaw.concat(parsed);
   }
 
-  if (!allRaw.length) return;
+  if (!newRaw.length) return;
 
+  // RDSに保存（重複はサーバー側でINSERT IGNOREにより除外）
+  let saveResult;
+  try {
+    saveResult = await apiSaveTrades(newRaw);
+  } catch (e) {
+    alert(`データ保存に失敗しました: ${e.message}`);
+    return;
+  }
+
+  if (saveResult.added === 0) {
+    alert('新しいデータはありませんでした（全て重複）');
+    return;
+  }
+
+  // RDSから全データ再取得して再集計
+  const allRaw = await apiGetTrades();
   const { result, names } = aggregateTrades(allRaw);
-
-  // Merge with existing
-  for (const [code, ts] of Object.entries(result)) {
-    if (!trades[code]) {
-      trades[code] = ts;
-    } else {
-      // Re-aggregate
-      const merged = [...trades[code], ...ts];
-      const { result: r2, names: n2 } = aggregateTrades(merged);
-      trades[code] = r2[code] || merged;
-    }
-  }
-  Object.assign(stockNames, names);
+  trades = result;
+  stockNames = names;
 
   rebuildStockSelect();
   renderPnl();
@@ -1307,6 +1371,23 @@ document.addEventListener('drop', async (e) => {
 // ===== INIT =====
 initChart();
 noDataMsg.style.display = 'flex';
+
+// ===== RESTORE FROM RDS =====
+(async function restoreFromDB() {
+  try {
+    const saved = await apiGetTrades();
+    if (!saved.length) return;
+    const { result, names } = aggregateTrades(saved);
+    trades = result;
+    stockNames = names;
+    rebuildStockSelect();
+    renderPnl();
+    const codes = Object.keys(trades);
+    if (codes.length) selectSymbol(codes[0]);
+  } catch (e) {
+    console.warn('データ読み込み失敗:', e.message);
+  }
+})();
 </script>
 </body>
 </html>
