@@ -17,6 +17,29 @@ S3_REGION = 'ap-northeast-1'
 CLOUDFRONT_DOMAIN = 'dy9n92jh6ihj.cloudfront.net'
 s3_client = boto3.client('s3', region_name=S3_REGION)
 
+LINE_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_USER_ID = os.getenv("LINE_USER_ID")
+
+
+def send_line(message: str):
+    if not LINE_TOKEN or not LINE_USER_ID:
+        return
+    try:
+        http_requests.post(
+            "https://api.line.me/v2/bot/message/push",
+            headers={
+                "Authorization": f"Bearer {LINE_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "to": LINE_USER_ID,
+                "messages": [{"type": "text", "text": message}],
+            },
+            timeout=5,
+        )
+    except Exception:
+        pass
+
 
 def cf_url(key):
     return f"https://{CLOUDFRONT_DOMAIN}/{key}"
@@ -174,8 +197,9 @@ def _get_participants(cur, event_id):
 def join_event(event_id: int, body: JoinRequest):
     conn = get_conn()
     with conn.cursor() as cur:
-        cur.execute("SELECT id FROM events WHERE id = %s", (event_id,))
-        if not cur.fetchone():
+        cur.execute("SELECT id, title, date FROM events WHERE id = %s", (event_id,))
+        event = cur.fetchone()
+        if not event:
             conn.close()
             raise HTTPException(status_code=404, detail="Not found")
         status = body.status if body.status in ("join", "pending") else "join"
@@ -190,6 +214,11 @@ def join_event(event_id: int, body: JoinRequest):
             pass
         result = _get_participants(cur, event_id)
     conn.close()
+    date_str = event["date"].isoformat() if hasattr(event["date"], "isoformat") else event["date"]
+    if status == "join":
+        send_line(f"✅ 参加登録\n{body.user_name} さんが参加しました\nイベント: {event['title']}（{date_str}）")
+    else:
+        send_line(f"🤔 参加検討中\n{body.user_name} さんが検討中です\nイベント: {event['title']}（{date_str}）")
     return result
 
 
@@ -197,6 +226,8 @@ def join_event(event_id: int, body: JoinRequest):
 def leave_event(event_id: int, body: JoinRequest):
     conn = get_conn()
     with conn.cursor() as cur:
+        cur.execute("SELECT id, title, date FROM events WHERE id = %s", (event_id,))
+        event = cur.fetchone()
         cur.execute(
             "DELETE FROM participants WHERE event_id = %s AND user_name = %s",
             (event_id, body.user_name),
@@ -204,6 +235,9 @@ def leave_event(event_id: int, body: JoinRequest):
         conn.commit()
         result = _get_participants(cur, event_id)
     conn.close()
+    if event:
+        date_str = event["date"].isoformat() if hasattr(event["date"], "isoformat") else event["date"]
+        send_line(f"❌ 参加キャンセル\n{body.user_name} さんがキャンセルしました\nイベント: {event['title']}（{date_str}）")
     return result
 
 
@@ -227,6 +261,7 @@ def create_event(body: EventCreate):
         row = cur.fetchone()
     conn.close()
     row["date"] = row["date"].isoformat()
+    send_line(f"📅 新規イベント作成\nタイトル: {row['title']}\n日付: {row['date']}\n作成者: {row['user_name']}")
     return row
 
 

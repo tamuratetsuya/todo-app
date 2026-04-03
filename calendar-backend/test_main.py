@@ -119,7 +119,8 @@ class TestCreateEvent:
 
     def test_正常_全フィールド指定(self):
         cur = self._make_cur()
-        with patch("main.get_conn", return_value=make_conn(cur)):
+        with patch("main.get_conn", return_value=make_conn(cur)), \
+             patch("main.send_line") as mock_line:
             res = client.post("/events", json={
                 "title": "ABCゴルフ", "date": "2026-05-01",
                 "start_time": "08:00", "end_time": "12:00",
@@ -127,6 +128,8 @@ class TestCreateEvent:
             })
         assert res.status_code == 201
         assert res.json()["title"] == "ABCゴルフ"
+        mock_line.assert_called_once()
+        assert "新規イベント" in mock_line.call_args[0][0]
 
     def test_正常_必須フィールドのみ(self):
         cur = MagicMock()
@@ -296,7 +299,8 @@ class TestJoinEvent:
         cur = MagicMock()
         cur.__enter__ = lambda s: cur
         cur.__exit__ = MagicMock(return_value=False)
-        cur.fetchone.return_value = {"id": 1} if exists else None
+        event = {"id": 1, "title": "ABCゴルフ", "date": MagicMock(isoformat=lambda: "2026-05-01")} if exists else None
+        cur.fetchone.return_value = event
         cur.fetchall.return_value = (
             [{"user_name": p, "status": "join"} for p in (participants or [])] +
             [{"user_name": p, "status": "pending"} for p in (pending or [])]
@@ -305,17 +309,23 @@ class TestJoinEvent:
 
     def test_正常_参加登録(self):
         cur = self._make_join_cur(participants=["tamura"])
-        with patch("main.get_conn", return_value=make_conn(cur)):
+        with patch("main.get_conn", return_value=make_conn(cur)), \
+             patch("main.send_line") as mock_line:
             res = client.post("/events/1/join", json={"user_name": "tamura", "status": "join"})
         assert res.status_code == 200
         assert "tamura" in res.json()["participants"]
+        mock_line.assert_called_once()
+        assert "参加" in mock_line.call_args[0][0]
 
     def test_正常_検討中ステータス(self):
         cur = self._make_join_cur(pending=["yamada"])
-        with patch("main.get_conn", return_value=make_conn(cur)):
+        with patch("main.get_conn", return_value=make_conn(cur)), \
+             patch("main.send_line") as mock_line:
             res = client.post("/events/1/join", json={"user_name": "yamada", "status": "pending"})
         assert res.status_code == 200
         assert "yamada" in res.json()["pending"]
+        mock_line.assert_called_once()
+        assert "検討" in mock_line.call_args[0][0]
 
     def test_異常_存在しないイベント(self):
         cur = self._make_join_cur(exists=False)
@@ -325,13 +335,15 @@ class TestJoinEvent:
 
     def test_不正ステータスはjoinに正規化(self):
         cur = self._make_join_cur(participants=["tamura"])
-        with patch("main.get_conn", return_value=make_conn(cur)):
+        with patch("main.get_conn", return_value=make_conn(cur)), \
+             patch("main.send_line"):
             res = client.post("/events/1/join", json={"user_name": "tamura", "status": "invalid"})
         assert res.status_code == 200
 
     def test_重複参加はupsertで上書き(self):
         cur = self._make_join_cur(participants=["tamura"])
-        with patch("main.get_conn", return_value=make_conn(cur)):
+        with patch("main.get_conn", return_value=make_conn(cur)), \
+             patch("main.send_line"):
             res = client.post("/events/1/join", json={"user_name": "tamura", "status": "join"})
         assert res.status_code == 200
 
@@ -342,18 +354,30 @@ class TestJoinEvent:
 
 class TestLeaveEvent:
 
+    def _make_leave_cur(self, rows=None):
+        cur = MagicMock()
+        cur.__enter__ = lambda s: cur
+        cur.__exit__ = MagicMock(return_value=False)
+        cur.fetchone.return_value = {"id": 1, "title": "ABCゴルフ", "date": MagicMock(isoformat=lambda: "2026-05-01")}
+        cur.fetchall.return_value = rows or []
+        return cur
+
     def test_正常_参加取消(self):
-        cur = make_cursor(rows=[])
-        with patch("main.get_conn", return_value=make_conn(cur)):
+        cur = self._make_leave_cur(rows=[])
+        with patch("main.get_conn", return_value=make_conn(cur)), \
+             patch("main.send_line") as mock_line:
             res = client.request("DELETE", "/events/1/join",
                                  content=json.dumps({"user_name": "tamura"}),
                                  headers={"Content-Type": "application/json"})
         assert res.status_code == 200
         assert res.json()["participants"] == []
+        mock_line.assert_called_once()
+        assert "キャンセル" in mock_line.call_args[0][0]
 
     def test_参加していないユーザーの取消でもエラーなし(self):
-        cur = make_cursor(rows=[])
-        with patch("main.get_conn", return_value=make_conn(cur)):
+        cur = self._make_leave_cur(rows=[])
+        with patch("main.get_conn", return_value=make_conn(cur)), \
+             patch("main.send_line"):
             res = client.request("DELETE", "/events/1/join",
                                  content=json.dumps({"user_name": "nobody"}),
                                  headers={"Content-Type": "application/json"})
