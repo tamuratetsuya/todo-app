@@ -924,26 +924,33 @@ function renderPnl() {
     const ts = trades[code];
     const name = stockNames[code] || code;
 
-    let buyCost = 0;
+    let totalBuySettl = 0;  // 受渡金額の合計（買い）= 実際に支払ったコスト
+    let totalBuyQty = 0;
+    let totalSellQty = 0;
     let sellRevenue = 0;
-    let hasSell = false;
 
     for (const t of ts) {
       if (t.side === 'buy') {
-        buyCost += t.qty * t.price + Math.abs(t.commission + t.tax);
+        totalBuySettl += t.settlement;  // 買い受渡金額（プラス）
+        totalBuyQty   += t.qty;
       } else {
-        hasSell = true;
-        sellRevenue += t.settlement;
+        totalSellQty += t.qty;
+        sellRevenue  += t.settlement;  // 売り受渡金額（プラス）
       }
     }
 
-    if (!hasSell) {
+    if (totalSellQty === 0) {
       // 未決済ポジション（保有中）
-      holdingRows.push({ code, name, buyCost });
+      holdingRows.push({ code, name });
     } else {
-      const pnl = sellRevenue - buyCost;
+      // 売却分に対応するコスト（平均取得コスト × 売却比率）
+      const costBasis = totalBuyQty > 0
+        ? totalBuySettl * (totalSellQty / totalBuyQty)
+        : 0;
+      const pnl = sellRevenue - costBasis;
       totalPnl += pnl;
-      rows.push({ code, name, pnl });
+      const isPartial = totalSellQty < totalBuyQty;
+      rows.push({ code, name, pnl, isPartial });
     }
   }
 
@@ -954,12 +961,12 @@ function renderPnl() {
   const table = document.createElement('table');
   table.className = 'pnl-table';
 
-  for (const { code, name, pnl } of rows) {
+  for (const { code, name, pnl, isPartial } of rows) {
     const tr = document.createElement('tr');
     if (code === currentSymbol) tr.classList.add('selected');
     tr.innerHTML = `
       <td>
-        <div class="td-name">${esc(name)}</div>
+        <div class="td-name">${esc(name)}${isPartial ? ' <span style="font-size:10px;color:var(--text2)">(一部保有中)</span>' : ''}</div>
         <div class="td-code">${esc(code)}</div>
       </td>
       <td class="td-pnl ${pnl >= 0 ? 'green' : 'red'}">${fmtPnl(pnl)}</td>
