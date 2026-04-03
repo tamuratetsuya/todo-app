@@ -449,7 +449,7 @@
 
 <script>
 // ===== CONSTANTS =====
-const API = location.hostname.includes('golfspace.jp') ? '/api/stock' : 'http://localhost:8020';
+const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:8020' : '/api/stock';
 
 const TF_INTERVAL = {
   '1wk': '1wk',
@@ -918,6 +918,7 @@ function renderPnl() {
 
   let totalPnl = 0;
   const rows = [];
+  const holdingRows = [];
 
   for (const code of codes) {
     const ts = trades[code];
@@ -925,19 +926,25 @@ function renderPnl() {
 
     let buyCost = 0;
     let sellRevenue = 0;
+    let hasSell = false;
 
     for (const t of ts) {
       if (t.side === 'buy') {
         buyCost += t.qty * t.price + Math.abs(t.commission + t.tax);
       } else {
+        hasSell = true;
         sellRevenue += t.settlement;
       }
     }
 
-    const pnl = sellRevenue - buyCost;
-    totalPnl += pnl;
-
-    rows.push({ code, name, pnl });
+    if (!hasSell) {
+      // 未決済ポジション（保有中）
+      holdingRows.push({ code, name, buyCost });
+    } else {
+      const pnl = sellRevenue - buyCost;
+      totalPnl += pnl;
+      rows.push({ code, name, pnl });
+    }
   }
 
   totalPnlEl.textContent = fmtPnl(totalPnl);
@@ -956,6 +963,21 @@ function renderPnl() {
         <div class="td-code">${esc(code)}</div>
       </td>
       <td class="td-pnl ${pnl >= 0 ? 'green' : 'red'}">${fmtPnl(pnl)}</td>
+    `;
+    tr.addEventListener('click', () => selectSymbol(code));
+    table.appendChild(tr);
+  }
+
+  // 保有中（未決済）
+  for (const { code, name, buyCost } of holdingRows) {
+    const tr = document.createElement('tr');
+    if (code === currentSymbol) tr.classList.add('selected');
+    tr.innerHTML = `
+      <td>
+        <div class="td-name">${esc(name)}</div>
+        <div class="td-code">${esc(code)}</div>
+      </td>
+      <td class="td-pnl" style="color:var(--text2);font-size:11px;">保有中</td>
     `;
     tr.addEventListener('click', () => selectSymbol(code));
     table.appendChild(tr);
