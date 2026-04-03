@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>株式トレード分析</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #21262d;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --green: #3fb950;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --accent: #1f6feb;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans JP', sans-serif;
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ===== HEADER ===== */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .logo {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.5px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .logo svg { color: var(--blue); }
+
+  .header-sep {
+    width: 1px;
+    height: 24px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  #csvBtn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  #csvBtn:hover { background: #2d333b; border-color: var(--blue); }
+  #csvInput { display: none; }
+
+  #stockSelect {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    min-width: 180px;
+    cursor: pointer;
+    outline: none;
+  }
+  #stockSelect:focus { border-color: var(--accent); }
+
+  .tf-group {
+    display: flex;
+    gap: 2px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .tf-btn {
+    background: transparent;
+    border: none;
+    color: var(--text2);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .tf-btn:hover { background: #2d333b; color: var(--text); }
+  .tf-btn.active { background: var(--accent); color: #fff; }
+
+  .ind-group {
+    display: flex;
+    gap: 10px;
+    margin-left: 4px;
+  }
+
+  .ind-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    color: var(--text2);
+    font-size: 12px;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .ind-label input { accent-color: var(--accent); cursor: pointer; }
+  .ind-label:hover { color: var(--text); }
+
+  #loadingLabel {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text2);
+    display: none;
+    align-items: center;
+    gap: 6px;
+  }
+  #loadingLabel.visible { display: flex; }
+
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== MAIN LAYOUT ===== */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar {
+    width: 280px;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .sidebar-section {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-section:first-child {
+    flex: 0 0 auto;
+    max-height: 50%;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-section:last-child {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .total-pnl {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .scroll-area {
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .scroll-area::-webkit-scrollbar { width: 4px; }
+  .scroll-area::-webkit-scrollbar-track { background: transparent; }
+  .scroll-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* P&L table */
+  .pnl-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .pnl-table tr {
+    border-bottom: 1px solid #21262d;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .pnl-table tr:hover { background: rgba(255,255,255,0.03); }
+  .pnl-table tr.selected { background: rgba(31,111,235,0.15); }
+
+  .pnl-table td {
+    padding: 7px 14px;
+    font-size: 12px;
+  }
+
+  .pnl-table .td-name {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .pnl-table .td-code {
+    color: var(--text2);
+    font-size: 11px;
+  }
+
+  .pnl-table .td-pnl {
+    text-align: right;
+    font-weight: 600;
+    font-size: 12px;
+  }
+
+  .green { color: var(--green); }
+  .red { color: var(--red); }
+
+  /* Trade history */
+  .trade-item {
+    padding: 8px 14px;
+    border-bottom: 1px solid #21262d;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px;
+  }
+
+  .trade-date {
+    font-size: 11px;
+    color: var(--text2);
+  }
+
+  .trade-side {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-align: center;
+  }
+  .trade-side.buy { background: rgba(63,185,80,0.15); color: var(--green); }
+  .trade-side.sell { background: rgba(248,81,73,0.15); color: var(--red); }
+
+  .trade-detail {
+    font-size: 12px;
+    color: var(--text);
+    grid-column: 1;
+  }
+
+  .trade-settlement {
+    font-size: 12px;
+    color: var(--text2);
+    text-align: right;
+    grid-column: 2;
+    grid-row: 2;
+    align-self: end;
+  }
+
+  .empty-msg {
+    padding: 20px 14px;
+    color: var(--text2);
+    font-size: 12px;
+    text-align: center;
+  }
+
+  /* ===== CHART AREA ===== */
+  .chart-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  #chartContainer {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Drag overlay */
+  #dragOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(31, 111, 235, 0.1);
+    border: 2px dashed var(--accent);
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--blue);
+    backdrop-filter: blur(2px);
+  }
+  #dragOverlay.active { display: flex; }
+
+  /* No data message */
+  #noDataMsg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text2);
+    gap: 12px;
+    pointer-events: none;
+  }
+  #noDataMsg svg { opacity: 0.3; }
+  #noDataMsg p { font-size: 14px; }
+  #noDataMsg small { font-size: 12px; opacity: 0.6; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+      <polyline points="16 7 22 7 22 13"></polyline>
+    </svg>
+    株式トレード分析
+  </div>
+
+  <div class="header-sep"></div>
+
+  <button id="csvBtn" onclick="document.getElementById('csvInput').click()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <polyline points="17 8 12 3 7 8"></polyline>
+      <line x1="12" y1="3" x2="12" y2="15"></line>
+    </svg>
+    CSV取引履歴
+  </button>
+  <input type="file" id="csvInput" accept=".csv" multiple>
+
+  <select id="stockSelect">
+    <option value="">— 銘柄を選択 —</option>
+  </select>
+
+  <div class="header-sep"></div>
+
+  <div class="tf-group">
+    <button class="tf-btn" data-tf="1wk">週足</button>
+    <button class="tf-btn active" data-tf="1d">日足</button>
+    <button class="tf-btn" data-tf="1h">1時間</button>
+    <button class="tf-btn" data-tf="1m">1分</button>
+  </div>
+
+  <div class="header-sep"></div>
+
+  <div class="ind-group">
+    <label class="ind-label">
+      <input type="checkbox" id="chkMA"> MA
+    </label>
+    <label class="ind-label">
+      <input type="checkbox" id="chkIchi"> 一目均衡表
+    </label>
+    <label class="ind-label">
+      <input type="checkbox" id="chkBB"> ボリンジャーバンド
+    </label>
+  </div>
+
+  <div id="loadingLabel">
+    <div class="spinner"></div>
+    読み込み中...
+  </div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="section-title">
+        損益サマリー
+        <span class="total-pnl" id="totalPnl"></span>
+      </div>
+      <div class="scroll-area" id="pnlBody">
+        <div class="empty-msg">CSVをインポートしてください</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-title">約定履歴</div>
+      <div class="scroll-area" id="tradeBody">
+        <div class="empty-msg">銘柄を選択してください</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chart-area">
+    <div id="chartContainer">
+      <div id="noDataMsg">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+          <polyline points="3 9 9 9 9 15 15 15 15 9 21 9"></polyline>
+        </svg>
+        <p>チャートデータなし</p>
+        <small>銘柄を選択するとチャートが表示されます</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="dragOverlay">CSVファイルをドロップ</div>
+
+<script>
+// ===== CONSTANTS =====
+const API = location.hostname.includes('golfspace.jp') ? '/api/stock' : 'http://localhost:8020';
+
+const TF_INTERVAL = {
+  '1wk': '1wk',
+  '1d':  '1d',
+  '1h':  '1h',
+  '1m':  '1m',
+};
+
+// ===== STATE =====
+let trades = {};        // { code: [{date, name, side, qty, price, commission, tax, settlement}] }
+let stockNames = {};    // { code: name }
+let currentSymbol = '';
+let currentInterval = '1d';
+let candleData = [];    // raw candle array from API
+let chart = null;
+let candleSeries = null;
+let volumeSeries = null;
+let indicatorSeries = [];
+
+// ===== DOM REFS =====
+const stockSelect  = document.getElementById('stockSelect');
+const pnlBody      = document.getElementById('pnlBody');
+const tradeBody    = document.getElementById('tradeBody');
+const totalPnlEl   = document.getElementById('totalPnl');
+const loadingLabel = document.getElementById('loadingLabel');
+const noDataMsg    = document.getElementById('noDataMsg');
+const chartContainer = document.getElementById('chartContainer');
+const csvInput     = document.getElementById('csvInput');
+
+// ===== LOADING STATE =====
+function setLoading(v) {
+  loadingLabel.classList.toggle('visible', v);
+}
+
+// ===== CHART INIT =====
+function initChart() {
+  if (chart) {
+    chart.remove();
+    chart = null;
+    candleSeries = null;
+    volumeSeries = null;
+    indicatorSeries = [];
+  }
+
+  chart = LightweightCharts.createChart(chartContainer, {
+    width:  chartContainer.clientWidth,
+    height: chartContainer.clientHeight,
+    layout: {
+      background: { color: '#0d1117' },
+      textColor:  '#8b949e',
+    },
+    grid: {
+      vertLines:  { color: '#21262d' },
+      horzLines:  { color: '#21262d' },
+    },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    rightPriceScale: {
+      borderColor: '#30363d',
+      scaleMargins: { top: 0.05, bottom: 0.20 },
+    },
+    timeScale: {
+      borderColor: '#30363d',
+      timeVisible: currentInterval === '1h' || currentInterval === '1m',
+      secondsVisible: false,
+    },
+  });
+
+  candleSeries = chart.addCandlestickSeries({
+    upColor:          '#3fb950',
+    downColor:        '#f85149',
+    borderVisible:    false,
+    wickUpColor:      '#3fb950',
+    wickDownColor:    '#f85149',
+  });
+
+  volumeSeries = chart.addHistogramSeries({
+    priceFormat:    { type: 'volume' },
+    priceScaleId:   'volume',
+    color:          '#58a6ff',
+    scaleMargins:   { top: 0.85, bottom: 0 },
+  });
+
+  chart.priceScale('volume').applyOptions({
+    scaleMargins: { top: 0.85, bottom: 0 },
+  });
+
+  const ro = new ResizeObserver(() => {
+    if (chart) {
+      chart.applyOptions({
+        width:  chartContainer.clientWidth,
+        height: chartContainer.clientHeight,
+      });
+    }
+  });
+  ro.observe(chartContainer);
+}
+
+// ===== CLEAR INDICATORS =====
+function clearIndicators() {
+  for (const s of indicatorSeries) {
+    try { chart.removeSeries(s); } catch(e) {}
+  }
+  indicatorSeries = [];
+}
+
+// ===== INDICATOR CALCULATIONS =====
+function calcMA(closes, period) {
+  const result = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period - 1) { result.push(null); continue; }
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += closes[j];
+    result.push(sum / period);
+  }
+  return result;
+}
+
+function calcBollinger(closes, period = 20, mult = 2) {
+  const upper = [], middle = [], lower = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period - 1) { upper.push(null); middle.push(null); lower.push(null); continue; }
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += closes[j];
+    const mean = sum / period;
+    let varSum = 0;
+    for (let j = i - period + 1; j <= i; j++) varSum += (closes[j] - mean) ** 2;
+    const sd = Math.sqrt(varSum / period);
+    upper.push(mean + mult * sd);
+    middle.push(mean);
+    lower.push(mean - mult * sd);
+  }
+  return { upper, middle, lower };
+}
+
+function calcIchimoku(highs, lows, closes, times, isDate) {
+  const N = closes.length;
+  const tenkan = new Array(N).fill(null);
+  const kijun  = new Array(N).fill(null);
+  const spanA  = [];
+  const spanB  = [];
+  const chikou = new Array(N).fill(null);
+
+  // Tenkan (9)
+  for (let i = 8; i < N; i++) {
+    const hi = Math.max(...highs.slice(i - 8, i + 1));
+    const lo = Math.min(...lows.slice(i - 8, i + 1));
+    tenkan[i] = (hi + lo) / 2;
+  }
+
+  // Kijun (26)
+  for (let i = 25; i < N; i++) {
+    const hi = Math.max(...highs.slice(i - 25, i + 1));
+    const lo = Math.min(...lows.slice(i - 25, i + 1));
+    kijun[i] = (hi + lo) / 2;
+  }
+
+  // Future time helper
+  function futureTime(baseTime, steps) {
+    if (isDate) {
+      let d = new Date(baseTime + 'T00:00:00Z');
+      let added = 0;
+      while (added < steps) {
+        d.setUTCDate(d.getUTCDate() + 1);
+        const dow = d.getUTCDay();
+        if (dow !== 0 && dow !== 6) added++;
+      }
+      return d.toISOString().slice(0, 10);
+    } else {
+      // avg interval
+      let avgInterval = 3600;
+      if (N > 1) avgInterval = (times[N - 1] - times[0]) / (N - 1);
+      return baseTime + steps * avgInterval;
+    }
+  }
+
+  // spanA & spanB are plotted 26 periods into the future relative to their calc index
+  // We need to extend the times array for future dates
+  // Build extended times
+  const extTimes = [...times];
+  for (let step = 1; step <= 52; step++) {
+    extTimes.push(futureTime(times[N - 1], step));
+  }
+
+  // Initialize spanA/spanB arrays covering N + 52 slots
+  const spanAArr = new Array(N + 52).fill(null);
+  const spanBArr = new Array(N + 52).fill(null);
+
+  for (let i = 25; i < N; i++) {
+    if (tenkan[i] !== null && kijun[i] !== null) {
+      spanAArr[i + 26] = (tenkan[i] + kijun[i]) / 2;
+    }
+  }
+
+  for (let i = 51; i < N; i++) {
+    const hi = Math.max(...highs.slice(i - 51, i + 1));
+    const lo = Math.min(...lows.slice(i - 51, i + 1));
+    spanBArr[i + 26] = (hi + lo) / 2;
+  }
+
+  // Chikou (close shifted 26 back)
+  for (let i = 26; i < N; i++) {
+    chikou[i - 26] = closes[i];
+  }
+
+  return { tenkan, kijun, spanAArr, spanBArr, chikou, extTimes };
+}
+
+// ===== APPLY INDICATORS =====
+function applyIndicators() {
+  clearIndicators();
+  if (!candleData.length) return;
+
+  const closes = candleData.map(d => d.close);
+  const highs   = candleData.map(d => d.high);
+  const lows    = candleData.map(d => d.low);
+  const times   = candleData.map(d => d.time);
+  const isDate  = typeof times[0] === 'string';
+
+  function makePoints(vals, idx = null) {
+    const arr = idx !== null ? idx : times;
+    return vals.map((v, i) => v !== null ? { time: arr[i], value: v } : null).filter(Boolean);
+  }
+
+  // ===== MA =====
+  if (document.getElementById('chkMA').checked) {
+    const configs = [
+      { period: 5,  color: '#f59e0b' },
+      { period: 25, color: '#ef4444' },
+      { period: 75, color: '#3b82f6' },
+    ];
+    for (const { period, color } of configs) {
+      const ma = calcMA(closes, period);
+      const s = chart.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+      s.setData(makePoints(ma));
+      indicatorSeries.push(s);
+    }
+  }
+
+  // ===== Bollinger Bands =====
+  if (document.getElementById('chkBB').checked) {
+    const { upper, middle, lower } = calcBollinger(closes);
+    const bbColor = '#a855f7';
+
+    const sUpper = chart.addLineSeries({ color: bbColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    sUpper.setData(makePoints(upper));
+    indicatorSeries.push(sUpper);
+
+    const sMid = chart.addLineSeries({ color: bbColor, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+    sMid.setData(makePoints(middle));
+    indicatorSeries.push(sMid);
+
+    const sLower = chart.addLineSeries({ color: bbColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    sLower.setData(makePoints(lower));
+    indicatorSeries.push(sLower);
+  }
+
+  // ===== Ichimoku =====
+  if (document.getElementById('chkIchi').checked) {
+    const { tenkan, kijun, spanAArr, spanBArr, chikou, extTimes } = calcIchimoku(highs, lows, closes, times, isDate);
+
+    const sTenkan = chart.addLineSeries({ color: '#e11d48', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    sTenkan.setData(makePoints(tenkan));
+    indicatorSeries.push(sTenkan);
+
+    const sKijun = chart.addLineSeries({ color: '#2563eb', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    sKijun.setData(makePoints(kijun));
+    indicatorSeries.push(sKijun);
+
+    const sSpanA = chart.addLineSeries({ color: '#16a34a', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+    sSpanA.setData(makePoints(spanAArr, extTimes));
+    indicatorSeries.push(sSpanA);
+
+    const sSpanB = chart.addLineSeries({ color: '#ea580c', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+    sSpanB.setData(makePoints(spanBArr, extTimes));
+    indicatorSeries.push(sSpanB);
+
+    const sChikou = chart.addLineSeries({ color: '#7c3aed', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    sChikou.setData(makePoints(chikou));
+    indicatorSeries.push(sChikou);
+  }
+}
+
+// ===== MARKERS =====
+function getMarkerTime(dateStr) {
+  // dateStr is like "2024-03-15"
+  if (!candleData.length) return null;
+  const isDate = typeof candleData[0].time === 'string';
+
+  if (isDate) {
+    // Find exact or closest date
+    const exact = candleData.find(d => d.time === dateStr);
+    if (exact) return exact.time;
+    // Find nearest
+    let best = null, bestDiff = Infinity;
+    for (const d of candleData) {
+      const diff = Math.abs(new Date(d.time) - new Date(dateStr));
+      if (diff < bestDiff) { bestDiff = diff; best = d.time; }
+    }
+    return best;
+  } else {
+    // Timestamps: find candle where the trade date falls in JST
+    const tradeDate = new Date(dateStr + 'T00:00:00+09:00');
+    const startUTC = tradeDate.getTime() / 1000;  // midnight JST in UTC seconds
+    const endUTC   = startUTC + 86400;
+
+    // candleData times are already shifted by +9h (JST display)
+    // so the "display" timestamp = UTC + 9*3600
+    // Thus, we look for candle.time >= startUTC+9*3600 and < endUTC+9*3600
+    const jstOffset = 9 * 3600;
+    const jstStart = startUTC + jstOffset;
+    const jstEnd   = endUTC   + jstOffset;
+
+    const inDay = candleData.filter(d => d.time >= jstStart && d.time < jstEnd);
+    if (inDay.length) return inDay[0].time;
+
+    // fallback: nearest
+    let best = null, bestDiff = Infinity;
+    const mid = (jstStart + jstEnd) / 2;
+    for (const d of candleData) {
+      const diff = Math.abs(d.time - mid);
+      if (diff < bestDiff) { bestDiff = diff; best = d.time; }
+    }
+    return best;
+  }
+}
+
+function applyMarkers() {
+  if (!candleSeries) return;
+  const sym = currentSymbol;
+  const stockTrades = trades[sym] || [];
+  if (!stockTrades.length) { candleSeries.setMarkers([]); return; }
+
+  const markerMap = {};
+  for (const t of stockTrades) {
+    const mTime = getMarkerTime(t.date);
+    if (mTime === null) continue;
+    const key = String(mTime) + '_' + t.side;
+    if (!markerMap[key]) {
+      markerMap[key] = {
+        time:     mTime,
+        position: t.side === 'buy' ? 'belowBar' : 'aboveBar',
+        color:    t.side === 'buy' ? '#3fb950' : '#f85149',
+        shape:    t.side === 'buy' ? 'arrowUp'  : 'arrowDown',
+        text:     (t.side === 'buy' ? '買' : '売') + ` ¥${fmtNum(t.price)} ×${t.qty}`,
+        size:     1,
+      };
+    }
+  }
+
+  const markers = Object.values(markerMap).sort((a, b) => {
+    if (typeof a.time === 'string') return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
+    return a.time - b.time;
+  });
+
+  candleSeries.setMarkers(markers);
+}
+
+// ===== SCROLL TO TRADES =====
+function scrollToTrades() {
+  if (!chart || !candleData.length) return;
+  const sym = currentSymbol;
+  const stockTrades = trades[sym] || [];
+  if (!stockTrades.length) return;
+
+  const isDate = typeof candleData[0].time === 'string';
+  const dates = stockTrades.map(t => t.date).sort();
+  const firstDate = dates[0];
+  const lastDate  = dates[dates.length - 1];
+
+  if (isDate) {
+    const d1 = new Date(firstDate);
+    d1.setDate(d1.getDate() - 90);
+    const d2 = new Date(lastDate);
+    d2.setDate(d2.getDate() + 30);
+    const from = d1.toISOString().slice(0, 10);
+    const to   = d2.toISOString().slice(0, 10);
+    try {
+      chart.timeScale().setVisibleRange({ from, to });
+    } catch(e) {}
+  } else {
+    const firstTs = new Date(firstDate + 'T00:00:00+09:00').getTime() / 1000 + 9 * 3600;
+    const lastTs  = new Date(lastDate  + 'T00:00:00+09:00').getTime() / 1000 + 9 * 3600;
+    const from = firstTs - 90 * 86400;
+    const to   = lastTs  + 30 * 86400;
+    try {
+      chart.timeScale().setVisibleRange({ from, to });
+    } catch(e) {}
+  }
+}
+
+// ===== LOAD CHART =====
+async function loadChart() {
+  if (!currentSymbol) return;
+  setLoading(true);
+  noDataMsg.style.display = 'none';
+
+  try {
+    const interval = TF_INTERVAL[currentInterval];
+    const url = `${API}/candles?symbol=${encodeURIComponent(currentSymbol)}&interval=${interval}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    if (!data || !data.length) {
+      noDataMsg.style.display = 'flex';
+      setLoading(false);
+      return;
+    }
+
+    candleData = data;
+
+    // Update chart time scale
+    chart.applyOptions({
+      timeScale: {
+        timeVisible: interval === '1h' || interval === '1m',
+        secondsVisible: false,
+      },
+    });
+
+    // Set candle data
+    candleSeries.setData(candleData.map(d => ({
+      time:  d.time,
+      open:  d.open,
+      high:  d.high,
+      low:   d.low,
+      close: d.close,
+    })));
+
+    // Volume
+    volumeSeries.setData(candleData.map(d => ({
+      time:  d.time,
+      value: d.volume,
+      color: d.close >= d.open ? 'rgba(63,185,80,0.4)' : 'rgba(248,81,73,0.4)',
+    })));
+
+    applyIndicators();
+    applyMarkers();
+    scrollToTrades();
+
+  } catch (err) {
+    console.error(err);
+    noDataMsg.style.display = 'flex';
+    alert(`チャートデータの取得に失敗しました。\nバックエンドサーバーを起動してください:\n\ncd stock-backend && uvicorn main:app --port 8020\n\n${err.message}`);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ===== FORMAT HELPERS =====
+function fmtNum(n) {
+  return Math.abs(n).toLocaleString();
+}
+function fmtPnl(n) {
+  const sign = n >= 0 ? '+' : '-';
+  return `${sign}¥${Math.abs(n).toLocaleString()}`;
+}
+
+// ===== RENDER SIDEBAR =====
+function renderPnl() {
+  const codes = Object.keys(trades);
+  if (!codes.length) {
+    pnlBody.innerHTML = '<div class="empty-msg">CSVをインポートしてください</div>';
+    totalPnlEl.textContent = '';
+    return;
+  }
+
+  let totalPnl = 0;
+  const rows = [];
+
+  for (const code of codes) {
+    const ts = trades[code];
+    const name = stockNames[code] || code;
+
+    let buyCost = 0;
+    let sellRevenue = 0;
+
+    for (const t of ts) {
+      if (t.side === 'buy') {
+        buyCost += t.qty * t.price + Math.abs(t.commission + t.tax);
+      } else {
+        sellRevenue += t.settlement;
+      }
+    }
+
+    const pnl = sellRevenue - buyCost;
+    totalPnl += pnl;
+
+    rows.push({ code, name, pnl });
+  }
+
+  totalPnlEl.textContent = fmtPnl(totalPnl);
+  totalPnlEl.className = 'total-pnl ' + (totalPnl >= 0 ? 'green' : 'red');
+
+  pnlBody.innerHTML = '';
+  const table = document.createElement('table');
+  table.className = 'pnl-table';
+
+  for (const { code, name, pnl } of rows) {
+    const tr = document.createElement('tr');
+    if (code === currentSymbol) tr.classList.add('selected');
+    tr.innerHTML = `
+      <td>
+        <div class="td-name">${esc(name)}</div>
+        <div class="td-code">${esc(code)}</div>
+      </td>
+      <td class="td-pnl ${pnl >= 0 ? 'green' : 'red'}">${fmtPnl(pnl)}</td>
+    `;
+    tr.addEventListener('click', () => selectSymbol(code));
+    table.appendChild(tr);
+  }
+
+  pnlBody.appendChild(table);
+}
+
+function renderTrades() {
+  const sym = currentSymbol;
+  const ts = trades[sym] || [];
+
+  if (!ts.length) {
+    tradeBody.innerHTML = '<div class="empty-msg">この銘柄の取引なし</div>';
+    return;
+  }
+
+  tradeBody.innerHTML = '';
+  const sorted = [...ts].sort((a, b) => a.date < b.date ? -1 : 1);
+
+  for (const t of sorted) {
+    const div = document.createElement('div');
+    div.className = 'trade-item';
+    const settlStr = t.side === 'sell'
+      ? `<span style="color:${t.settlement >= 0 ? 'var(--green)' : 'var(--red)'}">¥${t.settlement.toLocaleString()}</span>`
+      : '';
+    div.innerHTML = `
+      <span class="trade-date">${esc(t.date)}</span>
+      <span class="trade-side ${t.side === 'buy' ? 'buy' : 'sell'}">${t.side === 'buy' ? '買' : '売'}</span>
+      <span class="trade-detail">¥${fmtNum(t.price)} × ${t.qty}株</span>
+      <span class="trade-settlement">${settlStr}</span>
+    `;
+    tradeBody.appendChild(div);
+  }
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ===== SELECT SYMBOL =====
+function selectSymbol(code) {
+  currentSymbol = code;
+  stockSelect.value = code;
+  renderPnl();
+  renderTrades();
+  loadChart();
+}
+
+// ===== STOCK SELECTOR =====
+function rebuildStockSelect() {
+  const codes = Object.keys(trades);
+  stockSelect.innerHTML = '<option value="">— 銘柄を選択 —</option>';
+  for (const code of codes) {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = `${stockNames[code] || code} (${code})`;
+    stockSelect.appendChild(opt);
+  }
+}
+
+stockSelect.addEventListener('change', () => {
+  const code = stockSelect.value;
+  if (code) selectSymbol(code);
+});
+
+// ===== TIMEFRAME BUTTONS =====
+document.querySelectorAll('.tf-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentInterval = btn.dataset.tf;
+    loadChart();
+  });
+});
+
+// ===== INDICATOR CHECKBOXES =====
+['chkMA', 'chkIchi', 'chkBB'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    applyIndicators();
+  });
+});
+
+// ===== CSV PARSING =====
+function parseNum(s) {
+  if (s === null || s === undefined || s === '') return 0;
+  return parseFloat(String(s).replace(/[,¥\s]/g, '')) || 0;
+}
+
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/);
+  if (!lines.length) return null;
+
+  // Find header row (first 10 lines)
+  let headerIdx = -1;
+  for (let i = 0; i < Math.min(10, lines.length); i++) {
+    if (lines[i].includes('約定日') || lines[i].includes('銘柄コード')) {
+      headerIdx = i;
+      break;
+    }
+  }
+  if (headerIdx === -1) return null;
+
+  const headers = splitCSVLine(lines[headerIdx]);
+
+  // Column matching
+  function findCol(partial) {
+    return headers.findIndex(h => h.includes(partial));
+  }
+
+  const colDate       = findCol('約定日');
+  const colCode       = findCol('銘柄コード');
+  const colName       = findCol('銘柄名');
+  const colSide       = findCol('売買区分');
+  const colQty        = findCol('数量');
+  const colPrice      = findCol('単価');
+  const colComm       = findCol('手数料');
+  const colTax        = findCol('税金');
+  const colSettlement = findCol('受渡金額');
+
+  if (colDate === -1 || colCode === -1 || colSide === -1) return null;
+
+  const results = [];
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const cols = splitCSVLine(line);
+    const rawDate  = colDate !== -1  ? cols[colDate]  || '' : '';
+    const rawCode  = colCode !== -1  ? cols[colCode]  || '' : '';
+    const rawName  = colName !== -1  ? cols[colName]  || '' : '';
+    const rawSide  = colSide !== -1  ? cols[colSide]  || '' : '';
+    const rawQty   = colQty  !== -1  ? cols[colQty]   || '' : '';
+    const rawPrice = colPrice !== -1 ? cols[colPrice] || '' : '';
+    const rawComm  = colComm !== -1  ? cols[colComm]  || '' : '';
+    const rawTax   = colTax  !== -1  ? cols[colTax]   || '' : '';
+    const rawSettl = colSettlement !== -1 ? cols[colSettlement] || '' : '';
+
+    const code = rawCode.trim();
+    if (!code) continue;
+
+    // Date: replace / with -, take first 10 chars
+    const date = rawDate.replace(/\//g, '-').slice(0, 10);
+
+    // Side
+    let side = '';
+    if (rawSide.includes('買')) side = 'buy';
+    else if (rawSide.includes('売')) side = 'sell';
+    else continue;
+
+    const qty        = parseNum(rawQty);
+    const price      = parseNum(rawPrice);
+    const commission = parseNum(rawComm);
+    const tax        = parseNum(rawTax);
+    const settlement = parseNum(rawSettl);
+    const name       = rawName.trim();
+
+    if (!date || !qty || !price) continue;
+
+    results.push({ date, code, name, side, qty, price, commission, tax, settlement });
+  }
+
+  return results;
+}
+
+function splitCSVLine(line) {
+  const result = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (c === ',' && !inQ) {
+      result.push(cur.trim());
+      cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+// ===== AGGREGATION =====
+function aggregateTrades(rawList) {
+  // Group by code + date + side
+  const groups = {};
+  for (const t of rawList) {
+    const key = `${t.code}__${t.date}__${t.side}`;
+    if (!groups[key]) {
+      groups[key] = { ...t, totalValue: t.qty * t.price, totalQty: t.qty,
+                      totalComm: t.commission, totalTax: t.tax, totalSettl: t.settlement };
+    } else {
+      const g = groups[key];
+      g.totalValue   += t.qty * t.price;
+      g.totalQty     += t.qty;
+      g.totalComm    += t.commission;
+      g.totalTax     += t.tax;
+      g.totalSettl   += t.settlement;
+    }
+  }
+
+  const result = {};
+  const names  = {};
+
+  for (const g of Object.values(groups)) {
+    const avgPrice = g.totalQty > 0 ? g.totalValue / g.totalQty : 0;
+    const trade = {
+      date:       g.date,
+      code:       g.code,
+      name:       g.name,
+      side:       g.side,
+      qty:        g.totalQty,
+      price:      Math.round(avgPrice * 10) / 10,
+      commission: g.totalComm,
+      tax:        g.totalTax,
+      settlement: g.totalSettl,
+    };
+
+    if (!result[g.code]) result[g.code] = [];
+    result[g.code].push(trade);
+    if (g.name) names[g.code] = g.name;
+  }
+
+  return { result, names };
+}
+
+// ===== PROCESS CSV BYTES =====
+async function processCSVBuffer(buffer) {
+  let text;
+  try {
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    text = decoder.decode(buffer);
+  } catch (e) {
+    try {
+      const decoder = new TextDecoder('shift-jis');
+      text = decoder.decode(buffer);
+    } catch (e2) {
+      const decoder = new TextDecoder('utf-8', { fatal: false });
+      text = decoder.decode(buffer);
+    }
+  }
+  return text;
+}
+
+async function importCSV(files) {
+  let allRaw = [];
+
+  for (const file of files) {
+    const buffer = await file.arrayBuffer();
+    const text   = await processCSVBuffer(buffer);
+    const parsed = parseCSV(text);
+    if (!parsed) {
+      alert(`${file.name}: CSVの解析に失敗しました。ヘッダー行（約定日・銘柄コード等）が見つかりません。`);
+      continue;
+    }
+    allRaw = allRaw.concat(parsed);
+  }
+
+  if (!allRaw.length) return;
+
+  const { result, names } = aggregateTrades(allRaw);
+
+  // Merge with existing
+  for (const [code, ts] of Object.entries(result)) {
+    if (!trades[code]) {
+      trades[code] = ts;
+    } else {
+      // Re-aggregate
+      const merged = [...trades[code], ...ts];
+      const { result: r2, names: n2 } = aggregateTrades(merged);
+      trades[code] = r2[code] || merged;
+    }
+  }
+  Object.assign(stockNames, names);
+
+  rebuildStockSelect();
+  renderPnl();
+
+  // Auto-select first stock
+  const codes = Object.keys(trades);
+  if (codes.length && !currentSymbol) {
+    selectSymbol(codes[0]);
+  } else {
+    renderTrades();
+  }
+}
+
+// ===== CSV INPUT =====
+csvInput.addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+  if (files.length) await importCSV(files);
+  csvInput.value = '';
+});
+
+// ===== DRAG AND DROP =====
+const dragOverlay = document.getElementById('dragOverlay');
+
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dragOverlay.classList.add('active');
+});
+
+document.addEventListener('dragleave', (e) => {
+  if (!e.relatedTarget || e.relatedTarget === document.documentElement) {
+    dragOverlay.classList.remove('active');
+  }
+});
+
+document.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  dragOverlay.classList.remove('active');
+  const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.csv'));
+  if (files.length) await importCSV(files);
+});
+
+// ===== INIT =====
+initChart();
+noDataMsg.style.display = 'flex';
+</script>
+</body>
+</html>
