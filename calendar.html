@@ -178,11 +178,12 @@
       background: white;
       border-radius: 12px;
       box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-      padding: 14px 24px;
+      padding: 10px 24px;
       margin-bottom: 16px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
+      position: relative;
     }
 
     .nav button {
@@ -198,12 +199,34 @@
 
     .nav button:hover { background: #f5f5f5; }
 
+    .nav-center {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
     .nav h2 {
       font-size: 20px;
       color: #1a1a2e;
-      min-width: 180px;
-      text-align: center;
+      white-space: nowrap;
     }
+
+    .nav-list-btn {
+      position: absolute;
+      right: 24px;
+      font-size: 13px;
+      color: #27ae60;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 7px 16px;
+      border: 1.5px solid #27ae60;
+      border-radius: 20px;
+      transition: all 0.15s;
+      white-space: nowrap;
+      letter-spacing: 0.03em;
+    }
+
+    .nav-list-btn:hover { background: #27ae60; color: white; }
 
     /* カレンダーグリッド */
     .calendar {
@@ -745,7 +768,7 @@
       .holiday-label { font-size: 8px; }
       .more-events { font-size: 10px; padding: 0 2px; }
       .nav { padding: 10px 12px; }
-      .nav h2 { font-size: 15px; min-width: 120px; }
+      .nav h2 { font-size: 15px; }
       .nav button { padding: 6px 14px; font-size: 18px; }
       .header { padding: 14px 16px; }
       .header h1 { font-size: 18px; }
@@ -765,7 +788,7 @@
       .event-chip { font-size: 9px; padding: 1px 3px; }
       .chip-title { font-size: 9px; }
       .weekday { font-size: 10px; padding: 7px 0; }
-      .nav h2 { font-size: 14px; min-width: 110px; }
+      .nav h2 { font-size: 14px; }
       .header h1 { font-size: 15px; }
       .user-section label { display: none; }
     }
@@ -794,9 +817,12 @@
 
   <!-- 月ナビゲーション -->
   <div class="nav">
-    <button id="prevMonth">‹</button>
-    <h2 id="monthLabel"></h2>
-    <button id="nextMonth">›</button>
+    <div class="nav-center">
+      <button id="prevMonth">‹</button>
+      <h2 id="monthLabel"></h2>
+      <button id="nextMonth">›</button>
+    </div>
+    <a href="/events.html" class="nav-list-btn">📋 一覧</a>
   </div>
 
   <!-- カレンダー（今月） -->
