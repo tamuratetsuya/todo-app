@@ -1332,14 +1332,39 @@ function showSuggestions(query) {
   });
 }
 
+let historyEvents = [];
+
+async function loadHistoryEvents() {
+  const now = new Date();
+  const results = [];
+  for (let i = 1; i <= 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear(), m = d.getMonth() + 1;
+    try {
+      const res = await fetch(`${API}/events?year=${y}&month=${m}`);
+      const evs = await res.json();
+      results.push(...evs);
+    } catch {}
+  }
+  historyEvents = results;
+}
+
 function fillDescFromTitle(title) {
   if (!title || title === FIXED_SUGGESTION || editingEventId) return;
-  const matched = events
-    .filter(ev => ev.title === title && ev.description)
-    .sort((a, b) => new Date(b.created_at || b.date) - new Date(a.created_at || a.date));
-  if (matched.length > 0) {
-    const desc = document.getElementById('eventDesc');
-    if (!desc.value) desc.value = matched[0].description;
+  const selectedDate = document.getElementById('eventDate').value;
+  const all = [...events, ...historyEvents];
+  const matched = all
+    .filter(ev => ev.title === title && (!selectedDate || ev.date < selectedDate))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (matched.length === 0) return;
+  const latest = matched[0];
+  const desc = document.getElementById('eventDesc');
+  if (!desc.value && latest.description) desc.value = latest.description;
+  if (latest.start_time && !document.getElementById('eventStartH').value) {
+    setTimeValue('eventStart', latest.start_time);
+  }
+  if (latest.end_time && !document.getElementById('eventEndH').value) {
+    setTimeValue('eventEnd', latest.end_time);
   }
 }
 
@@ -1586,6 +1611,7 @@ function renderSubCalendar(idx, year, month, evs) {
 // ========== 起動 ==========
 init();
 loadSubCalendars();
+loadHistoryEvents();
 </script>
 </body>
 </html>
