@@ -1332,13 +1332,34 @@ function showSuggestions(query) {
   });
 }
 
+function fillDescFromTitle(title) {
+  if (!title || title === FIXED_SUGGESTION || editingEventId) return;
+  const matched = events
+    .filter(ev => ev.title === title && ev.description)
+    .sort((a, b) => new Date(b.created_at || b.date) - new Date(a.created_at || a.date));
+  if (matched.length > 0) {
+    const desc = document.getElementById('eventDesc');
+    if (!desc.value) desc.value = matched[0].description;
+  }
+}
+
 function initTitleSuggest() {
   const input = document.getElementById('eventTitle');
   const box = document.getElementById('titleSuggestions');
 
   input.addEventListener('focus', () => showSuggestions(input.value));
   input.addEventListener('input', () => showSuggestions(input.value));
-  input.addEventListener('blur', () => setTimeout(() => box.classList.remove('open'), 150));
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      box.classList.remove('open');
+      fillDescFromTitle(input.value.trim());
+    }, 150);
+  });
+
+  box.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('.title-suggestion-item');
+    if (item) fillDescFromTitle(item.dataset.val);
+  });
 }
 initTitleSuggest();
 
