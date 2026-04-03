@@ -216,7 +216,14 @@ def create_event(body: EventCreate):
             (body.title, body.date, body.start_time, body.end_time, body.description, body.user_name, body.color),
         )
         conn.commit()
-        cur.execute("SELECT * FROM events WHERE id = LAST_INSERT_ID()")
+        event_id = cur.lastrowid
+        if body.user_name.lower() != "tamura":
+            cur.execute(
+                "INSERT IGNORE INTO participants (event_id, user_name, status) VALUES (%s, %s, 'join')",
+                (event_id, body.user_name),
+            )
+            conn.commit()
+        cur.execute("SELECT * FROM events WHERE id = %s", (event_id,))
         row = cur.fetchone()
     conn.close()
     row["date"] = row["date"].isoformat()
