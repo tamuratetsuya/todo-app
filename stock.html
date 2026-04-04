@@ -199,7 +199,7 @@
 
   .sidebar-section:first-child {
     flex: 0 0 auto;
-    max-height: 50%;
+    max-height: 40%;
     border-bottom: 1px solid var(--border);
   }
 
@@ -207,6 +207,95 @@
     flex: 1;
     overflow: hidden;
   }
+
+  /* ===== AI ANALYSIS PANEL ===== */
+  .analysis-panel {
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    display: none;
+    flex-direction: column;
+    max-height: 260px;
+  }
+  .analysis-panel.visible { display: flex; }
+
+  .analysis-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .analysis-header-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .analysis-header-title svg { color: var(--blue); }
+
+  .analysis-close {
+    background: none;
+    border: none;
+    color: var(--text2);
+    cursor: pointer;
+    padding: 2px;
+    line-height: 1;
+  }
+  .analysis-close:hover { color: var(--text); }
+
+  .analysis-body {
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+    flex: 1;
+  }
+  .analysis-body h3 {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--blue);
+    margin: 12px 0 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .analysis-body h3:first-child { margin-top: 0; }
+  .analysis-body p { margin: 0 0 8px; color: var(--text); }
+  .analysis-body ul { margin: 0 0 8px; padding-left: 18px; }
+  .analysis-body li { margin-bottom: 4px; color: var(--text); }
+  .analysis-body strong { color: var(--green); }
+  .analysis-body em { color: var(--red); font-style: normal; }
+
+  .analysis-spinner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text2);
+    font-size: 13px;
+  }
+
+  #analyzeBtn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #1f6feb, #7c3aed);
+    border: none;
+    color: #fff;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+  }
+  #analyzeBtn:hover { opacity: 0.85; }
+  #analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .section-title {
     font-size: 11px;
@@ -432,6 +521,16 @@
     <div class="spinner"></div>
     読み込み中...
   </div>
+
+  <div style="margin-left:auto;">
+    <button id="analyzeBtn" onclick="runAnalysis()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M12 8v4l3 3"></path>
+      </svg>
+      AI分析
+    </button>
+  </div>
 </header>
 
 <div class="main">
@@ -466,6 +565,24 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- AI分析パネル -->
+<div class="analysis-panel" id="analysisPanel">
+  <div class="analysis-header">
+    <div class="analysis-header-title">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path>
+      </svg>
+      AI トレード分析
+    </div>
+    <button class="analysis-close" onclick="closeAnalysis()" title="閉じる">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+  </div>
+  <div class="analysis-body" id="analysisBody"></div>
 </div>
 
 <div id="dragOverlay">CSVファイルをドロップ</div>
@@ -1401,6 +1518,50 @@ document.addEventListener('drop', async (e) => {
 // ===== INIT =====
 initChart();
 noDataMsg.style.display = 'flex';
+
+// ===== AI ANALYSIS =====
+const analysisPanel = document.getElementById('analysisPanel');
+const analysisBody  = document.getElementById('analysisBody');
+
+function closeAnalysis() {
+  analysisPanel.classList.remove('visible');
+}
+
+async function runAnalysis() {
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  analysisPanel.classList.add('visible');
+  analysisBody.innerHTML = '<div class="analysis-spinner"><div class="spinner"></div>AIが分析中です...</div>';
+
+  try {
+    const res = await fetch(`${API}/analyze`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    // マークダウン風テキストをHTMLに変換
+    analysisBody.innerHTML = markdownToHtml(data.analysis);
+  } catch (e) {
+    analysisBody.innerHTML = `<p style="color:var(--red)">分析に失敗しました: ${e.message}</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function markdownToHtml(text) {
+  return text
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^# (.+)$/gm, '<h3>$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^[-・] (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/^(?!<[hul])/gm, '')
+    .split('\n').map(line => {
+      if (line.startsWith('<h3>') || line.startsWith('<ul>') || line.startsWith('<li>') || line === '') return line;
+      return line ? `<p>${line}</p>` : '';
+    }).join('');
+}
 
 // ===== RESTORE FROM RDS =====
 (async function restoreFromDB() {

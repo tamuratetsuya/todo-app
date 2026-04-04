@@ -6,7 +6,10 @@ import yfinance as yf
 import pandas as pd
 import pymysql
 import os
+from collections import defaultdict
 from dotenv import load_dotenv
+import boto3
+import json
 
 load_dotenv()
 
@@ -210,6 +213,122 @@ def load_candles_from_db(conn, symbol: str, interval: str) -> list:
             "volume": r["volume"],
         })
     return result
+
+
+@app.get("/analyze")
+def analyze_trades():
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT trade_date, code, name, side, qty, price, settlement FROM trades ORDER BY trade_date")
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        return {"analysis": "トレードデータがありません。CSVをインポートしてください。"}
+
+    # Group by code and compute P&L
+    by_code = defaultdict(list)
+    for r in rows:
+        by_code[r['code']].append(r)
+
+    winners = []
+    losers  = []
+    holding = []
+
+    for code, ts in by_code.items():
+        name = ts[0]['name']
+        buy_settl  = sum(t['settlement'] for t in ts if t['side'] == 'buy')
+        sell_settl = sum(t['settlement'] for t in ts if t['side'] == 'sell')
+        buy_qty    = sum(t['qty']        for t in ts if t['side'] == 'buy')
+        sell_qty   = sum(t['qty']        for t in ts if t['side'] == 'sell')
+        buy_trades  = [t for t in ts if t['side'] == 'buy']
+        sell_trades = [t for t in ts if t['side'] == 'sell']
+
+        if sell_qty == 0:
+            holding.append(name)
+            continue
+
+        cost_basis = buy_settl * (sell_qty / buy_qty) if buy_qty > 0 else 0
+        pnl = sell_settl - cost_basis
+
+        avg_buy_price  = sum(t['price'] * t['qty'] for t in buy_trades)  / buy_qty  if buy_qty  > 0 else 0
+        avg_sell_price = sum(t['price'] * t['qty'] for t in sell_trades) / sell_qty if sell_qty > 0 else 0
+
+        buy_dates  = sorted(t['trade_date'] for t in buy_trades)
+        sell_dates = sorted(t['trade_date'] for t in sell_trades)
+
+        # Hold period (first buy → last sell)
+        try:
+            from datetime import datetime
+            first_buy  = datetime.strptime(str(buy_dates[0])[:10],  '%Y-%m-%d')
+            last_sell  = datetime.strptime(str(sell_dates[-1])[:10], '%Y-%m-%d')
+            hold_days  = (last_sell - first_buy).days
+        except Exception:
+            hold_days = None
+
+        entry = {
+            "name": name,
+            "code": code,
+            "pnl": round(pnl),
+            "pnl_pct": round(pnl / cost_basis * 100, 1) if cost_basis else 0,
+            "avg_buy_price": round(avg_buy_price, 1),
+            "avg_sell_price": round(avg_sell_price, 1),
+            "buy_count": len(buy_trades),
+            "sell_count": len(sell_trades),
+            "hold_days": hold_days,
+            "first_buy": str(buy_dates[0])[:10],
+            "last_sell": str(sell_dates[-1])[:10],
+        }
+        if pnl >= 0:
+            winners.append(entry)
+        else:
+            losers.append(entry)
+
+    winners.sort(key=lambda x: x['pnl'], reverse=True)
+    losers.sort(key=lambda x: x['pnl'])
+
+    def fmt(entries):
+        lines = []
+        for e in entries:
+            hold = f"保有期間{e['hold_days']}日" if e['hold_days'] is not None else ""
+            lines.append(
+                f"- {e['name']}({e['code']}): 損益{e['pnl']:+,}円({e['pnl_pct']:+.1f}%) "
+                f"買均{e['avg_buy_price']:,.0f}円 → 売均{e['avg_sell_price']:,.0f}円 "
+                f"買{e['buy_count']}回/売{e['sell_count']}回 {hold}"
+            )
+        return "\n".join(lines) if lines else "なし"
+
+    prompt = f"""あなたは株式トレード分析の専門家です。以下のトレード履歴を分析し、勝ちトレードと負けトレードの傾向を日本語で教えてください。
+
+## 利益トレード（{len(winners)}件）
+{fmt(winners)}
+
+## 損失トレード（{len(losers)}件）
+{fmt(losers)}
+
+{"## 保有中（未決済）" + chr(10) + chr(10).join(f"- {n}" for n in holding) if holding else ""}
+
+以下の観点で簡潔に分析してください（各項目3〜5行程度）：
+1. 勝ちトレードの共通パターン・特徴
+2. 負けトレードの共通パターン・特徴
+3. 改善のための具体的なアドバイス（2〜3点）"""
+
+    bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
+    body = json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 1500,
+        "messages": [{"role": "user", "content": prompt}]
+    })
+    response = bedrock.invoke_model(
+        modelId="anthropic.claude-3-haiku-20240307-v1:0",
+        body=body,
+        contentType="application/json",
+        accept="application/json"
+    )
+    result = json.loads(response["body"].read())
+    return {"analysis": result["content"][0]["text"]}
 
 
 @app.get("/candles")
