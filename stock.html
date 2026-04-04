@@ -2317,7 +2317,7 @@ function setupSignalTooltip() {
       return;
     }
     const label = nearest.side === 'buy' ? '▲ 買いシグナル' : '▼ 売りシグナル';
-    signalTooltip.textContent = label + '\n' + nearest.reason;
+    signalTooltip.textContent = label + '\n' + (nearest.reason || '');
     signalTooltip.className   = nearest.side === 'buy' ? '' : 'sell';
     const rect = chartContainer.getBoundingClientRect();
     let x = rect.left + param.point.x + 14;
@@ -2368,7 +2368,7 @@ function applySignalMarkers() {
     position: s.side === 'buy' ? 'belowBar' : 'aboveBar',
     color:    s.side === 'buy' ? '#818cf8' : '#c084fc',
     shape:    s.side === 'buy' ? 'arrowUp' : 'arrowDown',
-    text:     s.reason.length > 22 ? s.reason.slice(0, 22) + '…' : s.reason,
+    text:     ((s.reason || '').length > 22 ? (s.reason || '').slice(0, 22) + '…' : (s.reason || '')),
     size:     2,
   }));
   const all = [...realMarkers, ...sigMarkers].sort((a, b) => {
@@ -2436,16 +2436,19 @@ async function runAnalysis() {
   renderViewpoints();
   analysisBody.innerHTML = '<div class="analysis-spinner"><div class="spinner"></div>AIが分析中です...</div>';
 
+  // 分析開始時の銘柄・時間足を記録（await中に変わっても旧銘柄に適用しないため）
+  const analysisSymbol   = currentSymbol;
+  const analysisInterval = TF_INTERVAL[currentInterval];
+
   try {
-    const vpPrompt  = getViewpointsPrompt();
-    const interval  = TF_INTERVAL[currentInterval];
+    const vpPrompt = getViewpointsPrompt();
     const res = await fetch(`${API}/analyze`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         extra_viewpoints: vpPrompt,
-        symbol:   currentSymbol || '',
-        interval: interval,
+        symbol:   analysisSymbol || '',
+        interval: analysisInterval,
       }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2455,45 +2458,57 @@ async function runAnalysis() {
     signalToggleBtn.style.display = 'flex';
     historyBtn.style.display = 'flex';
 
-    // 分析結果から返ってきたAIシグナルをチャート時刻に変換してセット
-    if (currentSymbol && currentAnalysisId && data.signals && data.signals.length) {
-      const isDate = candleData.length && typeof candleData[0].time === 'string';
-      aiSignals = data.signals.map(s => {
-        let t;
-        if (isDate) {
-          // 日足/週足: 日付文字列で最近傍検索
-          const norm = normalizeDateStr(s.time);
-          const exact = candleData.find(c => c.time === norm);
-          if (exact) {
-            t = exact.time;
-          } else {
-            let best = null, bestDiff = Infinity;
-            for (const c of candleData) {
-              const diff = Math.abs(new Date(c.time) - new Date(norm));
-              if (diff < bestDiff) { bestDiff = diff; best = c.time; }
-            }
-            t = best;
-          }
-        } else {
-          t = findNearestCandleTime(s.time);
-        }
-        return t !== null && t !== undefined ? { time: t, side: s.side, price: s.price || 0, reason: s.reason } : null;
-      }).filter(Boolean);
-      aiSignals = dedupeSignals(aiSignals);
+    // 分析中に銘柄が変わっていたらシグナルは適用しない（DBには保存する）
+    const symbolChanged = currentSymbol !== analysisSymbol;
 
-      // DBに保存
+    if (analysisSymbol && currentAnalysisId && data.signals && data.signals.length) {
+      // シグナルのチャート時刻変換（分析時の銘柄のcandleDataを使う）
+      // 銘柄が変わっていたらcandleDataは新銘柄のものなのでDBへの保存のみ行う
+      const signalsForDB = data.signals.map(s => ({
+        time: s.time,  // date文字列のまま保存
+        side: s.side,
+        price: s.price || 0,
+        reason: s.reason || '',
+      }));
+
       await fetch(`${API}/history/signals`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           analysis_id: currentAnalysisId,
-          symbol: currentSymbol,
-          interval,
-          signals: aiSignals,
+          symbol:   analysisSymbol,
+          interval: analysisInterval,
+          signals:  signalsForDB,
         }),
       });
 
-      if (showSignals) applySignalMarkers();
+      // 銘柄が変わっていなければチャートにも反映
+      if (!symbolChanged) {
+        const isDate = candleData.length && typeof candleData[0].time === 'string';
+        aiSignals = dedupeSignals(data.signals.map(s => {
+          let t;
+          if (isDate) {
+            const norm = normalizeDateStr(s.time);
+            const exact = candleData.find(c => c.time === norm);
+            if (exact) {
+              t = exact.time;
+            } else {
+              let best = null, bestDiff = Infinity;
+              for (const c of candleData) {
+                const diff = Math.abs(new Date(c.time) - new Date(norm));
+                if (diff < bestDiff) { bestDiff = diff; best = c.time; }
+              }
+              t = best;
+            }
+          } else {
+            t = findNearestCandleTime(s.time);
+          }
+          return t !== null && t !== undefined
+            ? { time: t, side: s.side, price: s.price || 0, reason: s.reason || '' }
+            : null;
+        }).filter(Boolean));
+        if (showSignals) applySignalMarkers();
+      }
     }
   } catch (e) {
     analysisBody.innerHTML = `<p style="color:var(--red)">分析に失敗しました: ${e.message}</p>`;
