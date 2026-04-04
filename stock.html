@@ -2302,9 +2302,9 @@ function applySignalMarkers() {
     time:     s.time,
     position: s.side === 'buy' ? 'belowBar' : 'aboveBar',
     color:    s.side === 'buy' ? '#818cf8' : '#c084fc',
-    shape:    'circle',
-    text:     (s.side === 'buy' ? '▲' : '▼') + ' ' + s.reason,
-    size:     1,
+    shape:    s.side === 'buy' ? 'arrowUp' : 'arrowDown',
+    text:     s.reason,
+    size:     2,
   }));
   const all = [...realMarkers, ...sigMarkers].sort((a, b) => {
     if (typeof a.time === 'string') return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
