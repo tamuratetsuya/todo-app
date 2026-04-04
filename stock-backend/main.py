@@ -90,9 +90,14 @@ def init_db():
                 side VARCHAR(4) NOT NULL,
                 price FLOAT NOT NULL,
                 reason VARCHAR(500),
+                stop_loss FLOAT DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        try:
+            cur.execute("ALTER TABLE signal_history ADD COLUMN stop_loss FLOAT DEFAULT NULL")
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -368,10 +373,11 @@ def parse_signals(text: str) -> list:
         for s in raw:
             if isinstance(s, dict) and 'date' in s and 'side' in s:
                 signals.append({
-                    "time":   s['date'],
-                    "side":   s['side'],
-                    "price":  s.get('price', 0),
-                    "reason": s.get('reason', ''),
+                    "time":      s['date'],
+                    "side":      s['side'],
+                    "price":     s.get('price', 0),
+                    "reason":    s.get('reason', ''),
+                    "stop_loss": s.get('stop_loss', None),
                 })
         return signals
     except Exception:
@@ -504,10 +510,11 @@ def analyze_trades(body: dict = None):
 - 勝ちトレードで判明したエントリー条件（MA・BB）が揃っているタイミングを買いシグナルとする
 - 利確・損切りルールに基づくタイミングを売りシグナルとする
 - reasonは具体的な指標の状態を日本語で記述すること（例:「MA25上抜け・BB下限(BB%=18)から反発」）
+- 買いシグナルには必ず stop_loss（損切り価格）を設定すること。直近の安値・サポートライン・BBバンド下限などを根拠に、エントリー価格の2〜5%下を目安とする
 
 必ず以下のブロックを分析テキストの末尾に出力すること（ブロック内はJSON配列のみ、他の文字を含めないこと）：
 ---SIGNALS_START---
-[{{"date":"YYYY-MM-DD","side":"buy","reason":"理由"}},{{"date":"YYYY-MM-DD","side":"sell","reason":"理由"}}]
+[{{"date":"YYYY-MM-DD","side":"buy","reason":"理由","stop_loss":数値}},{{"date":"YYYY-MM-DD","side":"sell","reason":"理由"}}]
 ---SIGNALS_END---"""
 
         prompt = f"""あなたはスイングトレード（数日〜数週間の中期保有）の専門アナリストです。
@@ -561,20 +568,38 @@ def analyze_trades(body: dict = None):
     analysis_text = re.sub(r'\s*---SIGNALS_START---.*?---SIGNALS_END---', '', full_text, flags=re.DOTALL).strip()
     signals = parse_signals(full_text)
 
-    # 分析結果をDBに保存
-    conn2 = get_conn()
+    return {"analysis": analysis_text, "signals": signals}
+
+
+@app.post("/history/analysis")
+def save_analysis(data: dict):
+    text = data.get("text", "")
+    if not text:
+        raise HTTPException(400, "No text")
+    conn = get_conn()
     try:
-        with conn2.cursor() as cur:
-            cur.execute("INSERT INTO analysis_history (analysis_text) VALUES (%s)", (analysis_text,))
-        conn2.commit()
-        with conn2.cursor() as cur:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO analysis_history (analysis_text) VALUES (%s)", (text,))
+        conn.commit()
+        with conn.cursor() as cur:
             cur.execute("SELECT LAST_INSERT_ID() as id")
             row = cur.fetchone()
-            analysis_id = row['id'] if row else None
+            return {"analysis_id": row['id'] if row else None}
     finally:
-        conn2.close()
+        conn.close()
 
-    return {"analysis": analysis_text, "analysis_id": analysis_id, "signals": signals}
+
+@app.delete("/history/analysis")
+def delete_all_analysis():
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM signal_history")
+            cur.execute("DELETE FROM analysis_history")
+        conn.commit()
+        return {"deleted": True}
+    finally:
+        conn.close()
 
 
 @app.get("/history/analysis")
@@ -633,9 +658,10 @@ def save_signals(data: dict):
         with conn.cursor() as cur:
             for s in signals:
                 cur.execute(
-                    "INSERT INTO signal_history (analysis_id, symbol, interval_type, candle_time, side, price, reason) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                    (analysis_id, symbol, interval, str(s["time"]), s["side"], s["price"], s.get("reason", ""))
+                    "INSERT INTO signal_history (analysis_id, symbol, interval_type, candle_time, side, price, reason, stop_loss) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (analysis_id, symbol, interval, str(s["time"]), s["side"], s["price"],
+                     s.get("reason", ""), s.get("stop_loss"))
                 )
                 saved += 1
         conn.commit()
@@ -650,17 +676,18 @@ def get_signals(analysis_id: int, symbol: str = Query(...), interval: str = Quer
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT candle_time, side, price, reason FROM signal_history "
+                "SELECT candle_time, side, price, reason, stop_loss FROM signal_history "
                 "WHERE analysis_id=%s AND symbol=%s AND interval_type=%s ORDER BY candle_time",
                 (analysis_id, symbol, interval)
             )
             rows = cur.fetchall()
         cfg = INTERVALS.get(interval, {"is_date": True})
         return [{
-            "time":   r["candle_time"] if cfg["is_date"] else int(r["candle_time"]),
-            "side":   r["side"],
-            "price":  r["price"],
-            "reason": r["reason"],
+            "time":      r["candle_time"] if cfg["is_date"] else int(r["candle_time"]),
+            "side":      r["side"],
+            "price":     r["price"],
+            "reason":    r["reason"],
+            "stop_loss": r["stop_loss"],
         } for r in rows]
     finally:
         conn.close()

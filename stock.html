@@ -260,6 +260,23 @@
   }
   .analysis-header-title svg { color: var(--blue); }
 
+  #saveAnalysisBtn {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    transition: background 0.15s;
+  }
+  #saveAnalysisBtn:hover { background: #1a5fcf; }
+  #saveAnalysisBtn.saved { background: var(--green); cursor: default; }
+
   .analysis-close {
     background: none;
     border: none;
@@ -974,6 +991,14 @@
       </svg>
       AI トレード分析
     </div>
+    <button id="saveAnalysisBtn" onclick="saveAnalysis()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+        <polyline points="7 3 7 8 15 8"></polyline>
+      </svg>
+      履歴に保存
+    </button>
     <button class="analysis-close" onclick="closeAnalysis()" title="閉じる">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
@@ -1959,6 +1984,8 @@ function selectSymbol(code) {
   currentSymbol = code;
   stockSelect.value = code;
   aiSignals = [];  // 銘柄変更時にシグナルリセット
+  for (const s of stopLossSeries) { try { chart.removeSeries(s); } catch(e) {} }
+  stopLossSeries = [];
   renderPnl();
   renderTrades();
   loadChart();
@@ -2486,6 +2513,51 @@ document.addEventListener('click', (e) => {
 
 // ===== HISTORY =====
 let currentAnalysisId = null;
+let pendingAnalysisText     = '';
+let pendingAnalysisSymbol   = '';
+let pendingAnalysisInterval = '';
+let pendingSignals          = [];
+
+async function saveAnalysis() {
+  if (!pendingAnalysisText) return;
+  const btn = document.getElementById('saveAnalysisBtn');
+  btn.disabled = true;
+  btn.innerHTML = '保存中...';
+  try {
+    // 分析テキストを保存
+    const res = await fetch(`${API}/history/analysis`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text: pendingAnalysisText }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { analysis_id } = await res.json();
+    currentAnalysisId = analysis_id;
+
+    // シグナルを保存
+    if (pendingSignals.length && pendingAnalysisSymbol && analysis_id) {
+      await fetch(`${API}/history/signals`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          analysis_id,
+          symbol:   pendingAnalysisSymbol,
+          interval: pendingAnalysisInterval,
+          signals:  pendingSignals,
+        }),
+      });
+    }
+
+    btn.classList.add('saved');
+    btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> 保存済み`;
+    btn.onclick = null;
+    pendingAnalysisText = '';
+    loadHistoryList();
+  } catch(e) {
+    btn.innerHTML = '保存失敗';
+    btn.disabled = false;
+  }
+}
 const historyPanel = document.getElementById('historyPanel');
 const historyList  = document.getElementById('historyList');
 const historyBtn   = document.getElementById('historyBtn');
@@ -2579,6 +2651,7 @@ async function deleteHistoryItem(id, el) {
 // ===== AI SIGNALS =====
 let aiSignals = [];
 let showSignals = false;
+let stopLossSeries = [];
 const signalToggleBtn = document.getElementById('signalToggleBtn');
 const signalTooltip   = document.getElementById('signalTooltip');
 
@@ -2655,6 +2728,11 @@ function dedupeSignals(signals) {
 
 function applySignalMarkers() {
   if (!candleSeries) return;
+
+  // 損切りライン削除
+  for (const s of stopLossSeries) { try { chart.removeSeries(s); } catch(e) {} }
+  stopLossSeries = [];
+
   // 実マーカーと合成してセット
   const realMarkers = buildRealMarkers();
   if (!showSignals || !aiSignals.length) {
@@ -2674,6 +2752,43 @@ function applySignalMarkers() {
     return a.time - b.time;
   });
   candleSeries.setMarkers(all);
+
+  // 買いシグナルに紐づく損切りライン描画
+  const isDate = aiSignals.length && typeof aiSignals[0].time === 'string';
+  const sorted = [...aiSignals].sort((a, b) =>
+    String(a.time) < String(b.time) ? -1 : String(a.time) > String(b.time) ? 1 : 0
+  );
+  for (let i = 0; i < sorted.length; i++) {
+    const sig = sorted[i];
+    if (sig.side !== 'buy' || !sig.stop_loss) continue;
+
+    // 次の売りシグナルを終点とする
+    const nextSell = sorted.find((s, j) => j > i && s.side === 'sell');
+    let endTime;
+    if (nextSell) {
+      endTime = nextSell.time;
+    } else if (isDate) {
+      const d = new Date(sig.time + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + 60);
+      endTime = d.toISOString().slice(0, 10);
+    } else {
+      endTime = Number(sig.time) + 60 * 3600;
+    }
+
+    const sl = chart.addLineSeries({
+      color: 'rgba(248,81,73,0.75)',
+      lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: `SL ${sig.stop_loss}`,
+    });
+    sl.setData([
+      { time: sig.time, value: sig.stop_loss },
+      { time: endTime,  value: sig.stop_loss },
+    ]);
+    stopLossSeries.push(sl);
+  }
 }
 
 function buildRealMarkers() {
@@ -2725,6 +2840,7 @@ const analysisBody  = document.getElementById('analysisBody');
 
 function closeAnalysis() {
   analysisPanel.classList.remove('visible');
+  document.getElementById('saveAnalysisBtn').style.display = 'none';
 }
 
 async function runAnalysis() {
@@ -2752,61 +2868,51 @@ async function runAnalysis() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     analysisBody.innerHTML = markdownToHtml(data.analysis);
-    currentAnalysisId = data.analysis_id || null;
+    currentAnalysisId = null;
     signalToggleBtn.style.display = 'flex';
     historyBtn.style.display = 'flex';
 
-    // 分析中に銘柄が変わっていたらシグナルは適用しない（DBには保存する）
+    // 分析結果をメモリに保持（保存ボタンで手動保存）
+    pendingAnalysisText   = data.analysis || '';
+    pendingAnalysisSymbol = analysisSymbol;
+    pendingAnalysisInterval = analysisInterval;
+    pendingSignals        = (data.signals || []).map(s => ({
+      time: s.time, side: s.side, price: s.price || 0, reason: s.reason || '', stop_loss: s.stop_loss || null,
+    }));
+
+    const saveBtn = document.getElementById('saveAnalysisBtn');
+    saveBtn.style.display = 'flex';
+    saveBtn.classList.remove('saved');
+    saveBtn.textContent = ''; // rebuild
+    saveBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> 履歴に保存`;
+
+    // 銘柄が変わっていなければチャートにシグナル反映
     const symbolChanged = currentSymbol !== analysisSymbol;
-
-    if (analysisSymbol && currentAnalysisId && data.signals && data.signals.length) {
-      // シグナルのチャート時刻変換（分析時の銘柄のcandleDataを使う）
-      // 銘柄が変わっていたらcandleDataは新銘柄のものなのでDBへの保存のみ行う
-      const signalsForDB = data.signals.map(s => ({
-        time: s.time,  // date文字列のまま保存
-        side: s.side,
-        price: s.price || 0,
-        reason: s.reason || '',
-      }));
-
-      await fetch(`${API}/history/signals`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          analysis_id: currentAnalysisId,
-          symbol:   analysisSymbol,
-          interval: analysisInterval,
-          signals:  signalsForDB,
-        }),
-      });
-
-      // 銘柄が変わっていなければチャートにも反映
-      if (!symbolChanged) {
-        const isDate = candleData.length && typeof candleData[0].time === 'string';
-        aiSignals = dedupeSignals(data.signals.map(s => {
-          let t;
-          if (isDate) {
-            const norm = normalizeDateStr(s.time);
-            const exact = candleData.find(c => c.time === norm);
-            if (exact) {
-              t = exact.time;
-            } else {
-              let best = null, bestDiff = Infinity;
-              for (const c of candleData) {
-                const diff = Math.abs(new Date(c.time) - new Date(norm));
-                if (diff < bestDiff) { bestDiff = diff; best = c.time; }
-              }
-              t = best;
-            }
+    if (!symbolChanged && data.signals && data.signals.length) {
+      const isDate = candleData.length && typeof candleData[0].time === 'string';
+      aiSignals = dedupeSignals(data.signals.map(s => {
+        let t;
+        if (isDate) {
+          const norm = normalizeDateStr(s.time);
+          const exact = candleData.find(c => c.time === norm);
+          if (exact) {
+            t = exact.time;
           } else {
-            t = findNearestCandleTime(s.time);
+            let best = null, bestDiff = Infinity;
+            for (const c of candleData) {
+              const diff = Math.abs(new Date(c.time) - new Date(norm));
+              if (diff < bestDiff) { bestDiff = diff; best = c.time; }
+            }
+            t = best;
           }
-          return t !== null && t !== undefined
-            ? { time: t, side: s.side, price: s.price || 0, reason: s.reason || '' }
-            : null;
-        }).filter(Boolean));
-        if (showSignals) applySignalMarkers();
-      }
+        } else {
+          t = findNearestCandleTime(s.time);
+        }
+        return t !== null && t !== undefined
+          ? { time: t, side: s.side, price: s.price || 0, reason: s.reason || '', stop_loss: s.stop_loss || null }
+          : null;
+      }).filter(Boolean));
+      if (showSignals) applySignalMarkers();
     }
   } catch (e) {
     analysisBody.innerHTML = `<p style="color:var(--red)">分析に失敗しました: ${e.message}</p>`;
