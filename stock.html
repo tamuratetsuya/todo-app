@@ -649,19 +649,19 @@
 
   #candleLegend {
     position: absolute;
-    top: 8px;
-    left: 10px;
+    top: 10px;
+    left: 12px;
     z-index: 10;
     display: none;
     align-items: center;
-    gap: 12px;
-    font-size: 11px;
+    gap: 14px;
+    font-size: 13px;
     font-family: 'SF Mono', 'Fira Code', monospace;
     color: var(--text2);
     pointer-events: none;
   }
-  #candleLegend span { display: inline-flex; align-items: center; gap: 3px; }
-  #candleLegend .leg-label { color: var(--text2); opacity: 0.5; font-size: 10px; }
+  #candleLegend span { display: inline-flex; align-items: center; gap: 4px; }
+  #candleLegend .leg-label { color: var(--text2); opacity: 0.5; font-size: 11px; }
   #candleLegend.up .leg-o,
   #candleLegend.up .leg-h,
   #candleLegend.up .leg-l,
@@ -670,6 +670,9 @@
   #candleLegend.down .leg-h,
   #candleLegend.down .leg-l,
   #candleLegend.down .leg-c { color: #f85149; }
+  #candleLegend .leg-pct { font-size: 13px; font-weight: 600; }
+  #candleLegend.up .leg-pct { color: #3fb950; }
+  #candleLegend.down .leg-pct { color: #f85149; }
 
   /* ===== ADD STOCK MODAL ===== */
   #addStockModal {
@@ -1194,12 +1197,15 @@ function setupCandleLegend() {
     const d = param.seriesData.get(candleSeries);
     if (!d) { legend.style.display = 'none'; return; }
     const fmt = v => Number(v).toLocaleString('ja-JP', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    const pct = ((d.close - d.open) / d.open * 100);
+    const pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
     legend.className = d.close >= d.open ? 'up' : 'down';
     legend.innerHTML =
       `<span><span class="leg-label">O</span><span class="leg-o">${fmt(d.open)}</span></span>` +
       `<span><span class="leg-label">H</span><span class="leg-h">${fmt(d.high)}</span></span>` +
       `<span><span class="leg-label">L</span><span class="leg-l">${fmt(d.low)}</span></span>` +
-      `<span><span class="leg-label">C</span><span class="leg-c">${fmt(d.close)}</span></span>`;
+      `<span><span class="leg-label">C</span><span class="leg-c">${fmt(d.close)}</span></span>` +
+      `<span class="leg-pct">${pctStr}</span>`;
     legend.style.display = 'flex';
   });
 }
