@@ -1554,7 +1554,7 @@ async function loadChart() {
         if (sigRes.ok) {
           const raw = await sigRes.json();
           const isDateChart = candleData.length && typeof candleData[0].time === 'string';
-          aiSignals = raw.map(s => ({ ...s, time: isDateChart ? s.time : Number(s.time) }));
+          aiSignals = dedupeSignals(raw.map(s => ({ ...s, time: isDateChart ? s.time : Number(s.time) })));
           applySignalMarkers();
         }
       } catch(e) {}
@@ -2265,16 +2265,29 @@ let aiSignals = [];
 let showSignals = false;
 const signalToggleBtn = document.getElementById('signalToggleBtn');
 
-async function fetchSignals() {
-  if (!currentSymbol) return;
+async function fetchSignalsFromDB() {
+  if (!currentSymbol || !currentAnalysisId) return;
   const interval = TF_INTERVAL[currentInterval];
   try {
-    const res = await fetch(`${API}/suggest?symbol=${encodeURIComponent(currentSymbol)}&interval=${interval}`);
+    const res = await fetch(`${API}/history/signals/${currentAnalysisId}?symbol=${encodeURIComponent(currentSymbol)}&interval=${interval}`);
     if (!res.ok) return;
-    aiSignals = await res.json();
+    const raw = await res.json();
+    const isDateChart = candleData.length && typeof candleData[0].time === 'string';
+    aiSignals = dedupeSignals(raw.map(s => ({ ...s, time: isDateChart ? s.time : Number(s.time) })));
   } catch(e) {
     aiSignals = [];
   }
+}
+
+function dedupeSignals(signals) {
+  // 同一ローソク足に同じ売買方向が重複する場合は最初の1件のみ残す
+  const seen = new Set();
+  return signals.filter(s => {
+    const key = String(s.time) + '_' + s.side;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function applySignalMarkers() {
@@ -2329,9 +2342,9 @@ function buildRealMarkers() {
 async function toggleSignals() {
   showSignals = !showSignals;
   signalToggleBtn.classList.toggle('active', showSignals);
-  if (showSignals && !aiSignals.length) {
+  if (showSignals && !aiSignals.length && currentAnalysisId) {
     signalToggleBtn.textContent = '読込中...';
-    await fetchSignals();
+    await fetchSignalsFromDB();
     signalToggleBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"></path></svg> AIシグナル`;
   }
   applySignalMarkers();
@@ -2401,6 +2414,7 @@ async function runAnalysis() {
         }
         return t !== null && t !== undefined ? { time: t, side: s.side, price: s.price || 0, reason: s.reason } : null;
       }).filter(Boolean);
+      aiSignals = dedupeSignals(aiSignals);
 
       // DBに保存
       await fetch(`${API}/history/signals`, {
