@@ -807,29 +807,8 @@ function getMarkerTime(dateStr) {
     }
     return best;
   } else {
-    // Timestamps: find candle where the trade date falls in JST
-    const tradeDate = new Date(dateStr + 'T00:00:00+09:00');
-    const startUTC = tradeDate.getTime() / 1000;  // midnight JST in UTC seconds
-    const endUTC   = startUTC + 86400;
-
-    // candleData times are already shifted by +9h (JST display)
-    // so the "display" timestamp = UTC + 9*3600
-    // Thus, we look for candle.time >= startUTC+9*3600 and < endUTC+9*3600
-    const jstOffset = 9 * 3600;
-    const jstStart = startUTC + jstOffset;
-    const jstEnd   = endUTC   + jstOffset;
-
-    const inDay = candleData.filter(d => d.time >= jstStart && d.time < jstEnd);
-    if (inDay.length) return inDay[0].time;
-
-    // fallback: nearest
-    let best = null, bestDiff = Infinity;
-    const mid = (jstStart + jstEnd) / 2;
-    for (const d of candleData) {
-      const diff = Math.abs(d.time - mid);
-      if (diff < bestDiff) { bestDiff = diff; best = d.time; }
-    }
-    return best;
+    // Timestamps: findNearestCandleTime と同じ方式でcandleDataから直接探す
+    return findNearestCandleTime(dateStr);
   }
 }
 
@@ -838,6 +817,7 @@ function applyMarkers() {
   const sym = currentSymbol;
   const stockTrades = trades[sym] || [];
   if (!stockTrades.length) { candleSeries.setMarkers([]); return; }
+
 
   const markerMap = {};
   for (const t of stockTrades) {
@@ -865,35 +845,87 @@ function applyMarkers() {
 }
 
 // ===== SCROLL TO TRADES =====
+function normalizeDateStr(dateStr) {
+  // "2026-1-5" → "2026-01-05" にゼロパディング（new Date()のNaN対策）
+  const parts = String(dateStr).split('-');
+  return `${parts[0]}-${(parts[1]||'01').padStart(2,'0')}-${(parts[2]||'01').padStart(2,'0')}`;
+}
+
+function findNearestCandleTime(dateStr) {
+  if (!candleData.length) return null;
+  const normalized = normalizeDateStr(dateStr);
+  // バックエンドは utc + 9*3600 で保存 → midも+9hして合わせる
+  const mid = new Date(normalized + 'T00:00:00Z').getTime() / 1000 + 9 * 3600;
+  let best = null, bestDiff = Infinity;
+  for (const c of candleData) {
+    const diff = Math.abs(c.time - mid);
+    if (diff < bestDiff) { bestDiff = diff; best = c.time; }
+  }
+  return best;
+}
+
 function scrollToTrades() {
   if (!chart || !candleData.length) return;
+
   const sym = currentSymbol;
   const stockTrades = trades[sym] || [];
-  if (!stockTrades.length) return;
-
   const isDate = typeof candleData[0].time === 'string';
+
+  // デフォルト表示本数（時間足ごと）
+  const defaultBars = { '1wk': 156, '1d': 250, '1h': 240 };
+  const bars = defaultBars[currentInterval] || 250;
+
+  if (!stockTrades.length) {
+    // トレードなし → 最新N本を表示
+    chart.timeScale().fitContent();
+    const total = candleData.length;
+    if (total > bars) {
+      chart.timeScale().scrollToPosition(-(total - bars), false);
+    }
+    return;
+  }
+
+  // トレードあり → トレード期間を中心に表示
   const dates = stockTrades.map(t => t.date).sort();
   const firstDate = dates[0];
   const lastDate  = dates[dates.length - 1];
 
-  if (isDate) {
-    const d1 = new Date(firstDate);
-    d1.setDate(d1.getDate() - 90);
-    const d2 = new Date(lastDate);
-    d2.setDate(d2.getDate() + 30);
-    const from = d1.toISOString().slice(0, 10);
-    const to   = d2.toISOString().slice(0, 10);
-    try {
-      chart.timeScale().setVisibleRange({ from, to });
-    } catch(e) {}
-  } else {
-    const firstTs = new Date(firstDate + 'T00:00:00+09:00').getTime() / 1000 + 9 * 3600;
-    const lastTs  = new Date(lastDate  + 'T00:00:00+09:00').getTime() / 1000 + 9 * 3600;
-    const from = firstTs - 90 * 86400;
-    const to   = lastTs  + 30 * 86400;
-    try {
-      chart.timeScale().setVisibleRange({ from, to });
-    } catch(e) {}
+  try {
+    if (currentInterval === '1wk') {
+      // 週足: 前後を広めにとる
+      const d1 = new Date(firstDate);
+      d1.setFullYear(d1.getFullYear() - 1);
+      const d2 = new Date(lastDate);
+      d2.setMonth(d2.getMonth() + 3);
+      chart.timeScale().setVisibleRange({
+        from: d1.toISOString().slice(0, 10),
+        to:   d2.toISOString().slice(0, 10),
+      });
+    } else if (currentInterval === '1d') {
+      // 日足: 日付文字列で指定
+      const d1 = new Date(firstDate);
+      d1.setDate(d1.getDate() - 90);
+      const d2 = new Date(lastDate);
+      d2.setDate(d2.getDate() + 30);
+      chart.timeScale().setVisibleRange({
+        from: d1.toISOString().slice(0, 10),
+        to:   d2.toISOString().slice(0, 10),
+      });
+    } else {
+      // 1時間足: candleDataの実際のtime値からトレード日付に近いものを探す
+      const firstT = findNearestCandleTime(firstDate);
+      const lastT  = findNearestCandleTime(lastDate);
+      if (firstT !== null && lastT !== null) {
+        chart.timeScale().setVisibleRange({
+          from: firstT - 30 * 86400,
+          to:   lastT  + 14 * 86400,
+        });
+      } else {
+        chart.timeScale().fitContent();
+      }
+    }
+  } catch(e) {
+    chart.timeScale().fitContent();
   }
 }
 
@@ -944,7 +976,7 @@ async function loadChart() {
 
     applyIndicators();
     applyMarkers();
-    scrollToTrades();
+    setTimeout(() => scrollToTrades(), 50);
 
   } catch (err) {
     console.error(err);
