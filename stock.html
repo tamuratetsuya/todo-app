@@ -2440,13 +2440,14 @@ function renderViewpoints() {
     vpTags.appendChild(span);
   }
 
-  // トレンド観点（削除不可）
+  // トレンド観点（削除不可）- ラベルは汎用名のみ、詳細はAIプロンプトに渡す
   for (const vp of trendVps) {
     const span = document.createElement('span');
     span.className = 'vp-tag auto-trend';
-    span.title = vp.text;
-    const icon = vp.text.startsWith('上昇') ? '↗' : vp.text.startsWith('下降') ? '↘' : vp.text.startsWith('ダブルボトム') ? 'W' : 'M';
-    span.textContent = `${icon} ${vp.text}`;
+    span.title = vp.text; // ホバーで詳細確認可
+    const icon = vp.text.startsWith('上昇') ? '↗' : '↘';
+    const label = vp.text.startsWith('上昇') ? '上昇トレンド' : '下降トレンド';
+    span.textContent = `${icon} ${label}`;
     vpTags.appendChild(span);
   }
 
@@ -2479,15 +2480,14 @@ document.getElementById('vpInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') addViewpoint();
 });
 
-function getViewpointsPrompt() {
+function getViewpointsPayload() {
   const autoVps  = calcAutoViewpoints();
   const trendVps = calcTrendViewpoints();
-  const lines = [
-    ...autoVps.map(v => `- ${v.text}`),
-    ...trendVps.map(v => `- ${v.text}`),
-    ...customViewpoints.map(v => `- ${v}`),
-  ];
-  return lines.length ? '\n\n## 重点分析観点（必ずこれらを踏まえて分析すること）\n' + lines.join('\n') : '';
+  return {
+    auto_viewpoints:   autoVps.map(v => v.text),
+    trend_viewpoints:  trendVps.map(v => v.text),
+    custom_viewpoints: [...customViewpoints],
+  };
 }
 
 // ===== INDICATOR PANEL =====
@@ -2513,45 +2513,43 @@ document.addEventListener('click', (e) => {
 
 // ===== HISTORY =====
 let currentAnalysisId = null;
-let pendingAnalysisText     = '';
 let pendingAnalysisSymbol   = '';
 let pendingAnalysisInterval = '';
 let pendingSignals          = [];
 
 async function saveAnalysis() {
-  if (!pendingAnalysisText) return;
+  if (!pendingSignals.length || !pendingAnalysisSymbol) return;
   const btn = document.getElementById('saveAnalysisBtn');
   btn.disabled = true;
   btn.innerHTML = '保存中...';
   try {
-    // 分析テキストを保存
+    // 銘柄名ラベルで保存
+    const label = (stockNames[pendingAnalysisSymbol] || pendingAnalysisSymbol) + ' (' + pendingAnalysisSymbol + ')';
     const res = await fetch(`${API}/history/analysis`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ text: pendingAnalysisText }),
+      body: JSON.stringify({ symbol: pendingAnalysisSymbol, label }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { analysis_id } = await res.json();
     currentAnalysisId = analysis_id;
 
     // シグナルを保存
-    if (pendingSignals.length && pendingAnalysisSymbol && analysis_id) {
-      await fetch(`${API}/history/signals`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          analysis_id,
-          symbol:   pendingAnalysisSymbol,
-          interval: pendingAnalysisInterval,
-          signals:  pendingSignals,
-        }),
-      });
-    }
+    await fetch(`${API}/history/signals`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        analysis_id,
+        symbol:   pendingAnalysisSymbol,
+        interval: pendingAnalysisInterval,
+        signals:  pendingSignals,
+      }),
+    });
 
     btn.classList.add('saved');
     btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> 保存済み`;
     btn.onclick = null;
-    pendingAnalysisText = '';
+    pendingSignals = [];
     loadHistoryList();
   } catch(e) {
     btn.innerHTML = '保存失敗';
@@ -2573,7 +2571,7 @@ async function loadHistoryList() {
     const res = await fetch(`${API}/history/analysis`);
     const items = await res.json();
     if (!items.length) {
-      historyList.innerHTML = '<div style="padding:12px;color:var(--text2);font-size:12px;">履歴がありません</div>';
+      historyList.innerHTML = '<div style="padding:12px;color:var(--text2);font-size:12px;">保存されたシグナルがありません</div>';
       return;
     }
     historyList.innerHTML = '';
@@ -2582,7 +2580,7 @@ async function loadHistoryList() {
       div.className = 'history-item' + (item.id === currentAnalysisId ? ' active' : '');
       div.innerHTML = `
         <div class="history-item-date">${new Date(item.created_at).toLocaleString('ja-JP')}</div>
-        <div class="history-item-preview">${esc(item.preview)}...</div>
+        <div class="history-item-preview">${esc(item.symbol)}</div>
         <button class="history-delete-btn" title="削除">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"></polyline>
@@ -2596,7 +2594,7 @@ async function loadHistoryList() {
         if (!confirm('この履歴を削除しますか？')) return;
         await deleteHistoryItem(item.id, div);
       });
-      div.addEventListener('click', () => loadHistoryDetail(item.id, div));
+      div.addEventListener('click', () => loadHistorySignals(item.id, item.symbol, div));
       historyList.appendChild(div);
     }
   } catch(e) {
@@ -2604,34 +2602,36 @@ async function loadHistoryList() {
   }
 }
 
-async function loadHistoryDetail(id, el) {
-  // active状態を更新
+async function loadHistorySignals(id, symbolLabel, el) {
   historyList.querySelectorAll('.history-item').forEach(e => e.classList.remove('active'));
   el.classList.add('active');
   currentAnalysisId = id;
-
-  // 分析テキスト表示
-  analysisPanel.classList.add('visible');
-  analysisBody.innerHTML = '<div class="analysis-spinner"><div class="spinner"></div>読み込み中...</div>';
   historyPanel.classList.remove('visible');
 
-  try {
-    const res = await fetch(`${API}/history/analysis/${id}`);
-    const data = await res.json();
-    analysisBody.innerHTML = markdownToHtml(data.analysis)
-      + `<p style="color:var(--text2);font-size:11px;margin-top:12px;">📅 ${new Date(data.created_at).toLocaleString('ja-JP')}</p>`;
-    signalToggleBtn.style.display = 'flex';
+  // symbolLabel = "銘柄名 (CODE)" → CODE を抽出
+  const codeMatch = symbolLabel.match(/\(([^)]+)\)$/);
+  const code = codeMatch ? codeMatch[1] : symbolLabel;
 
-    // 過去のシグナルを読み込む
-    if (currentSymbol) {
-      const interval = TF_INTERVAL[currentInterval];
-      const sigRes = await fetch(`${API}/history/signals/${id}?symbol=${encodeURIComponent(currentSymbol)}&interval=${interval}`);
-      aiSignals = await sigRes.json();
-      if (showSignals) applySignalMarkers();
-    }
-  } catch(e) {
-    analysisBody.innerHTML = `<p style="color:var(--red)">読み込み失敗: ${e.message}</p>`;
+  // 銘柄を選択してチャートを表示
+  if (code && code !== currentSymbol) {
+    selectSymbol(code);
+    await new Promise(r => setTimeout(r, 800)); // チャート読み込み待ち
   }
+
+  // シグナルを読み込んでチャートに適用
+  try {
+    const interval = TF_INTERVAL[currentInterval];
+    const sigRes = await fetch(`${API}/history/signals/${id}?symbol=${encodeURIComponent(code)}&interval=${interval}`);
+    if (!sigRes.ok) return;
+    const raw = await sigRes.json();
+    const isDateChart = candleData.length && typeof candleData[0].time === 'string';
+    aiSignals = dedupeSignals(raw.map(s => ({ ...s, time: isDateChart ? s.time : Number(s.time) })));
+    showSignals = true;
+    signalToggleBtn.classList.add('active');
+    signalToggleBtn.style.display = 'flex';
+    applySignalMarkers();
+    chart.timeScale().fitContent();
+  } catch(e) {}
 }
 
 async function deleteHistoryItem(id, el) {
@@ -2681,7 +2681,9 @@ function setupSignalTooltip() {
       return;
     }
     const label = nearest.side === 'buy' ? '▲ 買いシグナル' : '▼ 売りシグナル';
-    signalTooltip.textContent = label + '\n' + (nearest.reason || '');
+    const slText = (nearest.side === 'buy' && nearest.stop_loss)
+      ? `\n損切り: ¥${Number(nearest.stop_loss).toLocaleString()}` : '';
+    signalTooltip.textContent = label + '\n' + (nearest.reason || '') + slText;
     signalTooltip.className   = nearest.side === 'buy' ? '' : 'sell';
     const rect = chartContainer.getBoundingClientRect();
     let x = rect.left + param.point.x + 14;
@@ -2739,14 +2741,20 @@ function applySignalMarkers() {
     candleSeries.setMarkers(realMarkers);
     return;
   }
-  const sigMarkers = aiSignals.map(s => ({
-    time:     s.time,
-    position: s.side === 'buy' ? 'belowBar' : 'aboveBar',
-    color:    s.side === 'buy' ? '#818cf8' : '#c084fc',
-    shape:    s.side === 'buy' ? 'arrowUp' : 'arrowDown',
-    text:     ((s.reason || '').length > 22 ? (s.reason || '').slice(0, 22) + '…' : (s.reason || '')),
-    size:     2,
-  }));
+  const sigMarkers = aiSignals.map(s => {
+    let label = s.reason || '';
+    if (s.side === 'buy' && s.stop_loss) {
+      label += ` SL:${Number(s.stop_loss).toLocaleString()}`;
+    }
+    return {
+      time:     s.time,
+      position: s.side === 'buy' ? 'belowBar' : 'aboveBar',
+      color:    s.side === 'buy' ? '#818cf8' : '#c084fc',
+      shape:    s.side === 'buy' ? 'arrowUp' : 'arrowDown',
+      text:     label.length > 28 ? label.slice(0, 28) + '…' : label,
+      size:     2,
+    };
+  });
   const all = [...realMarkers, ...sigMarkers].sort((a, b) => {
     if (typeof a.time === 'string') return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
     return a.time - b.time;
@@ -2855,12 +2863,12 @@ async function runAnalysis() {
   const analysisInterval = TF_INTERVAL[currentInterval];
 
   try {
-    const vpPrompt = getViewpointsPrompt();
+    const vpPayload = getViewpointsPayload();
     const res = await fetch(`${API}/analyze`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        extra_viewpoints: vpPrompt,
+        ...vpPayload,
         symbol:   analysisSymbol || '',
         interval: analysisInterval,
       }),
@@ -2872,8 +2880,7 @@ async function runAnalysis() {
     signalToggleBtn.style.display = 'flex';
     historyBtn.style.display = 'flex';
 
-    // 分析結果をメモリに保持（保存ボタンで手動保存）
-    pendingAnalysisText   = data.analysis || '';
+    // シグナルをメモリに保持（保存ボタンで手動保存）
     pendingAnalysisSymbol = analysisSymbol;
     pendingAnalysisInterval = analysisInterval;
     pendingSignals        = (data.signals || []).map(s => ({

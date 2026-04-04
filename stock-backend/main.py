@@ -372,12 +372,17 @@ def parse_signals(text: str) -> list:
         signals = []
         for s in raw:
             if isinstance(s, dict) and 'date' in s and 'side' in s:
+                sl = s.get('stop_loss', None)
+                price = s.get('price', 0) or 0
+                # stop_loss は必ずエントリー価格より低くなければならない
+                if sl is not None and price > 0 and float(sl) >= float(price):
+                    sl = None  # 不正な損切り価格は無効化
                 signals.append({
                     "time":      s['date'],
                     "side":      s['side'],
-                    "price":     s.get('price', 0),
+                    "price":     price,
                     "reason":    s.get('reason', ''),
-                    "stop_loss": s.get('stop_loss', None),
+                    "stop_loss": sl,
                 })
         return signals
     except Exception:
@@ -399,9 +404,47 @@ def analyze_trades(body: dict = None):
         return {"analysis": "トレードデータがありません。CSVをインポートしてください。"}
 
     req = body or {}
-    extra_viewpoints  = req.get("extra_viewpoints", "")
+    auto_viewpoints   = req.get("auto_viewpoints", [])
+    trend_viewpoints  = req.get("trend_viewpoints", [])
+    custom_viewpoints = req.get("custom_viewpoints", [])
     signal_symbol     = req.get("symbol", "")
     signal_interval   = req.get("interval", "1d")
+
+    # 分析前に全トレード銘柄の日足ローソク足をyfinanceから取得してDBに保存
+    # ただし直近2営業日以内のデータがすでにDBにあればスキップ
+    from datetime import datetime as dt2, timedelta
+    today = dt2.utcnow().date()
+    recent_threshold = (today - timedelta(days=3)).isoformat()  # 土日考慮で3日
+
+    all_codes = list({str(r['code']) for r in rows})
+    for code in all_codes:
+        try:
+            c0 = get_conn()
+            try:
+                with c0.cursor() as cur:
+                    cur.execute(
+                        "SELECT MAX(candle_time) as latest FROM candles WHERE symbol=%s AND interval_type='1d'",
+                        (code,)
+                    )
+                    row0 = cur.fetchone()
+                    latest = row0['latest'] if row0 else None
+            finally:
+                c0.close()
+
+            # 最新データが3日以内なら取得不要
+            if latest and str(latest) >= recent_threshold:
+                continue
+
+            sym = f"{code}.T" if code.isdigit() else code
+            fresh = fetch_from_yfinance(sym, "1d")
+            if fresh:
+                c0 = get_conn()
+                try:
+                    save_candles_to_db(c0, code, "1d", fresh)
+                finally:
+                    c0.close()
+        except Exception:
+            pass
 
     conn = get_conn()
     try:
@@ -476,9 +519,34 @@ def analyze_trades(body: dict = None):
                 )
             return "\n".join(lines) if lines else "なし"
 
-        # シグナル生成用のローソク足サマリー
+        # シグナル生成用のローソク足サマリー（直近データがなければyfinanceから取得）
         candle_summary = ""
         if signal_symbol and signal_interval in INTERVALS:
+            try:
+                c2 = get_conn()
+                try:
+                    with c2.cursor() as cur:
+                        cur.execute(
+                            "SELECT MAX(candle_time) as latest FROM candles WHERE symbol=%s AND interval_type=%s",
+                            (signal_symbol, signal_interval)
+                        )
+                        row2 = cur.fetchone()
+                        latest2 = row2['latest'] if row2 else None
+                finally:
+                    c2.close()
+
+                needs_fetch = not latest2 or str(latest2) < recent_threshold
+                if needs_fetch:
+                    sym = f"{signal_symbol}.T" if signal_symbol.isdigit() else signal_symbol
+                    fresh = fetch_from_yfinance(sym, signal_interval)
+                    if fresh:
+                        c2 = get_conn()
+                        try:
+                            save_candles_to_db(c2, signal_symbol, signal_interval, fresh)
+                        finally:
+                            c2.close()
+            except Exception:
+                pass
             candle_summary = build_candle_summary(signal_symbol, signal_interval)
 
         # 最終トレード日と最新ローソク足の日付を取得
@@ -507,43 +575,79 @@ def analyze_trades(body: dict = None):
 - **シグナルをデータ全期間（{first_candle_date}〜{last_candle_date}）に均等に分散させること**（直近に集中させないこと）
 - 期間を前半・中盤・後半の3つに分け、各期間に3〜5個ずつ配置すること
 - 最終トレード日（{last_trade_date}）以降にも必ず3個以上含めること
-- 勝ちトレードで判明したエントリー条件（MA・BB）が揃っているタイミングを買いシグナルとする
+- 勝ちトレードで判明したエントリー条件（MA・BB）および上記の重点分析観点が揃っているタイミングを買いシグナルとする
 - 利確・損切りルールに基づくタイミングを売りシグナルとする
 - reasonは具体的な指標の状態を日本語で記述すること（例:「MA25上抜け・BB下限(BB%=18)から反発」）
-- 買いシグナルには必ず stop_loss（損切り価格）を設定すること。直近の安値・サポートライン・BBバンド下限などを根拠に、エントリー価格の2〜5%下を目安とする
+- 買いシグナルには必ず stop_loss（損切り価格）を設定すること。スイングトレードを前提に、直近の明確な安値・サポートラインの少し下（その水準を明確に下回ったら損切り）を根拠とし、エントリー価格の5〜15%下を目安とする。2〜3%など狭い損切りは設定しないこと
 
 必ず以下のブロックを分析テキストの末尾に出力すること（ブロック内はJSON配列のみ、他の文字を含めないこと）：
 ---SIGNALS_START---
 [{{"date":"YYYY-MM-DD","side":"buy","reason":"理由","stop_loss":数値}},{{"date":"YYYY-MM-DD","side":"sell","reason":"理由"}}]
 ---SIGNALS_END---"""
 
+        # トレンド観点（チャート由来）
+        trend_section = ""
+        if trend_viewpoints:
+            items = '\n'.join(f'- {v}' for v in trend_viewpoints)
+            trend_section = f"\n\n## 現在のチャートトレンド\n{items}"
+
+        # カスタム観点（ユーザー追加）を個別セクションとして構築
+        extra_section = ""
+        if custom_viewpoints:
+            items = '\n'.join(f'- {v}' for v in custom_viewpoints)
+            extra_section = f"""
+
+### 4. 追加観点の分析（必須）
+以下の観点について、このトレード履歴の結果・勝ち負けのパターンを踏まえて**それぞれ個別に**具体的に言及してください：
+{items}"""
+
+        # シグナル生成での観点反映指示を signal_section に追記
+        if signal_section and custom_viewpoints:
+            vp_list = '・'.join(custom_viewpoints)
+            signal_section = signal_section.replace(
+                '- 勝ちトレードで判明したエントリー条件（MA・BB）および上記の重点分析観点が揃っているタイミングを買いシグナルとする',
+                '- 上記の分析（勝ちトレードのエントリー条件・チャートトレンド・追加観点）が揃っているタイミングを買いシグナルとする'
+                f'\n- 特に追加観点（{vp_list}）が確認できるタイミングを優先すること'
+            )
+        elif signal_section:
+            signal_section = signal_section.replace(
+                '- 勝ちトレードで判明したエントリー条件（MA・BB）および上記の重点分析観点が揃っているタイミングを買いシグナルとする',
+                '- 上記の分析（勝ちトレードのエントリー条件・チャートトレンド）が揃っているタイミングを買いシグナルとする'
+            )
+
+        holding_section = ("## 保有中（未決済）\n" + "\n".join(f"- {n}" for n in holding)) if holding else ""
+
+        # 出力フォーマット指示（カスタム観点がある場合はセクション4を必須化）
+        if custom_viewpoints:
+            vp_items = '\n'.join(f'  - {v}' for v in custom_viewpoints)
+            output_format = f"""
+あなたの回答は必ず以下のセクション構成で出力してください：
+
+### 1. 勝ちトレードの傾向
+### 2. 負けトレードの傾向
+### 3. 具体的な改善アドバイス
+### 4. 追加観点の分析
+（以下の観点それぞれについて、このトレード履歴の結果を踏まえて具体的に記述すること）
+{vp_items}"""
+        else:
+            output_format = """
+あなたの回答は必ず以下のセクション構成で出力してください：
+
+### 1. 勝ちトレードの傾向
+### 2. 負けトレードの傾向
+### 3. 具体的な改善アドバイス"""
+
         prompt = f"""あなたはスイングトレード（数日〜数週間の中期保有）の専門アナリストです。
 以下のトレード履歴と、各トレード時点での技術指標の状況（MA5/MA25乖離、ボリンジャーバンド位置、一目均衡表の転換線/基準線の関係、出来高動向）を基に、詳細な分析をしてください。
-
+{trend_section}
 ## 利益トレード（{len(winners)}件）
 {fmt(winners)}
 
 ## 損失トレード（{len(losers)}件）
 {fmt(losers)}
 
-{"## 保有中（未決済）" + chr(10) + chr(10).join(f"- {n}" for n in holding) if holding else ""}
-
-スイングトレードを前提として、以下の観点で具体的に分析してください：
-
-### 1. 勝ちトレードの傾向
-- 買いエントリー時の指標の共通パターン（MA、BB、一目均衡表）
-- 売りエグジット時の指標の特徴
-- 保有期間・利幅の傾向
-
-### 2. 負けトレードの傾向
-- 買いエントリーの失敗パターン（どの指標が逆向きだったか）
-- 損切り・売りのタイミングの問題点
-- 改善すべきエントリー条件
-
-### 3. 具体的な改善アドバイス（3〜5点）
-- MA・ボリンジャーバンド・一目均衡表・MACDを使った具体的な買いシグナルの条件
-- 具体的な売りシグナルの条件（利確・損切りのルール化）
-- リスク管理の観点からのアドバイス{extra_viewpoints}{signal_section}"""
+{holding_section}
+{output_format}{signal_section}"""
 
     finally:
         conn.close()
@@ -573,13 +677,14 @@ def analyze_trades(body: dict = None):
 
 @app.post("/history/analysis")
 def save_analysis(data: dict):
-    text = data.get("text", "")
-    if not text:
-        raise HTTPException(400, "No text")
+    symbol = data.get("symbol", "")
+    label  = data.get("label", symbol)
+    if not symbol:
+        raise HTTPException(400, "No symbol")
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("INSERT INTO analysis_history (analysis_text) VALUES (%s)", (text,))
+            cur.execute("INSERT INTO analysis_history (analysis_text) VALUES (%s)", (label,))
         conn.commit()
         with conn.cursor() as cur:
             cur.execute("SELECT LAST_INSERT_ID() as id")
@@ -612,7 +717,7 @@ def get_analysis_history():
                 "FROM analysis_history ORDER BY created_at DESC LIMIT 20"
             )
             rows = cur.fetchall()
-        return [{"id": r["id"], "preview": r["preview"], "created_at": str(r["created_at"])} for r in rows]
+        return [{"id": r["id"], "symbol": r["preview"], "created_at": str(r["created_at"])} for r in rows]
     finally:
         conn.close()
 
