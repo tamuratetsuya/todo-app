@@ -628,6 +628,83 @@
     overflow: hidden;
   }
 
+  /* ===== ADD STOCK MODAL ===== */
+  #addStockModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 300;
+    align-items: center;
+    justify-content: center;
+  }
+  #addStockModal.visible { display: flex; }
+  .modal-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    width: 360px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  }
+  .modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--text);
+  }
+  .modal-field { margin-bottom: 14px; }
+  .modal-label {
+    display: block;
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .modal-input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .modal-input:focus { border-color: var(--accent); }
+  .modal-hint {
+    font-size: 11px;
+    color: var(--text2);
+    margin-top: 4px;
+  }
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+    justify-content: flex-end;
+  }
+  .modal-btn {
+    padding: 7px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    transition: all 0.15s;
+  }
+  .modal-btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .modal-btn.primary:hover { background: #1a5fcf; }
+  .modal-btn.cancel {
+    background: transparent;
+    color: var(--text2);
+  }
+  .modal-btn.cancel:hover { background: var(--bg3); color: var(--text); }
+
   #signalTooltip {
     display: none;
     position: fixed;
@@ -716,7 +793,7 @@
   <select id="stockSelect">
     <option value="">— 銘柄を選択 —</option>
   </select>
-  <button id="addStockBtn" title="銘柄を追加" style="display:flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap;transition:background 0.15s,border-color 0.15s,color 0.15s;" onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'" onclick="promptAddStock()">
+  <button id="addStockBtn" title="銘柄を追加" style="display:flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap;transition:background 0.15s,border-color 0.15s,color 0.15s;" onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'" onclick="openAddStockModal()">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
     銘柄追加
   </button>
@@ -801,6 +878,26 @@
         <p>チャートデータなし</p>
         <small>銘柄を選択するとチャートが表示されます</small>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- 銘柄追加モーダル -->
+<div id="addStockModal">
+  <div class="modal-box">
+    <div class="modal-title">銘柄を追加</div>
+    <div class="modal-field">
+      <label class="modal-label" for="modalCode">銘柄コード</label>
+      <input id="modalCode" class="modal-input" type="text" placeholder="例: 7203.T / 1570.T / AAPL" autocomplete="off" spellcheck="false">
+      <div class="modal-hint">日本株: コード + .T（例: 7203.T）／米国株: ティッカー（例: AAPL）</div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label" for="modalName">表示名（省略可）</label>
+      <input id="modalName" class="modal-input" type="text" placeholder="例: トヨタ自動車">
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" onclick="closeAddStockModal()">キャンセル</button>
+      <button class="modal-btn primary" onclick="submitAddStock()">追加してグラフ表示</button>
     </div>
   </div>
 </div>
@@ -1736,25 +1833,53 @@ function selectSymbol(code) {
 const WATCH_KEY = 'stockWatchList';
 let watchStocks = JSON.parse(localStorage.getItem(WATCH_KEY) || '[]'); // [{code, name}]
 
-function promptAddStock() {
-  const input = prompt('銘柄コードを入力してください\n例: 7203.T（トヨタ）/ 1570.T（日経225ETF）/ AAPL（Apple）');
-  if (!input) return;
-  const code = input.trim().toUpperCase();
-  if (!code) return;
-  if (trades[code] || watchStocks.find(w => w.code === code)) {
-    alert(`${code} はすでに追加されています`);
+const addStockModal = document.getElementById('addStockModal');
+const modalCode     = document.getElementById('modalCode');
+const modalName     = document.getElementById('modalName');
+
+function openAddStockModal() {
+  modalCode.value = '';
+  modalName.value = '';
+  addStockModal.classList.add('visible');
+  setTimeout(() => modalCode.focus(), 50);
+}
+
+function closeAddStockModal() {
+  addStockModal.classList.remove('visible');
+}
+
+function submitAddStock() {
+  const code  = modalCode.value.trim().toUpperCase();
+  const label = modalName.value.trim();
+  if (!code) { modalCode.focus(); return; }
+
+  const exists = watchStocks.find(w => w.code === code) ||
+                 (trades[code] && trades[code].length > 0);
+  if (exists) {
+    closeAddStockModal();
     stockSelect.value = code;
     selectSymbol(code);
     return;
   }
-  const label = prompt(`${code} の表示名を入力してください（省略可）`) || code;
-  watchStocks.push({ code, name: label });
+
+  const name = label || code;
+  watchStocks.push({ code, name });
   localStorage.setItem(WATCH_KEY, JSON.stringify(watchStocks));
-  trades[code] = trades[code] || [];
-  stockNames[code] = stockNames[code] || label;
+  if (!trades[code]) trades[code] = [];
+  stockNames[code] = stockNames[code] || name;
   rebuildStockSelect();
+  closeAddStockModal();
   selectSymbol(code);
 }
+
+// モーダル外クリックで閉じる
+addStockModal.addEventListener('click', e => {
+  if (e.target === addStockModal) closeAddStockModal();
+});
+
+// Enterキーで追加
+modalCode.addEventListener('keydown', e => { if (e.key === 'Enter') modalName.focus(); });
+modalName.addEventListener('keydown', e => { if (e.key === 'Enter') submitAddStock(); });
 
 // ===== STOCK SELECTOR =====
 function rebuildStockSelect() {
