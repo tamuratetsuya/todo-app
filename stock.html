@@ -243,49 +243,51 @@
   .analysis-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 8px 14px;
+    padding: 12px 18px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
   .analysis-header-title {
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text2);
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
   }
-  .analysis-header-title svg { color: var(--blue); }
+  .analysis-header-title svg { color: var(--text2); flex-shrink: 0; }
+  .analysis-header-spacer { flex: 1; }
 
   #saveAnalysisBtn {
     display: none;
     align-items: center;
-    gap: 5px;
-    background: var(--accent);
-    border: none;
-    color: #fff;
-    padding: 4px 10px;
+    gap: 4px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 3px 9px;
     border-radius: 5px;
     cursor: pointer;
     font-size: 11px;
-    font-weight: 600;
-    transition: background 0.15s;
+    white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s;
   }
-  #saveAnalysisBtn:hover { background: #1a5fcf; }
-  #saveAnalysisBtn.saved { background: var(--green); cursor: default; }
+  #saveAnalysisBtn:hover { border-color: var(--text2); color: var(--text); }
+  #saveAnalysisBtn.saved { border-color: var(--green); color: var(--green); cursor: default; }
 
   .analysis-close {
     background: none;
     border: none;
     color: var(--text2);
     cursor: pointer;
-    padding: 2px;
+    padding: 3px;
+    border-radius: 4px;
     line-height: 1;
+    flex-shrink: 0;
+    opacity: 0.6;
+    transition: opacity 0.15s;
   }
-  .analysis-close:hover { color: var(--text); }
+  .analysis-close:hover { opacity: 1; }
 
   .analysis-body {
     overflow-y: auto;
@@ -990,15 +992,16 @@
         <circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path>
       </svg>
       AI トレード分析
+      <button id="saveAnalysisBtn" onclick="saveAnalysis()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+          <polyline points="7 3 7 8 15 8"></polyline>
+        </svg>
+        履歴に保存
+      </button>
     </div>
-    <button id="saveAnalysisBtn" onclick="saveAnalysis()">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-        <polyline points="17 21 17 13 7 13 7 21"></polyline>
-        <polyline points="7 3 7 8 15 8"></polyline>
-      </svg>
-      履歴に保存
-    </button>
+    <div class="analysis-header-spacer"></div>
     <button class="analysis-close" onclick="closeAnalysis()" title="閉じる">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
