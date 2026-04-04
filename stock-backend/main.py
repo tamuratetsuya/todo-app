@@ -321,6 +321,64 @@ def describe_context(ctx: dict, side: str) -> str:
     return "、".join(parts) if parts else ""
 
 
+def build_candle_summary(symbol: str, interval: str) -> str:
+    """現在表示中の銘柄のローソク足サマリーを文字列で返す（シグナル生成用）"""
+    try:
+        conn = get_conn()
+        candles = load_candles_from_db(conn, symbol, interval)
+        conn.close()
+        if not candles:
+            return ""
+        recent = candles[-80:]
+        closes  = [c['close'] for c in recent]
+        highs   = [c['high']  for c in recent]
+        lows    = [c['low']   for c in recent]
+        lines = ["日時,終値,高値,安値,MA5,MA25,BB%"]
+        for i, c in enumerate(recent):
+            t = c['time'] if isinstance(c['time'], str) else str(c['time'])
+            # date文字列に変換
+            if not isinstance(c['time'], str):
+                from datetime import datetime, timezone
+                ts = int(c['time'])
+                t = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
+            ma5  = round(sum(closes[max(0,i-4):i+1]) / min(i+1, 5),  1)
+            ma25 = round(sum(closes[max(0,i-24):i+1]) / min(i+1, 25), 1)
+            bb_pct = ""
+            if i >= 19:
+                c20   = closes[i-19:i+1]
+                mean  = sum(c20) / 20
+                std   = (sum((x - mean)**2 for x in c20) / 20) ** 0.5
+                upper = mean + 2 * std
+                lower = mean - 2 * std
+                bb_pct = round((c['close'] - lower) / (upper - lower) * 100, 1) if upper != lower else 50
+            lines.append(f"{t},{c['close']},{c['high']},{c['low']},{ma5},{ma25},{bb_pct}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def parse_signals(text: str) -> list:
+    """レスポンステキストから ---SIGNALS_START--- ブロックを抽出してパース"""
+    import re
+    m = re.search(r'---SIGNALS_START---\s*(.*?)\s*---SIGNALS_END---', text, re.DOTALL)
+    if not m:
+        return []
+    try:
+        raw = json.loads(m.group(1))
+        signals = []
+        for s in raw:
+            if isinstance(s, dict) and 'date' in s and 'side' in s:
+                signals.append({
+                    "time":   s['date'],
+                    "side":   s['side'],
+                    "price":  s.get('price', 0),
+                    "reason": s.get('reason', ''),
+                })
+        return signals
+    except Exception:
+        return []
+
+
 @app.post("/analyze")
 def analyze_trades(body: dict = None):
     from datetime import datetime as dt
@@ -334,6 +392,11 @@ def analyze_trades(body: dict = None):
 
     if not rows:
         return {"analysis": "トレードデータがありません。CSVをインポートしてください。"}
+
+    req = body or {}
+    extra_viewpoints  = req.get("extra_viewpoints", "")
+    signal_symbol     = req.get("symbol", "")
+    signal_interval   = req.get("interval", "1d")
 
     conn = get_conn()
     try:
@@ -371,7 +434,6 @@ def analyze_trades(body: dict = None):
             except Exception:
                 hold_days = None
 
-            # 指標コンテキスト取得
             buy_ctx  = get_candle_context(conn, code, buy_dates[0])
             sell_ctx = get_candle_context(conn, code, sell_dates[-1])
             buy_desc  = describe_context(buy_ctx,  'buy')
@@ -409,7 +471,30 @@ def analyze_trades(body: dict = None):
                 )
             return "\n".join(lines) if lines else "なし"
 
-        extra_viewpoints = (body or {}).get("extra_viewpoints", "")
+        # シグナル生成用のローソク足サマリー
+        candle_summary = ""
+        if signal_symbol and signal_interval in INTERVALS:
+            candle_summary = build_candle_summary(signal_symbol, signal_interval)
+
+        signal_section = ""
+        if candle_summary:
+            signal_section = f"""
+
+## {signal_symbol} のローソク足データ（直近80本 / {signal_interval}）
+{candle_summary}
+
+---
+
+上記のトレード分析と{signal_symbol}のローソク足データを踏まえ、分析結果と整合した推奨売買シグナルを5〜10個生成してください。
+- 「日時」列に記載されている実際の日付のみ使用すること
+- 勝ちトレードのエントリー条件に合致するタイミングを買いシグナルとして選ぶ
+- 利確・損切りルールに基づくタイミングを売りシグナルとして選ぶ
+- reasonは具体的な指標の状態を含めること（例:「MA25上抜け、BB下限から反発、出来高増加」）
+
+必ず以下のブロックを分析テキストの末尾に出力すること（JSON以外の文字を含めないこと）：
+---SIGNALS_START---
+[{{"date":"YYYY-MM-DD","side":"buy","reason":"理由"}},{{"date":"YYYY-MM-DD","side":"sell","reason":"理由"}}]
+---SIGNALS_END---"""
 
         prompt = f"""あなたはスイングトレード（数日〜数週間の中期保有）の専門アナリストです。
 以下のトレード履歴と、各トレード時点での技術指標の状況（MA5/MA25乖離、ボリンジャーバンド位置、一目均衡表の転換線/基準線の関係、出来高動向）を基に、詳細な分析をしてください。
@@ -437,25 +522,30 @@ def analyze_trades(body: dict = None):
 ### 3. 具体的な改善アドバイス（3〜5点）
 - MA・ボリンジャーバンド・一目均衡表・MACDを使った具体的な買いシグナルの条件
 - 具体的な売りシグナルの条件（利確・損切りのルール化）
-- リスク管理の観点からのアドバイス{extra_viewpoints}"""
+- リスク管理の観点からのアドバイス{extra_viewpoints}{signal_section}"""
 
     finally:
         conn.close()
 
     bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
-    body = json.dumps({
+    bedrock_body = json.dumps({
         "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 2000,
+        "max_tokens": 3000,
         "messages": [{"role": "user", "content": prompt}]
     })
     response = bedrock.invoke_model(
         modelId="anthropic.claude-3-haiku-20240307-v1:0",
-        body=body,
+        body=bedrock_body,
         contentType="application/json",
         accept="application/json"
     )
     result = json.loads(response["body"].read())
-    analysis_text = result["content"][0]["text"]
+    full_text = result["content"][0]["text"]
+
+    # シグナルブロックを分析テキストから除去し、パース
+    import re
+    analysis_text = re.sub(r'\s*---SIGNALS_START---.*?---SIGNALS_END---', '', full_text, flags=re.DOTALL).strip()
+    signals = parse_signals(full_text)
 
     # 分析結果をDBに保存
     conn2 = get_conn()
@@ -463,8 +553,6 @@ def analyze_trades(body: dict = None):
         with conn2.cursor() as cur:
             cur.execute("INSERT INTO analysis_history (analysis_text) VALUES (%s)", (analysis_text,))
         conn2.commit()
-        analysis_id = conn2.insert_id() if hasattr(conn2, 'insert_id') else None
-        # insert_id取得
         with conn2.cursor() as cur:
             cur.execute("SELECT LAST_INSERT_ID() as id")
             row = cur.fetchone()
@@ -472,7 +560,7 @@ def analyze_trades(body: dict = None):
     finally:
         conn2.close()
 
-    return {"analysis": analysis_text, "analysis_id": analysis_id}
+    return {"analysis": analysis_text, "analysis_id": analysis_id, "signals": signals}
 
 
 @app.get("/history/analysis")

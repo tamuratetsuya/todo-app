@@ -2345,11 +2345,16 @@ async function runAnalysis() {
   analysisBody.innerHTML = '<div class="analysis-spinner"><div class="spinner"></div>AIが分析中です...</div>';
 
   try {
-    const vpPrompt = getViewpointsPrompt();
+    const vpPrompt  = getViewpointsPrompt();
+    const interval  = TF_INTERVAL[currentInterval];
     const res = await fetch(`${API}/analyze`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ extra_viewpoints: vpPrompt }),
+      body: JSON.stringify({
+        extra_viewpoints: vpPrompt,
+        symbol:   currentSymbol || '',
+        interval: interval,
+      }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -2358,22 +2363,44 @@ async function runAnalysis() {
     signalToggleBtn.style.display = 'flex';
     historyBtn.style.display = 'flex';
 
-    // シグナルを取得してDBに保存
-    if (currentSymbol && currentAnalysisId) {
-      await fetchSignals();
-      if (aiSignals.length) {
-        const interval = TF_INTERVAL[currentInterval];
-        await fetch(`${API}/history/signals`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            analysis_id: currentAnalysisId,
-            symbol: currentSymbol,
-            interval,
-            signals: aiSignals,
-          }),
-        });
-      }
+    // 分析結果から返ってきたAIシグナルをチャート時刻に変換してセット
+    if (currentSymbol && currentAnalysisId && data.signals && data.signals.length) {
+      const isDate = candleData.length && typeof candleData[0].time === 'string';
+      aiSignals = data.signals.map(s => {
+        let t;
+        if (isDate) {
+          // 日足/週足: 日付文字列で最近傍検索
+          const norm = normalizeDateStr(s.time);
+          const exact = candleData.find(c => c.time === norm);
+          if (exact) {
+            t = exact.time;
+          } else {
+            let best = null, bestDiff = Infinity;
+            for (const c of candleData) {
+              const diff = Math.abs(new Date(c.time) - new Date(norm));
+              if (diff < bestDiff) { bestDiff = diff; best = c.time; }
+            }
+            t = best;
+          }
+        } else {
+          t = findNearestCandleTime(s.time);
+        }
+        return t !== null && t !== undefined ? { time: t, side: s.side, price: s.price || 0, reason: s.reason } : null;
+      }).filter(Boolean);
+
+      // DBに保存
+      await fetch(`${API}/history/signals`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          analysis_id: currentAnalysisId,
+          symbol: currentSymbol,
+          interval,
+          signals: aiSignals,
+        }),
+      });
+
+      if (showSignals) applySignalMarkers();
     }
   } catch (e) {
     analysisBody.innerHTML = `<p style="color:var(--red)">分析に失敗しました: ${e.message}</p>`;
