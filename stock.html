@@ -398,9 +398,10 @@
     color: var(--text);
     cursor: default;
   }
-  .vp-tag.auto-win  { border-color: rgba(63,185,80,0.5);  background: rgba(63,185,80,0.08);  color: var(--green); }
-  .vp-tag.auto-lose { border-color: rgba(248,81,73,0.5);  background: rgba(248,81,73,0.08);  color: var(--red); }
-  .vp-tag.custom    { border-color: rgba(88,166,255,0.5); background: rgba(88,166,255,0.08); color: var(--blue); }
+  .vp-tag.auto-win   { border-color: rgba(63,185,80,0.5);  background: rgba(63,185,80,0.08);  color: var(--green); }
+  .vp-tag.auto-lose  { border-color: rgba(248,81,73,0.5);  background: rgba(248,81,73,0.08);  color: var(--red); }
+  .vp-tag.auto-trend { border-color: rgba(251,191,36,0.5); background: rgba(251,191,36,0.08); color: #fbbf24; }
+  .vp-tag.custom     { border-color: rgba(88,166,255,0.5); background: rgba(88,166,255,0.08); color: var(--blue); }
   .vp-tag-remove {
     background: none;
     border: none;
@@ -672,6 +673,10 @@
   <select id="stockSelect">
     <option value="">— 銘柄を選択 —</option>
   </select>
+  <button id="addStockBtn" title="銘柄を追加" style="display:flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap;transition:background 0.15s,border-color 0.15s,color 0.15s;" onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'" onclick="promptAddStock()">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    銘柄追加
+  </button>
 
   <div class="header-sep"></div>
 
@@ -695,6 +700,9 @@
     </label>
     <label class="ind-label">
       <input type="checkbox" id="chkSR"> 支持線/抵抗線
+    </label>
+    <label class="ind-label">
+      <input type="checkbox" id="chkTL"> トレンドライン
     </label>
   </div>
 
@@ -1120,6 +1128,35 @@ function applyIndicators() {
     indicatorSeries.push(sChikou);
   }
 
+  // ===== Trend Lines =====
+  if (document.getElementById('chkTL').checked && candleData.length > 20) {
+    const tl = detectTrendlines(candleData);
+    if (tl.uptrend) {
+      const s = chart.addLineSeries({ color: 'rgba(63,185,80,0.85)', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+      s.setData([tl.uptrend.start, tl.uptrend.end]);
+      indicatorSeries.push(s);
+    }
+    if (tl.downtrend) {
+      const s = chart.addLineSeries({ color: 'rgba(248,81,73,0.85)', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+      s.setData([tl.downtrend.start, tl.downtrend.end]);
+      indicatorSeries.push(s);
+    }
+    if (tl.doubleBottom) {
+      const fTime = candleData[tl.doubleBottom.l1.idx].time;
+      const lTime = candleData[candleData.length - 1].time;
+      const s = chart.addLineSeries({ color: 'rgba(251,191,36,0.8)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+      s.setData([{ time: fTime, value: tl.doubleBottom.neckline }, { time: lTime, value: tl.doubleBottom.neckline }]);
+      indicatorSeries.push(s);
+    }
+    if (tl.doubleTop) {
+      const fTime = candleData[tl.doubleTop.h1.idx].time;
+      const lTime = candleData[candleData.length - 1].time;
+      const s = chart.addLineSeries({ color: 'rgba(251,191,36,0.8)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+      s.setData([{ time: fTime, value: tl.doubleTop.neckline }, { time: lTime, value: tl.doubleTop.neckline }]);
+      indicatorSeries.push(s);
+    }
+  }
+
   // ===== Support / Resistance =====
   if (document.getElementById('chkSR').checked && candleData.length > 20) {
     const { supports, resistances } = calcSupportResistance(candleData);
@@ -1192,6 +1229,137 @@ function calcSupportResistance(candles, lookback = 5) {
     supports:    cluster(pivotLows,  true),
     resistances: cluster(pivotHighs, false),
   };
+}
+
+// ===== TREND LINE DETECTION =====
+function detectTrendlines(candles, lookback = 5) {
+  const n = candles.length;
+  const currentPrice = candles[n - 1].close;
+
+  // Collect pivot highs and lows
+  const pivotHighs = [], pivotLows = [];
+  for (let i = lookback; i < n - lookback; i++) {
+    const h = candles[i].high, l = candles[i].low;
+    let isHigh = true, isLow = true;
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j === i) continue;
+      if (candles[j].high >= h) isHigh = false;
+      if (candles[j].low  <= l) isLow  = false;
+    }
+    if (isHigh) pivotHighs.push({ idx: i, price: h });
+    if (isLow)  pivotLows.push({ idx: i, price: l });
+  }
+
+  // Uptrend: most recent ascending pivot lows pair
+  let uptrend = null;
+  outer_up:
+  for (let i = pivotLows.length - 1; i >= 1; i--) {
+    const p2 = pivotLows[i];
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const p1 = pivotLows[j];
+      if (p2.price <= p1.price) continue;
+      const slope = (p2.price - p1.price) / (p2.idx - p1.idx);
+      // Validate: intermediate pivots not below the trend line
+      let valid = true;
+      for (let k = j + 1; k < i; k++) {
+        const lineVal = p1.price + slope * (pivotLows[k].idx - p1.idx);
+        if (pivotLows[k].price < lineVal * 0.997) { valid = false; break; }
+      }
+      if (!valid) continue;
+      const endPrice = p2.price + slope * (n - 1 - p2.idx);
+      // Active if current price hasn't broken below the line
+      if (currentPrice >= endPrice * 0.96) {
+        uptrend = {
+          start: { time: candles[p1.idx].time, value: p1.price },
+          end:   { time: candles[n - 1].time,  value: endPrice },
+          endPrice, slope,
+          label: `上昇トレンド（ライン: ${Math.round(endPrice).toLocaleString()}円）`,
+        };
+        break outer_up;
+      }
+    }
+  }
+
+  // Downtrend: most recent descending pivot highs pair
+  let downtrend = null;
+  outer_dn:
+  for (let i = pivotHighs.length - 1; i >= 1; i--) {
+    const p2 = pivotHighs[i];
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const p1 = pivotHighs[j];
+      if (p2.price >= p1.price) continue;
+      const slope = (p2.price - p1.price) / (p2.idx - p1.idx);
+      let valid = true;
+      for (let k = j + 1; k < i; k++) {
+        const lineVal = p1.price + slope * (pivotHighs[k].idx - p1.idx);
+        if (pivotHighs[k].price > lineVal * 1.003) { valid = false; break; }
+      }
+      if (!valid) continue;
+      const endPrice = p2.price + slope * (n - 1 - p2.idx);
+      if (currentPrice <= endPrice * 1.04) {
+        downtrend = {
+          start: { time: candles[p1.idx].time, value: p1.price },
+          end:   { time: candles[n - 1].time,  value: endPrice },
+          endPrice, slope,
+          label: `下降トレンド（ライン: ${Math.round(endPrice).toLocaleString()}円）`,
+        };
+        break outer_dn;
+      }
+    }
+  }
+
+  // Double Bottom: two similar pivot lows (within 4%) with a peak between
+  let doubleBottom = null;
+  outer_db:
+  for (let i = pivotLows.length - 1; i >= 1; i--) {
+    const l2 = pivotLows[i];
+    for (let j = Math.max(0, i - 5); j < i; j++) {
+      const l1 = pivotLows[j];
+      if (Math.abs(l2.price - l1.price) / l1.price > 0.04) continue;
+      let neckline = 0;
+      for (let k = l1.idx + 1; k < l2.idx; k++) {
+        if (candles[k].high > neckline) neckline = candles[k].high;
+      }
+      if (neckline > l1.price * 1.03) {
+        doubleBottom = { l1, l2, neckline, label: `ダブルボトム（底: ${Math.round(l1.price).toLocaleString()}円 / ネックライン: ${Math.round(neckline).toLocaleString()}円）` };
+        break outer_db;
+      }
+    }
+  }
+
+  // Double Top: two similar pivot highs (within 4%) with a trough between
+  let doubleTop = null;
+  outer_dt:
+  for (let i = pivotHighs.length - 1; i >= 1; i--) {
+    const h2 = pivotHighs[i];
+    for (let j = Math.max(0, i - 5); j < i; j++) {
+      const h1 = pivotHighs[j];
+      if (Math.abs(h2.price - h1.price) / h1.price > 0.04) continue;
+      let neckline = Infinity;
+      for (let k = h1.idx + 1; k < h2.idx; k++) {
+        if (candles[k].low < neckline) neckline = candles[k].low;
+      }
+      if (neckline < h1.price * 0.97) {
+        doubleTop = { h1, h2, neckline, label: `ダブルトップ（天井: ${Math.round(h1.price).toLocaleString()}円 / ネックライン: ${Math.round(neckline).toLocaleString()}円）` };
+        break outer_dt;
+      }
+    }
+  }
+
+  return { uptrend, downtrend, doubleBottom, doubleTop };
+}
+
+function calcTrendViewpoints() {
+  if (!candleData.length) return [];
+  try {
+    const { uptrend, downtrend, doubleBottom, doubleTop } = detectTrendlines(candleData);
+    const vps = [];
+    if (uptrend)      vps.push({ type: 'auto-trend', text: uptrend.label });
+    if (downtrend)    vps.push({ type: 'auto-trend', text: downtrend.label });
+    if (doubleBottom) vps.push({ type: 'auto-trend', text: doubleBottom.label });
+    if (doubleTop)    vps.push({ type: 'auto-trend', text: doubleTop.label });
+    return vps;
+  } catch(e) { return []; }
 }
 
 // ===== MARKERS =====
@@ -1501,15 +1669,60 @@ function selectSymbol(code) {
   loadChart();
 }
 
+// ===== WATCH STOCKS (trade履歴なしで追加した銘柄) =====
+const WATCH_KEY = 'stockWatchList';
+let watchStocks = JSON.parse(localStorage.getItem(WATCH_KEY) || '[]'); // [{code, name}]
+
+function promptAddStock() {
+  const input = prompt('銘柄コードを入力してください\n例: 7203.T（トヨタ）/ 1570.T（日経225ETF）/ AAPL（Apple）');
+  if (!input) return;
+  const code = input.trim().toUpperCase();
+  if (!code) return;
+  if (trades[code] || watchStocks.find(w => w.code === code)) {
+    alert(`${code} はすでに追加されています`);
+    stockSelect.value = code;
+    selectSymbol(code);
+    return;
+  }
+  const label = prompt(`${code} の表示名を入力してください（省略可）`) || code;
+  watchStocks.push({ code, name: label });
+  localStorage.setItem(WATCH_KEY, JSON.stringify(watchStocks));
+  trades[code] = trades[code] || [];
+  stockNames[code] = stockNames[code] || label;
+  rebuildStockSelect();
+  selectSymbol(code);
+}
+
 // ===== STOCK SELECTOR =====
 function rebuildStockSelect() {
-  const codes = Object.keys(trades);
+  const tradeCodes = Object.keys(trades).filter(c => !watchStocks.find(w => w.code === c) || (trades[c] && trades[c].length > 0));
+  const watchCodes = watchStocks.map(w => w.code);
   stockSelect.innerHTML = '<option value="">— 銘柄を選択 —</option>';
-  for (const code of codes) {
-    const opt = document.createElement('option');
-    opt.value = code;
-    opt.textContent = `${stockNames[code] || code} (${code})`;
-    stockSelect.appendChild(opt);
+
+  if (tradeCodes.length) {
+    const grp = document.createElement('optgroup');
+    grp.label = 'トレード履歴あり';
+    for (const code of tradeCodes) {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = `${stockNames[code] || code} (${code})`;
+      grp.appendChild(opt);
+    }
+    stockSelect.appendChild(grp);
+  }
+
+  const extraCodes = watchCodes.filter(c => !tradeCodes.includes(c));
+  if (extraCodes.length) {
+    const grp = document.createElement('optgroup');
+    grp.label = 'ウォッチリスト';
+    for (const code of extraCodes) {
+      const w = watchStocks.find(w => w.code === code);
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = `${(w && w.name) || code} (${code})`;
+      grp.appendChild(opt);
+    }
+    stockSelect.appendChild(grp);
   }
 }
 
@@ -1529,7 +1742,7 @@ document.querySelectorAll('.tf-btn').forEach(btn => {
 });
 
 // ===== INDICATOR CHECKBOXES =====
-['chkMA', 'chkIchi', 'chkBB', 'chkSR'].forEach(id => {
+['chkMA', 'chkIchi', 'chkBB', 'chkSR', 'chkTL'].forEach(id => {
   document.getElementById(id).addEventListener('change', () => {
     applyIndicators();
   });
@@ -1833,8 +2046,9 @@ function calcAutoViewpoints() {
 }
 
 function renderViewpoints() {
-  const autoVps = calcAutoViewpoints();
-  const vpTags  = document.getElementById('vpTags');
+  const autoVps  = calcAutoViewpoints();
+  const trendVps = calcTrendViewpoints();
+  const vpTags   = document.getElementById('vpTags');
   vpTags.innerHTML = '';
 
   // 自動観点（削除不可）
@@ -1843,6 +2057,16 @@ function renderViewpoints() {
     span.className = `vp-tag ${vp.type}`;
     span.title = vp.text;
     span.textContent = vp.type === 'auto-win' ? '✓ 勝ちパターン' : '✗ 負けパターン';
+    vpTags.appendChild(span);
+  }
+
+  // トレンド観点（削除不可）
+  for (const vp of trendVps) {
+    const span = document.createElement('span');
+    span.className = 'vp-tag auto-trend';
+    span.title = vp.text;
+    const icon = vp.text.startsWith('上昇') ? '↗' : vp.text.startsWith('下降') ? '↘' : vp.text.startsWith('ダブルボトム') ? 'W' : 'M';
+    span.textContent = `${icon} ${vp.text}`;
     vpTags.appendChild(span);
   }
 
@@ -1876,9 +2100,11 @@ document.getElementById('vpInput').addEventListener('keydown', e => {
 });
 
 function getViewpointsPrompt() {
-  const autoVps = calcAutoViewpoints();
+  const autoVps  = calcAutoViewpoints();
+  const trendVps = calcTrendViewpoints();
   const lines = [
     ...autoVps.map(v => `- ${v.text}`),
+    ...trendVps.map(v => `- ${v.text}`),
     ...customViewpoints.map(v => `- ${v}`),
   ];
   return lines.length ? '\n\n## 重点分析観点（必ずこれらを踏まえて分析すること）\n' + lines.join('\n') : '';
@@ -2131,19 +2357,33 @@ function markdownToHtml(text) {
 
 // ===== RESTORE FROM RDS =====
 (async function restoreFromDB() {
+  // ウォッチリストをselectに反映（トレードデータ取得前に）
+  for (const w of watchStocks) {
+    if (!trades[w.code]) trades[w.code] = [];
+    if (!stockNames[w.code]) stockNames[w.code] = w.name;
+  }
+
   try {
     const saved = await apiGetTrades();
-    if (!saved.length) return;
-    const { result, names } = aggregateTrades(saved);
-    trades = result;
-    stockNames = names;
-    rebuildStockSelect();
-    renderPnl();
-    const codes = Object.keys(trades);
-    if (codes.length) selectSymbol(codes[0]);
+    if (saved.length) {
+      const { result, names } = aggregateTrades(saved);
+      trades = result;
+      stockNames = names;
+      // ウォッチリストを再マージ
+      for (const w of watchStocks) {
+        if (!trades[w.code]) trades[w.code] = [];
+        if (!stockNames[w.code]) stockNames[w.code] = w.name;
+      }
+    }
   } catch (e) {
     console.warn('データ読み込み失敗:', e.message);
   }
+
+  rebuildStockSelect();
+  renderPnl();
+  const codes = Object.keys(trades).filter(c => trades[c].length > 0);
+  const allCodes = [...codes, ...watchStocks.map(w => w.code)];
+  if (allCodes.length) selectSymbol(allCodes[0]);
 })();
 </script>
 </body>
