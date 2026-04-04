@@ -1147,9 +1147,11 @@ function applyIndicators() {
 }
 
 // ===== SUPPORT / RESISTANCE CALCULATION =====
-function calcSupportResistance(candles, lookback = 5, numLevels = 4) {
-  const pivotHighs = [];
-  const pivotLows  = [];
+function calcSupportResistance(candles, lookback = 5) {
+  const currentPrice = candles[candles.length - 1].close;
+  const rangeLimit   = currentPrice * 0.20; // 現在値±20%以内のみ対象
+  const pivotHighs   = [];
+  const pivotLows    = [];
 
   for (let i = lookback; i < candles.length - lookback; i++) {
     const h = candles[i].high;
@@ -1160,13 +1162,17 @@ function calcSupportResistance(candles, lookback = 5, numLevels = 4) {
       if (candles[j].high >= h) isHigh = false;
       if (candles[j].low  <= l) isLow  = false;
     }
-    if (isHigh) pivotHighs.push(h);
-    if (isLow)  pivotLows.push(l);
+    // 現在価格より上のピボット高値のみ抵抗線候補
+    if (isHigh && h >= currentPrice && h <= currentPrice + rangeLimit) pivotHighs.push(h);
+    // 現在価格より下のピボット安値のみ支持線候補
+    if (isLow  && l <= currentPrice && l >= currentPrice - rangeLimit) pivotLows.push(l);
   }
 
-  function cluster(levels) {
+  function cluster(levels, keepClosest, numLevels = 3) {
     if (!levels.length) return [];
-    const sorted = [...levels].sort((a, b) => a - b);
+    const sorted = keepClosest
+      ? [...levels].sort((a, b) => b - a)  // 下から近い順（支持線は現在値に近いものから）
+      : [...levels].sort((a, b) => a - b);  // 上から近い順（抵抗線）
     const groups = [];
     let i = 0;
     while (i < sorted.length) {
@@ -1178,12 +1184,14 @@ function calcSupportResistance(candles, lookback = 5, numLevels = 4) {
       groups.push({ level: group.reduce((a, b) => a + b) / group.length, strength: group.length });
       i++;
     }
-    // recent pivot のみ (後半60%に出現したものを優先)
-    const recentThreshold = candles[Math.floor(candles.length * 0.4)];
+    // 強度優先でソートして上位を取得
     return groups.sort((a, b) => b.strength - a.strength).slice(0, numLevels).map(g => g.level);
   }
 
-  return { supports: cluster(pivotLows), resistances: cluster(pivotHighs) };
+  return {
+    supports:    cluster(pivotLows,  true),
+    resistances: cluster(pivotHighs, false),
+  };
 }
 
 // ===== MARKERS =====
