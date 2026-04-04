@@ -1377,12 +1377,10 @@ function detectTrendlines(candles, lookback = 5) {
 function calcTrendViewpoints() {
   if (!candleData.length) return [];
   try {
-    const { uptrend, downtrend, doubleBottom, doubleTop } = detectTrendlines(candleData);
+    const { uptrend, downtrend } = detectTrendlines(candleData);
     const vps = [];
-    if (uptrend)      vps.push({ type: 'auto-trend', text: uptrend.label });
-    if (downtrend)    vps.push({ type: 'auto-trend', text: downtrend.label });
-    if (doubleBottom) vps.push({ type: 'auto-trend', text: doubleBottom.label });
-    if (doubleTop)    vps.push({ type: 'auto-trend', text: doubleTop.label });
+    if (uptrend)   vps.push({ type: 'auto-trend', text: uptrend.label });
+    if (downtrend) vps.push({ type: 'auto-trend', text: downtrend.label });
     return vps;
   } catch(e) { return []; }
 }
