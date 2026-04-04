@@ -297,6 +297,26 @@
   #analyzeBtn:hover { opacity: 0.85; }
   #analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+  #signalToggleBtn {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  #signalToggleBtn.active {
+    border-color: #7c3aed;
+    color: #a78bfa;
+    background: rgba(124,58,237,0.12);
+  }
+
   .section-title {
     font-size: 11px;
     font-weight: 600;
@@ -522,7 +542,14 @@
     読み込み中...
   </div>
 
-  <div style="margin-left:auto;">
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+    <button id="signalToggleBtn" onclick="toggleSignals()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"></path>
+      </svg>
+      AIシグナル
+    </button>
     <button id="analyzeBtn" onclick="runAnalysis()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"></circle>
@@ -930,35 +957,7 @@ function getMarkerTime(dateStr) {
 }
 
 function applyMarkers() {
-  if (!candleSeries) return;
-  const sym = currentSymbol;
-  const stockTrades = trades[sym] || [];
-  if (!stockTrades.length) { candleSeries.setMarkers([]); return; }
-
-
-  const markerMap = {};
-  for (const t of stockTrades) {
-    const mTime = getMarkerTime(t.date);
-    if (mTime === null) continue;
-    const key = String(mTime) + '_' + t.side;
-    if (!markerMap[key]) {
-      markerMap[key] = {
-        time:     mTime,
-        position: t.side === 'buy' ? 'belowBar' : 'aboveBar',
-        color:    t.side === 'buy' ? '#facc15' : '#fb923c',
-        shape:    t.side === 'buy' ? 'arrowUp'  : 'arrowDown',
-        text:     (t.side === 'buy' ? '買' : '売') + ` ¥${fmtNum(t.price)} ×${t.qty}`,
-        size:     2,
-      };
-    }
-  }
-
-  const markers = Object.values(markerMap).sort((a, b) => {
-    if (typeof a.time === 'string') return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
-    return a.time - b.time;
-  });
-
-  candleSeries.setMarkers(markers);
+  applySignalMarkers();
 }
 
 // ===== SCROLL TO TRADES =====
@@ -1235,6 +1234,7 @@ function esc(s) {
 function selectSymbol(code) {
   currentSymbol = code;
   stockSelect.value = code;
+  aiSignals = [];  // 銘柄変更時にシグナルリセット
   renderPnl();
   renderTrades();
   loadChart();
@@ -1519,6 +1519,89 @@ document.addEventListener('drop', async (e) => {
 initChart();
 noDataMsg.style.display = 'flex';
 
+// ===== AI SIGNALS =====
+let aiSignals = [];
+let showSignals = false;
+const signalToggleBtn = document.getElementById('signalToggleBtn');
+
+async function fetchSignals() {
+  if (!currentSymbol) return;
+  const interval = TF_INTERVAL[currentInterval];
+  try {
+    const res = await fetch(`${API}/suggest?symbol=${encodeURIComponent(currentSymbol)}&interval=${interval}`);
+    if (!res.ok) return;
+    aiSignals = await res.json();
+  } catch(e) {
+    aiSignals = [];
+  }
+}
+
+function applySignalMarkers() {
+  if (!candleSeries) return;
+  // 実マーカーと合成してセット
+  const realMarkers = buildRealMarkers();
+  if (!showSignals || !aiSignals.length) {
+    candleSeries.setMarkers(realMarkers);
+    return;
+  }
+  const sigMarkers = aiSignals.map(s => ({
+    time:     s.time,
+    position: s.side === 'buy' ? 'belowBar' : 'aboveBar',
+    color:    s.side === 'buy' ? '#818cf8' : '#c084fc',
+    shape:    'circle',
+    text:     (s.side === 'buy' ? '▲' : '▼') + ' ' + s.reason,
+    size:     1,
+  }));
+  const all = [...realMarkers, ...sigMarkers].sort((a, b) => {
+    if (typeof a.time === 'string') return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
+    return a.time - b.time;
+  });
+  candleSeries.setMarkers(all);
+}
+
+function buildRealMarkers() {
+  if (!candleSeries || !currentSymbol) return [];
+  const stockTrades = trades[currentSymbol] || [];
+  if (!stockTrades.length) return [];
+  const markerMap = {};
+  for (const t of stockTrades) {
+    const mTime = getMarkerTime(t.date);
+    if (mTime === null) continue;
+    const key = String(mTime) + '_' + t.side;
+    if (!markerMap[key]) {
+      markerMap[key] = {
+        time:     mTime,
+        position: t.side === 'buy' ? 'belowBar' : 'aboveBar',
+        color:    t.side === 'buy' ? '#facc15' : '#fb923c',
+        shape:    t.side === 'buy' ? 'arrowUp' : 'arrowDown',
+        text:     (t.side === 'buy' ? '買' : '売') + ` ¥${fmtNum(t.price)} ×${t.qty}`,
+        size:     2,
+      };
+    }
+  }
+  return Object.values(markerMap).sort((a, b) => {
+    if (typeof a.time === 'string') return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
+    return a.time - b.time;
+  });
+}
+
+async function toggleSignals() {
+  showSignals = !showSignals;
+  signalToggleBtn.classList.toggle('active', showSignals);
+  if (showSignals && !aiSignals.length) {
+    signalToggleBtn.textContent = '読込中...';
+    await fetchSignals();
+    signalToggleBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"></path></svg> AIシグナル`;
+  }
+  applySignalMarkers();
+  // シグナルON時は全期間表示、OFFは通常のトレード期間にフォーカス
+  if (showSignals) {
+    chart.timeScale().fitContent();
+  } else {
+    scrollToTrades();
+  }
+}
+
 // ===== AI ANALYSIS =====
 const analysisPanel = document.getElementById('analysisPanel');
 const analysisBody  = document.getElementById('analysisBody');
@@ -1537,8 +1620,9 @@ async function runAnalysis() {
     const res = await fetch(`${API}/analyze`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    // マークダウン風テキストをHTMLに変換
     analysisBody.innerHTML = markdownToHtml(data.analysis);
+    // 分析完了後にシグナルトグルボタンを表示
+    signalToggleBtn.style.display = 'flex';
   } catch (e) {
     analysisBody.innerHTML = `<p style="color:var(--red)">分析に失敗しました: ${e.message}</p>`;
   } finally {

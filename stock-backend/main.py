@@ -436,6 +436,122 @@ def analyze_trades():
     return {"analysis": result["content"][0]["text"]}
 
 
+@app.get("/suggest")
+def suggest_signals(symbol: str = Query(...), interval: str = Query("1d")):
+    """ローソク足データから技術指標でAI推奨買い/売りシグナルを生成"""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT candle_time, open, high, low, close, volume FROM candles "
+                "WHERE symbol=%s AND interval_type=%s ORDER BY candle_time",
+                (symbol, interval)
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    if len(rows) < 30:
+        return []
+
+    cfg = INTERVALS.get(interval, {"is_date": True})
+    closes  = [r['close']  for r in rows]
+    highs   = [r['high']   for r in rows]
+    lows    = [r['low']    for r in rows]
+    volumes = [r['volume'] for r in rows]
+    times   = [r['candle_time'] for r in rows]
+
+    def ma(arr, n, i):
+        if i < n - 1: return None
+        return sum(arr[i-n+1:i+1]) / n
+
+    def bb(arr, n, i):
+        if i < n - 1: return None, None
+        c = arr[i-n+1:i+1]
+        mean = sum(c) / n
+        std  = (sum((x - mean)**2 for x in c) / n) ** 0.5
+        return mean + 2*std, mean - 2*std
+
+    def ichimoku_tenkan(i):
+        n = 9
+        if i < n - 1: return None
+        return (max(highs[i-n+1:i+1]) + min(lows[i-n+1:i+1])) / 2
+
+    def ichimoku_kijun(i):
+        n = 26
+        if i < n - 1: return None
+        return (max(highs[i-n+1:i+1]) + min(lows[i-n+1:i+1])) / 2
+
+    signals = []
+    in_position = False
+
+    for i in range(30, len(rows)):
+        t = times[i]
+        price = closes[i]
+
+        ma5_cur  = ma(closes, 5,  i)
+        ma5_prev = ma(closes, 5,  i-1)
+        ma25_cur = ma(closes, 25, i)
+        ma25_prev= ma(closes, 25, i-1)
+        bb_up, bb_lo = bb(closes, 20, i)
+        tenkan = ichimoku_tenkan(i)
+        kijun  = ichimoku_kijun(i)
+        vol_avg5  = sum(volumes[i-4:i+1]) / 5
+        vol_avg25 = sum(volumes[i-24:i+1]) / 25 if i >= 24 else None
+
+        reasons_buy  = []
+        reasons_sell = []
+
+        # ゴールデンクロス（MA5がMA25を上抜け）
+        if ma5_cur and ma25_cur and ma5_prev and ma25_prev:
+            if ma5_prev <= ma25_prev and ma5_cur > ma25_cur:
+                reasons_buy.append("MA5がMA25をゴールデンクロス")
+            if ma5_prev >= ma25_prev and ma5_cur < ma25_cur:
+                reasons_sell.append("MA5がMA25をデッドクロス")
+
+        # BBバンド下限タッチ + 出来高増加
+        if bb_lo and price <= bb_lo * 1.01:
+            vol_ok = vol_avg25 and vol_avg5 > vol_avg25 * 1.2
+            reasons_buy.append("BB下限タッチ" + ("・出来高増加" if vol_ok else ""))
+
+        # BBバンド上限タッチ
+        if bb_up and price >= bb_up * 0.99:
+            reasons_sell.append("BB上限タッチ")
+
+        # 一目: 転換線が基準線を上抜け
+        if tenkan and kijun:
+            t_prev = ichimoku_tenkan(i-1)
+            k_prev = ichimoku_kijun(i-1)
+            if t_prev and k_prev:
+                if t_prev <= k_prev and tenkan > kijun:
+                    reasons_buy.append("一目:転換線が基準線を上抜け")
+                if t_prev >= k_prev and tenkan < kijun:
+                    reasons_sell.append("一目:転換線が基準線を下抜け")
+
+        # シグナル発行（同じ方向の複数シグナルが重なった時だけ）
+        if not in_position and len(reasons_buy) >= 1:
+            time_val = t if cfg["is_date"] else int(t)
+            signals.append({
+                "time":   time_val,
+                "side":   "buy",
+                "price":  round(price, 1),
+                "reason": "・".join(reasons_buy[:2]),
+            })
+            in_position = True
+
+        elif in_position and len(reasons_sell) >= 1:
+            time_val = t if cfg["is_date"] else int(t)
+            signals.append({
+                "time":   time_val,
+                "side":   "sell",
+                "price":  round(price, 1),
+                "reason": "・".join(reasons_sell[:2]),
+            })
+            in_position = False
+
+    return signals
+
+
 @app.get("/candles")
 def get_candles(symbol: str = Query(...), interval: str = Query("1d")):
     if interval not in INTERVALS:
