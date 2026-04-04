@@ -647,6 +647,30 @@
     overflow: hidden;
   }
 
+  #candleLegend {
+    position: absolute;
+    top: 8px;
+    left: 10px;
+    z-index: 10;
+    display: none;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--text2);
+    pointer-events: none;
+  }
+  #candleLegend span { display: inline-flex; align-items: center; gap: 3px; }
+  #candleLegend .leg-label { color: var(--text2); opacity: 0.5; font-size: 10px; }
+  #candleLegend.up .leg-o,
+  #candleLegend.up .leg-h,
+  #candleLegend.up .leg-l,
+  #candleLegend.up .leg-c { color: #3fb950; }
+  #candleLegend.down .leg-o,
+  #candleLegend.down .leg-h,
+  #candleLegend.down .leg-l,
+  #candleLegend.down .leg-c { color: #f85149; }
+
   /* ===== ADD STOCK MODAL ===== */
   #addStockModal {
     display: none;
@@ -918,6 +942,7 @@
 
   <div class="chart-area">
     <div id="chartContainer">
+      <div id="candleLegend"></div>
       <div id="signalTooltip"></div>
       <div id="noDataMsg">
         <div id="noDataLoading" style="display:none;flex-direction:column;align-items:center;gap:12px;">
@@ -1155,7 +1180,30 @@ function initChart() {
   ro.observe(chartContainer);
 
   setupSignalTooltip();
+  setupCandleLegend();
 }
+
+function setupCandleLegend() {
+  if (!chart) return;
+  const legend = document.getElementById('candleLegend');
+  chart.subscribeCrosshairMove(param => {
+    if (!param.time || !param.seriesData) {
+      legend.style.display = 'none';
+      return;
+    }
+    const d = param.seriesData.get(candleSeries);
+    if (!d) { legend.style.display = 'none'; return; }
+    const fmt = v => Number(v).toLocaleString('ja-JP', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    legend.className = d.close >= d.open ? 'up' : 'down';
+    legend.innerHTML =
+      `<span><span class="leg-label">O</span><span class="leg-o">${fmt(d.open)}</span></span>` +
+      `<span><span class="leg-label">H</span><span class="leg-h">${fmt(d.high)}</span></span>` +
+      `<span><span class="leg-label">L</span><span class="leg-l">${fmt(d.low)}</span></span>` +
+      `<span><span class="leg-label">C</span><span class="leg-c">${fmt(d.close)}</span></span>`;
+    legend.style.display = 'flex';
+  });
+}
+
 
 // ===== ICHIMOKU CLOUD PRIMITIVE =====
 let ichimokuCloudPrimitive = null;
