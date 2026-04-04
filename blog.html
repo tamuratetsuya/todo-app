@@ -739,7 +739,7 @@
 </div>
 
 <!-- ライトボックス -->
-<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+<div class="lightbox" id="lightbox" onclick="if(event.target===this)closeLightbox()">
   <button class="lightbox-close" onclick="closeLightbox()">×</button>
   <div id="lightboxContent"></div>
 </div>
