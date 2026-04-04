@@ -2589,7 +2589,7 @@ function setupSignalTooltip() {
       signalTooltip.style.display = 'none';
       return;
     }
-    // クロスヘア時刻に最も近いシグナルを探す（±2本以内）
+    // クロスヘアが乗っているローソク足と同じ時刻のシグナルのみ表示
     const isDate = typeof param.time === 'string';
     let nearest = null, bestDiff = Infinity;
     for (const s of aiSignals) {
@@ -2601,10 +2601,8 @@ function setupSignalTooltip() {
       }
       if (diff < bestDiff) { bestDiff = diff; nearest = s; }
     }
-    // 2本分の許容幅（日足=2日, 週足=2週, 1h=2h）
-    const threshold = isDate
-      ? (currentInterval === '1wk' ? 14 : 2) * 86400000
-      : 2 * 3600 * 1000;
+    // 同一ローソク足のみ（完全一致）
+    const threshold = isDate ? 0 : 0;
     if (!nearest || bestDiff > threshold) {
       signalTooltip.style.display = 'none';
       return;
