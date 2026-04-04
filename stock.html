@@ -134,24 +134,45 @@
   .tf-btn:hover { background: #2d333b; color: var(--text); }
   .tf-btn.active { background: var(--accent); color: #fff; }
 
-  .ind-group {
-    display: flex;
-    gap: 10px;
-    margin-left: 4px;
-  }
-
   .ind-label {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
     cursor: pointer;
-    color: var(--text2);
-    font-size: 12px;
+    color: var(--text);
+    font-size: 13px;
     user-select: none;
-    white-space: nowrap;
+    padding: 7px 12px;
+    border-radius: 6px;
+    transition: background 0.12s;
   }
-  .ind-label input { accent-color: var(--accent); cursor: pointer; }
-  .ind-label:hover { color: var(--text); }
+  .ind-label input { accent-color: var(--accent); cursor: pointer; width: 14px; height: 14px; }
+  .ind-label:hover { background: var(--bg3); }
+
+  /* ===== INDICATOR PANEL ===== */
+  .ind-panel {
+    display: none;
+    position: fixed;
+    top: 60px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 100;
+    min-width: 200px;
+    padding: 6px 4px;
+    flex-direction: column;
+  }
+  .ind-panel.visible { display: flex; }
+  .ind-panel-title {
+    font-size: 11px;
+    color: var(--text2);
+    padding: 4px 12px 6px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
 
   #loadingLabel {
     margin-left: auto;
@@ -353,8 +374,8 @@
   .history-item:hover .history-delete-btn { display: flex; }
   .history-delete-btn:hover { color: var(--red); background: rgba(248,81,73,0.1); }
 
-  #historyBtn {
-    display: none;
+  #historyBtn, #indBtn {
+    display: flex;
     align-items: center;
     gap: 5px;
     background: var(--bg3);
@@ -367,7 +388,9 @@
     white-space: nowrap;
     transition: all 0.15s;
   }
-  #historyBtn:hover { border-color: var(--blue); color: var(--text); }
+  #historyBtn { display: none; }
+  #historyBtn:hover, #indBtn:hover { border-color: var(--blue); color: var(--text); }
+  #indBtn.active { border-color: var(--accent); color: var(--blue); }
 
   /* ===== VIEWPOINTS PANEL ===== */
   .viewpoints-bar {
@@ -688,23 +711,15 @@
 
   <div class="header-sep"></div>
 
-  <div class="ind-group">
-    <label class="ind-label">
-      <input type="checkbox" id="chkMA" checked> MA
-    </label>
-    <label class="ind-label">
-      <input type="checkbox" id="chkIchi"> 一目均衡表
-    </label>
-    <label class="ind-label">
-      <input type="checkbox" id="chkBB" checked> ボリンジャーバンド
-    </label>
-    <label class="ind-label">
-      <input type="checkbox" id="chkSR"> 支持線/抵抗線
-    </label>
-    <label class="ind-label">
-      <input type="checkbox" id="chkTL"> トレンドライン
-    </label>
-  </div>
+  <button id="indBtn" onclick="toggleIndPanel()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="4" y1="6" x2="20" y2="6"></line>
+      <line x1="8" y1="12" x2="20" y2="12"></line>
+      <line x1="4" y1="18" x2="20" y2="18"></line>
+      <circle cx="4" cy="12" r="2" fill="currentColor"></circle>
+    </svg>
+    インジケーター
+  </button>
 
   <div id="loadingLabel">
     <div class="spinner"></div>
@@ -767,6 +782,16 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- インジケーターパネル -->
+<div class="ind-panel" id="indPanel">
+  <div class="ind-panel-title">インジケーター</div>
+  <label class="ind-label"><input type="checkbox" id="chkMA" checked> 移動平均線（MA 5/25/75）</label>
+  <label class="ind-label"><input type="checkbox" id="chkBB" checked> ボリンジャーバンド</label>
+  <label class="ind-label"><input type="checkbox" id="chkIchi"> 一目均衡表</label>
+  <label class="ind-label"><input type="checkbox" id="chkSR"> 支持線 / 抵抗線</label>
+  <label class="ind-label"><input type="checkbox" id="chkTL"> トレンドライン</label>
 </div>
 
 <!-- 履歴パネル -->
@@ -2109,6 +2134,27 @@ function getViewpointsPrompt() {
   ];
   return lines.length ? '\n\n## 重点分析観点（必ずこれらを踏まえて分析すること）\n' + lines.join('\n') : '';
 }
+
+// ===== INDICATOR PANEL =====
+const indPanel = document.getElementById('indPanel');
+const indBtn   = document.getElementById('indBtn');
+
+function toggleIndPanel() {
+  const isVisible = indPanel.classList.toggle('visible');
+  indBtn.classList.toggle('active', isVisible);
+  if (isVisible) {
+    // Position below the button
+    const rect = indBtn.getBoundingClientRect();
+    indPanel.style.left = rect.left + 'px';
+  }
+}
+
+document.addEventListener('click', (e) => {
+  if (indPanel.classList.contains('visible') && !indPanel.contains(e.target) && e.target !== indBtn && !indBtn.contains(e.target)) {
+    indPanel.classList.remove('visible');
+    indBtn.classList.remove('active');
+  }
+});
 
 // ===== HISTORY =====
 let currentAnalysisId = null;
