@@ -2347,12 +2347,19 @@ async function fetchSignalsFromDB() {
 function dedupeSignals(signals) {
   // 同一ローソク足に同じ売買方向が重複する場合は最初の1件のみ残す
   const seen = new Set();
-  return signals.filter(s => {
+  const deduped = signals.filter(s => {
     const key = String(s.time) + '_' + s.side;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+  // 同一ローソク足に買いと売りが両方ある場合はどちらも除去
+  const timeCounts = {};
+  for (const s of deduped) {
+    const t = String(s.time);
+    timeCounts[t] = (timeCounts[t] || new Set()).add(s.side);
+  }
+  return deduped.filter(s => timeCounts[String(s.time)].size === 1);
 }
 
 function applySignalMarkers() {
