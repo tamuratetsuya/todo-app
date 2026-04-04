@@ -476,8 +476,16 @@ def analyze_trades(body: dict = None):
         if signal_symbol and signal_interval in INTERVALS:
             candle_summary = build_candle_summary(signal_symbol, signal_interval)
 
+        # 最終トレード日と最新ローソク足の日付を取得
+        all_trade_dates = []
+        for ts_list in by_code.values():
+            for t in ts_list:
+                all_trade_dates.append(str(t['trade_date'])[:10])
+        last_trade_date = max(all_trade_dates) if all_trade_dates else ""
+
         signal_section = ""
         if candle_summary:
+            last_candle_date = candle_summary.strip().split('\n')[-1].split(',')[0]
             signal_section = f"""
 
 ## {signal_symbol} のローソク足データ（直近80本 / {signal_interval}）
@@ -485,13 +493,17 @@ def analyze_trades(body: dict = None):
 
 ---
 
-上記のトレード分析と{signal_symbol}のローソク足データを踏まえ、分析結果と整合した推奨売買シグナルを5〜10個生成してください。
-- 「日時」列に記載されている実際の日付のみ使用すること
-- 勝ちトレードのエントリー条件に合致するタイミングを買いシグナルとして選ぶ
-- 利確・損切りルールに基づくタイミングを売りシグナルとして選ぶ
-- reasonは具体的な指標の状態を含めること（例:「MA25上抜け、BB下限から反発、出来高増加」）
+上記のトレード分析と{signal_symbol}のローソク足データを踏まえ、分析結果と整合した推奨売買シグナルを8〜12個生成してください。
 
-必ず以下のブロックを分析テキストの末尾に出力すること（JSON以外の文字を含めないこと）：
+【重要】以下のルールを必ず守ること：
+- 「日時」列に記載されている実際の日付のみ使用すること（存在しない日付は絶対に使わない）
+- **最終トレード日（{last_trade_date}）以降〜最新日（{last_candle_date}）の期間を必ず含めること**（全シグナルの半数以上をこの期間に配置すること）
+- 過去のトレード期間にも参考シグナルを含めてよいが、最新期間を優先すること
+- 勝ちトレードで判明したエントリー条件（MA・BB・一目均衡表）が揃っているタイミングを買いシグナルとする
+- 利確・損切りルールに基づくタイミングを売りシグナルとする
+- reasonは具体的な指標の状態を日本語で記述すること（例:「MA25上抜け・BB下限から反発・出来高増加」）
+
+必ず以下のブロックを分析テキストの末尾に出力すること（ブロック内はJSON配列のみ、他の文字を含めないこと）：
 ---SIGNALS_START---
 [{{"date":"YYYY-MM-DD","side":"buy","reason":"理由"}},{{"date":"YYYY-MM-DD","side":"sell","reason":"理由"}}]
 ---SIGNALS_END---"""
