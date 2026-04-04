@@ -329,19 +329,18 @@ def build_candle_summary(symbol: str, interval: str) -> str:
         conn.close()
         if not candles:
             return ""
-        recent = candles[-80:]
-        closes  = [c['close'] for c in recent]
-        highs   = [c['high']  for c in recent]
-        lows    = [c['low']   for c in recent]
-        lines = ["日時,終値,高値,安値,MA5,MA25,BB%"]
-        for i, c in enumerate(recent):
+        # 時間足ごとに送る本数を調整（トークン節約のため列は date,close,MA25,BB% に絞る）
+        limits = {"1wk": len(candles), "1d": 400, "1h": 120}
+        target = candles[-limits.get(interval, 400):]
+        closes = [c['close'] for c in target]
+
+        lines = ["日時,終値,MA25,BB%"]
+        for i, c in enumerate(target):
             t = c['time'] if isinstance(c['time'], str) else str(c['time'])
-            # date文字列に変換
             if not isinstance(c['time'], str):
                 from datetime import datetime, timezone
                 ts = int(c['time'])
                 t = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
-            ma5  = round(sum(closes[max(0,i-4):i+1]) / min(i+1, 5),  1)
             ma25 = round(sum(closes[max(0,i-24):i+1]) / min(i+1, 25), 1)
             bb_pct = ""
             if i >= 19:
@@ -351,7 +350,7 @@ def build_candle_summary(symbol: str, interval: str) -> str:
                 upper = mean + 2 * std
                 lower = mean - 2 * std
                 bb_pct = round((c['close'] - lower) / (upper - lower) * 100, 1) if upper != lower else 50
-            lines.append(f"{t},{c['close']},{c['high']},{c['low']},{ma5},{ma25},{bb_pct}")
+            lines.append(f"{t},{c['close']},{ma25},{bb_pct}")
         return "\n".join(lines)
     except Exception:
         return ""
@@ -485,23 +484,26 @@ def analyze_trades(body: dict = None):
 
         signal_section = ""
         if candle_summary:
-            last_candle_date = candle_summary.strip().split('\n')[-1].split(',')[0]
+            rows = candle_summary.strip().split('\n')
+            first_candle_date = rows[1].split(',')[0] if len(rows) > 1 else ""
+            last_candle_date  = rows[-1].split(',')[0]
             signal_section = f"""
 
-## {signal_symbol} のローソク足データ（直近80本 / {signal_interval}）
+## {signal_symbol} のローソク足データ（{signal_interval} / {first_candle_date}〜{last_candle_date}）
 {candle_summary}
 
 ---
 
-上記のトレード分析と{signal_symbol}のローソク足データを踏まえ、分析結果と整合した推奨売買シグナルを8〜12個生成してください。
+上記のトレード分析と{signal_symbol}のローソク足データを踏まえ、分析結果と整合した推奨売買シグナルを10〜15個生成してください。
 
-【重要】以下のルールを必ず守ること：
+【重要ルール】
 - 「日時」列に記載されている実際の日付のみ使用すること（存在しない日付は絶対に使わない）
-- **最終トレード日（{last_trade_date}）以降〜最新日（{last_candle_date}）の期間を必ず含めること**（全シグナルの半数以上をこの期間に配置すること）
-- 過去のトレード期間にも参考シグナルを含めてよいが、最新期間を優先すること
-- 勝ちトレードで判明したエントリー条件（MA・BB・一目均衡表）が揃っているタイミングを買いシグナルとする
+- **シグナルをデータ全期間（{first_candle_date}〜{last_candle_date}）に均等に分散させること**（直近に集中させないこと）
+- 期間を前半・中盤・後半の3つに分け、各期間に3〜5個ずつ配置すること
+- 最終トレード日（{last_trade_date}）以降にも必ず3個以上含めること
+- 勝ちトレードで判明したエントリー条件（MA・BB）が揃っているタイミングを買いシグナルとする
 - 利確・損切りルールに基づくタイミングを売りシグナルとする
-- reasonは具体的な指標の状態を日本語で記述すること（例:「MA25上抜け・BB下限から反発・出来高増加」）
+- reasonは具体的な指標の状態を日本語で記述すること（例:「MA25上抜け・BB下限(BB%=18)から反発」）
 
 必ず以下のブロックを分析テキストの末尾に出力すること（ブロック内はJSON配列のみ、他の文字を含めないこと）：
 ---SIGNALS_START---
