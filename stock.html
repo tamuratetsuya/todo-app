@@ -1565,6 +1565,9 @@ async function loadChart() {
       color: d.close >= d.open ? 'rgba(63,185,80,0.4)' : 'rgba(248,81,73,0.4)',
     })));
 
+    // 銘柄ごとの価格帯に合わせてスケールをリセット
+    candleSeries.priceScale().applyOptions({ autoScale: true });
+
     applyIndicators();
     applyMarkers();
     setTimeout(() => scrollToTrades(), 50);
