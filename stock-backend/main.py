@@ -73,6 +73,26 @@ def init_db():
                 UNIQUE KEY uq_candle (symbol, interval_type, candle_time)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS analysis_history (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                analysis_text MEDIUMTEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS signal_history (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                analysis_id BIGINT NOT NULL,
+                symbol VARCHAR(20) NOT NULL,
+                interval_type VARCHAR(10) NOT NULL,
+                candle_time VARCHAR(30) NOT NULL,
+                side VARCHAR(4) NOT NULL,
+                price FLOAT NOT NULL,
+                reason VARCHAR(500),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
     conn.commit()
     conn.close()
 
@@ -301,8 +321,8 @@ def describe_context(ctx: dict, side: str) -> str:
     return "、".join(parts) if parts else ""
 
 
-@app.get("/analyze")
-def analyze_trades():
+@app.post("/analyze")
+def analyze_trades(body: dict = None):
     from datetime import datetime as dt
     conn = get_conn()
     try:
@@ -389,6 +409,8 @@ def analyze_trades():
                 )
             return "\n".join(lines) if lines else "なし"
 
+        extra_viewpoints = (body or {}).get("extra_viewpoints", "")
+
         prompt = f"""あなたはスイングトレード（数日〜数週間の中期保有）の専門アナリストです。
 以下のトレード履歴と、各トレード時点での技術指標の状況（MA5/MA25乖離、ボリンジャーバンド位置、一目均衡表の転換線/基準線の関係、出来高動向）を基に、詳細な分析をしてください。
 
@@ -415,7 +437,7 @@ def analyze_trades():
 ### 3. 具体的な改善アドバイス（3〜5点）
 - MA・ボリンジャーバンド・一目均衡表・MACDを使った具体的な買いシグナルの条件
 - 具体的な売りシグナルの条件（利確・損切りのルール化）
-- リスク管理の観点からのアドバイス"""
+- リスク管理の観点からのアドバイス{extra_viewpoints}"""
 
     finally:
         conn.close()
@@ -433,7 +455,113 @@ def analyze_trades():
         accept="application/json"
     )
     result = json.loads(response["body"].read())
-    return {"analysis": result["content"][0]["text"]}
+    analysis_text = result["content"][0]["text"]
+
+    # 分析結果をDBに保存
+    conn2 = get_conn()
+    try:
+        with conn2.cursor() as cur:
+            cur.execute("INSERT INTO analysis_history (analysis_text) VALUES (%s)", (analysis_text,))
+        conn2.commit()
+        analysis_id = conn2.insert_id() if hasattr(conn2, 'insert_id') else None
+        # insert_id取得
+        with conn2.cursor() as cur:
+            cur.execute("SELECT LAST_INSERT_ID() as id")
+            row = cur.fetchone()
+            analysis_id = row['id'] if row else None
+    finally:
+        conn2.close()
+
+    return {"analysis": analysis_text, "analysis_id": analysis_id}
+
+
+@app.get("/history/analysis")
+def get_analysis_history():
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, LEFT(analysis_text, 100) as preview, created_at "
+                "FROM analysis_history ORDER BY created_at DESC LIMIT 20"
+            )
+            rows = cur.fetchall()
+        return [{"id": r["id"], "preview": r["preview"], "created_at": str(r["created_at"])} for r in rows]
+    finally:
+        conn.close()
+
+
+@app.get("/history/analysis/{analysis_id}")
+def get_analysis_detail(analysis_id: int):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, analysis_text, created_at FROM analysis_history WHERE id=%s", (analysis_id,))
+            row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Not found")
+        return {"id": row["id"], "analysis": row["analysis_text"], "created_at": str(row["created_at"])}
+    finally:
+        conn.close()
+
+
+@app.delete("/history/analysis/{analysis_id}")
+def delete_analysis(analysis_id: int):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM signal_history WHERE analysis_id=%s", (analysis_id,))
+            cur.execute("DELETE FROM analysis_history WHERE id=%s", (analysis_id,))
+        conn.commit()
+        return {"deleted": analysis_id}
+    finally:
+        conn.close()
+
+
+@app.post("/history/signals")
+def save_signals(data: dict):
+    analysis_id = data.get("analysis_id")
+    symbol      = data.get("symbol")
+    interval    = data.get("interval")
+    signals     = data.get("signals", [])
+    if not signals:
+        return {"saved": 0}
+    conn = get_conn()
+    saved = 0
+    try:
+        with conn.cursor() as cur:
+            for s in signals:
+                cur.execute(
+                    "INSERT INTO signal_history (analysis_id, symbol, interval_type, candle_time, side, price, reason) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (analysis_id, symbol, interval, str(s["time"]), s["side"], s["price"], s.get("reason", ""))
+                )
+                saved += 1
+        conn.commit()
+        return {"saved": saved}
+    finally:
+        conn.close()
+
+
+@app.get("/history/signals/{analysis_id}")
+def get_signals(analysis_id: int, symbol: str = Query(...), interval: str = Query("1d")):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT candle_time, side, price, reason FROM signal_history "
+                "WHERE analysis_id=%s AND symbol=%s AND interval_type=%s ORDER BY candle_time",
+                (analysis_id, symbol, interval)
+            )
+            rows = cur.fetchall()
+        cfg = INTERVALS.get(interval, {"is_date": True})
+        return [{
+            "time":   r["candle_time"] if cfg["is_date"] else int(r["candle_time"]),
+            "side":   r["side"],
+            "price":  r["price"],
+            "reason": r["reason"],
+        } for r in rows]
+    finally:
+        conn.close()
 
 
 @app.get("/suggest")

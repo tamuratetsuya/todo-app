@@ -280,6 +280,164 @@
     font-size: 13px;
   }
 
+  /* ===== HISTORY PANEL ===== */
+  .history-panel {
+    display: none;
+    position: fixed;
+    top: 60px;
+    right: 16px;
+    width: 340px;
+    max-height: 70vh;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 100;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .history-panel.visible { display: flex; }
+  .history-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    flex-shrink: 0;
+  }
+  .history-list {
+    overflow-y: auto;
+    flex: 1;
+  }
+  .history-item {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+    position: relative;
+  }
+  .history-item:hover { background: var(--bg3); }
+  .history-item.active { background: rgba(31,111,235,0.15); }
+  .history-item-date {
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 3px;
+  }
+  .history-item-preview {
+    font-size: 12px;
+    color: var(--text);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    padding-right: 24px;
+  }
+  .history-delete-btn {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: var(--text2);
+    cursor: pointer;
+    padding: 3px;
+    border-radius: 4px;
+    display: none;
+    line-height: 1;
+  }
+  .history-item:hover .history-delete-btn { display: flex; }
+  .history-delete-btn:hover { color: var(--red); background: rgba(248,81,73,0.1); }
+
+  #historyBtn {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  #historyBtn:hover { border-color: var(--blue); color: var(--text); }
+
+  /* ===== VIEWPOINTS PANEL ===== */
+  .viewpoints-bar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .viewpoints-label {
+    font-size: 11px;
+    color: var(--text2);
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .vp-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--text);
+    cursor: default;
+  }
+  .vp-tag.auto-win  { border-color: rgba(63,185,80,0.5);  background: rgba(63,185,80,0.08);  color: var(--green); }
+  .vp-tag.auto-lose { border-color: rgba(248,81,73,0.5);  background: rgba(248,81,73,0.08);  color: var(--red); }
+  .vp-tag.custom    { border-color: rgba(88,166,255,0.5); background: rgba(88,166,255,0.08); color: var(--blue); }
+  .vp-tag-remove {
+    background: none;
+    border: none;
+    color: inherit;
+    opacity: 0.6;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    font-size: 12px;
+  }
+  .vp-tag-remove:hover { opacity: 1; }
+  .vp-add-form {
+    display: flex;
+    gap: 4px;
+  }
+  #vpInput {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    width: 180px;
+    outline: none;
+  }
+  #vpInput:focus { border-color: var(--accent); }
+  #vpAddBtn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  #vpAddBtn:hover { border-color: var(--blue); color: var(--text); }
+
   #analyzeBtn {
     display: flex;
     align-items: center;
@@ -535,6 +693,9 @@
     <label class="ind-label">
       <input type="checkbox" id="chkBB" checked> ボリンジャーバンド
     </label>
+    <label class="ind-label">
+      <input type="checkbox" id="chkSR"> 支持線/抵抗線
+    </label>
   </div>
 
   <div id="loadingLabel">
@@ -543,6 +704,12 @@
   </div>
 
   <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+    <button id="historyBtn" onclick="toggleHistoryPanel()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 8v4l3 3"></path><circle cx="12" cy="12" r="10"></circle>
+      </svg>
+      履歴
+    </button>
     <button id="signalToggleBtn" onclick="toggleSignals()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="3"></circle>
@@ -594,6 +761,19 @@
   </div>
 </div>
 
+<!-- 履歴パネル -->
+<div class="history-panel" id="historyPanel">
+  <div class="history-panel-header">
+    分析履歴
+    <button class="analysis-close" onclick="toggleHistoryPanel()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+  </div>
+  <div class="history-list" id="historyList"></div>
+</div>
+
 <!-- AI分析パネル -->
 <div class="analysis-panel" id="analysisPanel">
   <div class="analysis-header">
@@ -608,6 +788,14 @@
         <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
       </svg>
     </button>
+  </div>
+  <div class="viewpoints-bar" id="viewpointsBar">
+    <span class="viewpoints-label">観点:</span>
+    <div id="vpTags"></div>
+    <div class="vp-add-form">
+      <input type="text" id="vpInput" placeholder="観点を追加..." maxlength="60">
+      <button id="vpAddBtn" onclick="addViewpoint()">追加</button>
+    </div>
   </div>
   <div class="analysis-body" id="analysisBody"></div>
 </div>
@@ -931,6 +1119,71 @@ function applyIndicators() {
     sChikou.setData(makePoints(chikou));
     indicatorSeries.push(sChikou);
   }
+
+  // ===== Support / Resistance =====
+  if (document.getElementById('chkSR').checked && candleData.length > 20) {
+    const { supports, resistances } = calcSupportResistance(candleData);
+    const firstTime = candleData[0].time;
+    const lastTime  = candleData[candleData.length - 1].time;
+    for (const level of supports) {
+      const s = chart.addLineSeries({
+        color: 'rgba(63,185,80,0.7)', lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        priceLineVisible: false, lastValueVisible: false,
+      });
+      s.setData([{ time: firstTime, value: level }, { time: lastTime, value: level }]);
+      indicatorSeries.push(s);
+    }
+    for (const level of resistances) {
+      const s = chart.addLineSeries({
+        color: 'rgba(248,81,73,0.7)', lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        priceLineVisible: false, lastValueVisible: false,
+      });
+      s.setData([{ time: firstTime, value: level }, { time: lastTime, value: level }]);
+      indicatorSeries.push(s);
+    }
+  }
+}
+
+// ===== SUPPORT / RESISTANCE CALCULATION =====
+function calcSupportResistance(candles, lookback = 5, numLevels = 4) {
+  const pivotHighs = [];
+  const pivotLows  = [];
+
+  for (let i = lookback; i < candles.length - lookback; i++) {
+    const h = candles[i].high;
+    const l = candles[i].low;
+    let isHigh = true, isLow = true;
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j === i) continue;
+      if (candles[j].high >= h) isHigh = false;
+      if (candles[j].low  <= l) isLow  = false;
+    }
+    if (isHigh) pivotHighs.push(h);
+    if (isLow)  pivotLows.push(l);
+  }
+
+  function cluster(levels) {
+    if (!levels.length) return [];
+    const sorted = [...levels].sort((a, b) => a - b);
+    const groups = [];
+    let i = 0;
+    while (i < sorted.length) {
+      const group = [sorted[i]];
+      while (i + 1 < sorted.length && Math.abs(sorted[i + 1] - sorted[i]) / sorted[i] < 0.012) {
+        i++;
+        group.push(sorted[i]);
+      }
+      groups.push({ level: group.reduce((a, b) => a + b) / group.length, strength: group.length });
+      i++;
+    }
+    // recent pivot のみ (後半60%に出現したものを優先)
+    const recentThreshold = candles[Math.floor(candles.length * 0.4)];
+    return groups.sort((a, b) => b.strength - a.strength).slice(0, numLevels).map(g => g.level);
+  }
+
+  return { supports: cluster(pivotLows), resistances: cluster(pivotHighs) };
 }
 
 // ===== MARKERS =====
@@ -1268,7 +1521,7 @@ document.querySelectorAll('.tf-btn').forEach(btn => {
 });
 
 // ===== INDICATOR CHECKBOXES =====
-['chkMA', 'chkIchi', 'chkBB'].forEach(id => {
+['chkMA', 'chkIchi', 'chkBB', 'chkSR'].forEach(id => {
   document.getElementById(id).addEventListener('change', () => {
     applyIndicators();
   });
@@ -1519,6 +1772,202 @@ document.addEventListener('drop', async (e) => {
 initChart();
 noDataMsg.style.display = 'flex';
 
+// ===== VIEWPOINTS =====
+const VP_KEY = 'stockAnalysisViewpoints';
+let customViewpoints = JSON.parse(localStorage.getItem(VP_KEY) || '[]');
+
+// 自動観点（トレードデータから生成）は分析時に動的に算出
+function calcAutoViewpoints() {
+  const vps = [];
+  const codes = Object.keys(trades);
+  const winners = [], losers = [];
+  for (const code of codes) {
+    const ts = trades[code];
+    const buyTs  = ts.filter(t => t.side === 'buy');
+    const sellTs = ts.filter(t => t.side === 'sell');
+    if (!sellTs.length) continue;
+    const buyQty  = buyTs.reduce((s,t)=>s+t.qty, 0);
+    const sellQty = sellTs.reduce((s,t)=>s+t.qty, 0);
+    const buySettl  = buyTs.reduce((s,t)=>s+t.settlement, 0);
+    const sellSettl = sellTs.reduce((s,t)=>s+t.settlement, 0);
+    const cost = buyQty > 0 ? buySettl * (sellQty / buyQty) : 0;
+    const pnl  = sellSettl - cost;
+    const buyDates  = buyTs.map(t=>t.date).sort();
+    const sellDates = sellTs.map(t=>t.date).sort();
+    let holdDays = null;
+    try {
+      holdDays = Math.round((new Date(sellDates[sellDates.length-1]) - new Date(buyDates[0])) / 86400000);
+    } catch(e) {}
+    const entry = { name: stockNames[code]||code, pnl, holdDays,
+      avgBuy:  buyTs.reduce((s,t)=>s+t.price*t.qty,0)/buyQty,
+      avgSell: sellTs.reduce((s,t)=>s+t.price*t.qty,0)/sellQty,
+    };
+    pnl >= 0 ? winners.push(entry) : losers.push(entry);
+  }
+
+  if (winners.length) {
+    const avgHold = winners.filter(w=>w.holdDays!=null).reduce((s,w)=>s+w.holdDays,0) / winners.length;
+    const avgPct  = winners.reduce((s,w)=>s+w.pnl/((w.avgBuy||1)*100),0)/winners.length*100;
+    vps.push({
+      type: 'auto-win',
+      text: `勝ちトレードの傾向（${winners.length}件 / 平均保有${Math.round(avgHold)}日 / 平均利幅${avgPct.toFixed(1)}%）: ${winners.slice(0,3).map(w=>w.name).join('・')}など`,
+    });
+  }
+  if (losers.length) {
+    const avgHold = losers.filter(l=>l.holdDays!=null).reduce((s,l)=>s+l.holdDays,0) / losers.length;
+    const avgPct  = losers.reduce((s,l)=>s+l.pnl/((l.avgBuy||1)*100),0)/losers.length*100;
+    vps.push({
+      type: 'auto-lose',
+      text: `負けトレードの傾向（${losers.length}件 / 平均保有${Math.round(avgHold)}日 / 平均損失${avgPct.toFixed(1)}%）: ${losers.slice(0,3).map(l=>l.name).join('・')}など`,
+    });
+  }
+  return vps;
+}
+
+function renderViewpoints() {
+  const autoVps = calcAutoViewpoints();
+  const vpTags  = document.getElementById('vpTags');
+  vpTags.innerHTML = '';
+
+  // 自動観点（削除不可）
+  for (const vp of autoVps) {
+    const span = document.createElement('span');
+    span.className = `vp-tag ${vp.type}`;
+    span.title = vp.text;
+    span.textContent = vp.type === 'auto-win' ? '✓ 勝ちパターン' : '✗ 負けパターン';
+    vpTags.appendChild(span);
+  }
+
+  // カスタム観点（削除可）
+  customViewpoints.forEach((vp, i) => {
+    const span = document.createElement('span');
+    span.className = 'vp-tag custom';
+    span.innerHTML = `${esc(vp)} <button class="vp-tag-remove" onclick="removeViewpoint(${i})" title="削除">×</button>`;
+    vpTags.appendChild(span);
+  });
+}
+
+function addViewpoint() {
+  const input = document.getElementById('vpInput');
+  const val = input.value.trim();
+  if (!val) return;
+  customViewpoints.push(val);
+  localStorage.setItem(VP_KEY, JSON.stringify(customViewpoints));
+  input.value = '';
+  renderViewpoints();
+}
+
+function removeViewpoint(i) {
+  customViewpoints.splice(i, 1);
+  localStorage.setItem(VP_KEY, JSON.stringify(customViewpoints));
+  renderViewpoints();
+}
+
+document.getElementById('vpInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addViewpoint();
+});
+
+function getViewpointsPrompt() {
+  const autoVps = calcAutoViewpoints();
+  const lines = [
+    ...autoVps.map(v => `- ${v.text}`),
+    ...customViewpoints.map(v => `- ${v}`),
+  ];
+  return lines.length ? '\n\n## 重点分析観点（必ずこれらを踏まえて分析すること）\n' + lines.join('\n') : '';
+}
+
+// ===== HISTORY =====
+let currentAnalysisId = null;
+const historyPanel = document.getElementById('historyPanel');
+const historyList  = document.getElementById('historyList');
+const historyBtn   = document.getElementById('historyBtn');
+
+async function toggleHistoryPanel() {
+  const isVisible = historyPanel.classList.toggle('visible');
+  if (isVisible) await loadHistoryList();
+}
+
+async function loadHistoryList() {
+  historyList.innerHTML = '<div style="padding:12px;color:var(--text2);font-size:12px;">読み込み中...</div>';
+  try {
+    const res = await fetch(`${API}/history/analysis`);
+    const items = await res.json();
+    if (!items.length) {
+      historyList.innerHTML = '<div style="padding:12px;color:var(--text2);font-size:12px;">履歴がありません</div>';
+      return;
+    }
+    historyList.innerHTML = '';
+    for (const item of items) {
+      const div = document.createElement('div');
+      div.className = 'history-item' + (item.id === currentAnalysisId ? ' active' : '');
+      div.innerHTML = `
+        <div class="history-item-date">${new Date(item.created_at).toLocaleString('ja-JP')}</div>
+        <div class="history-item-preview">${esc(item.preview)}...</div>
+        <button class="history-delete-btn" title="削除">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6l-1 14H6L5 6"></path>
+            <path d="M10 11v6M14 11v6"></path>
+          </svg>
+        </button>
+      `;
+      div.querySelector('.history-delete-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('この履歴を削除しますか？')) return;
+        await deleteHistoryItem(item.id, div);
+      });
+      div.addEventListener('click', () => loadHistoryDetail(item.id, div));
+      historyList.appendChild(div);
+    }
+  } catch(e) {
+    historyList.innerHTML = `<div style="padding:12px;color:var(--red);font-size:12px;">読み込み失敗: ${e.message}</div>`;
+  }
+}
+
+async function loadHistoryDetail(id, el) {
+  // active状態を更新
+  historyList.querySelectorAll('.history-item').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  currentAnalysisId = id;
+
+  // 分析テキスト表示
+  analysisPanel.classList.add('visible');
+  analysisBody.innerHTML = '<div class="analysis-spinner"><div class="spinner"></div>読み込み中...</div>';
+  historyPanel.classList.remove('visible');
+
+  try {
+    const res = await fetch(`${API}/history/analysis/${id}`);
+    const data = await res.json();
+    analysisBody.innerHTML = markdownToHtml(data.analysis)
+      + `<p style="color:var(--text2);font-size:11px;margin-top:12px;">📅 ${new Date(data.created_at).toLocaleString('ja-JP')}</p>`;
+    signalToggleBtn.style.display = 'flex';
+
+    // 過去のシグナルを読み込む
+    if (currentSymbol) {
+      const interval = TF_INTERVAL[currentInterval];
+      const sigRes = await fetch(`${API}/history/signals/${id}?symbol=${encodeURIComponent(currentSymbol)}&interval=${interval}`);
+      aiSignals = await sigRes.json();
+      if (showSignals) applySignalMarkers();
+    }
+  } catch(e) {
+    analysisBody.innerHTML = `<p style="color:var(--red)">読み込み失敗: ${e.message}</p>`;
+  }
+}
+
+async function deleteHistoryItem(id, el) {
+  try {
+    const res = await fetch(`${API}/history/analysis/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    el.remove();
+    if (currentAnalysisId === id) {
+      currentAnalysisId = null;
+      analysisPanel.classList.remove('visible');
+    }
+  } catch(e) {
+    alert('削除に失敗しました: ' + e.message);
+  }
+}
+
 // ===== AI SIGNALS =====
 let aiSignals = [];
 let showSignals = false;
@@ -1614,15 +2063,40 @@ async function runAnalysis() {
   const btn = document.getElementById('analyzeBtn');
   btn.disabled = true;
   analysisPanel.classList.add('visible');
+  renderViewpoints();
   analysisBody.innerHTML = '<div class="analysis-spinner"><div class="spinner"></div>AIが分析中です...</div>';
 
   try {
-    const res = await fetch(`${API}/analyze`);
+    const vpPrompt = getViewpointsPrompt();
+    const res = await fetch(`${API}/analyze`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ extra_viewpoints: vpPrompt }),
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     analysisBody.innerHTML = markdownToHtml(data.analysis);
-    // 分析完了後にシグナルトグルボタンを表示
+    currentAnalysisId = data.analysis_id || null;
     signalToggleBtn.style.display = 'flex';
+    historyBtn.style.display = 'flex';
+
+    // シグナルを取得してDBに保存
+    if (currentSymbol && currentAnalysisId) {
+      await fetchSignals();
+      if (aiSignals.length) {
+        const interval = TF_INTERVAL[currentInterval];
+        await fetch(`${API}/history/signals`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            analysis_id: currentAnalysisId,
+            symbol: currentSymbol,
+            interval,
+            signals: aiSignals,
+          }),
+        });
+      }
+    }
   } catch (e) {
     analysisBody.innerHTML = `<p style="color:var(--red)">分析に失敗しました: ${e.message}</p>`;
   } finally {
