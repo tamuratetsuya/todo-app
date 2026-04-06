@@ -8,6 +8,7 @@ import pandas as pd
 import pymysql
 import os
 import requests as _requests
+import re as _re
 from collections import defaultdict
 from dotenv import load_dotenv
 import boto3
@@ -372,12 +373,21 @@ def build_candle_summary(symbol: str, interval: str) -> str:
         conn.close()
         if not candles:
             return ""
-        # 時間足ごとに送る本数を調整（トークン節約のため列は date,close,MA25,BB% に絞る）
+        # 時間足ごとに送る本数を調整（トークン節約のため列は date,close,MA25,BB%,IKクロス に絞る）
         limits = {"1wk": len(candles), "1d": 400, "1h": 120}
         target = candles[-limits.get(interval, 400):]
         closes = [c['close'] for c in target]
+        highs  = [c.get('high',  c['close']) for c in target]
+        lows   = [c.get('low',   c['close']) for c in target]
 
-        lines = ["日時,終値,MA25,BB%"]
+        def _tk(i):
+            if i < 8: return None
+            return (max(highs[i-8:i+1]) + min(lows[i-8:i+1])) / 2
+        def _kj(i):
+            if i < 25: return None
+            return (max(highs[i-25:i+1]) + min(lows[i-25:i+1])) / 2
+
+        lines = ["日時,終値,MA25,BB%,IKクロス"]
         for i, c in enumerate(target):
             t = c['time'] if isinstance(c['time'], str) else str(c['time'])
             if not isinstance(c['time'], str):
@@ -393,7 +403,15 @@ def build_candle_summary(symbol: str, interval: str) -> str:
                 upper = mean + 2 * std
                 lower = mean - 2 * std
                 bb_pct = round((c['close'] - lower) / (upper - lower) * 100, 1) if upper != lower else 50
-            lines.append(f"{t},{c['close']},{ma25},{bb_pct}")
+            # 一目均衡表クロス（その日に転換線と基準線が交差したかどうか）
+            ik = ""
+            if i > 0:
+                tk_c, kj_c = _tk(i), _kj(i)
+                tk_p, kj_p = _tk(i-1), _kj(i-1)
+                if tk_c and kj_c and tk_p and kj_p:
+                    if tk_p <= kj_p and tk_c > kj_c: ik = "上抜け"
+                    elif tk_p >= kj_p and tk_c < kj_c: ik = "下抜け"
+            lines.append(f"{t},{c['close']},{ma25},{bb_pct},{ik}")
         return "\n".join(lines)
     except Exception:
         return ""
@@ -707,16 +725,21 @@ def analyze_trades(body: dict = None):
 - シグナルのreasonにVIX水準を必ず記載すること（例:「VIX18・安定水準」「VIX25・高VIXのため見送り推奨」）
 
 【一目均衡表のシグナル判断ルール（必ず遵守）】
-- 買いシグナル：転換線が基準線を「上抜けたその瞬間（クロスの発生）」かつ価格が雲の上にある場合のみ
-- 売りシグナル：転換線が基準線を「下抜けたその瞬間（クロスの発生）」かつ価格が雲の下にある場合のみ
-- 転換線が基準線より上にある状態が継続している場合は「買いサインが消えた」ではなく「強気継続中」と判断すること
-- 転換線が基準線の上にある状態での利確は、価格がBB上限タッチやMA乖離率の過熱など別の根拠を使うこと
+- CSVに「IKクロス」列があり、その日の実際のクロス発生を示す（空欄=クロスなし、「上抜け」=転換線が基準線を上抜け、「下抜け」=転換線が基準線を下抜け）
+- 買いシグナルで一目クロスを根拠にできるのは、その日の「IKクロス」列が「上抜け」の日のみ（それ以外の日に「転換線が基準線を上抜け」と書くことは禁止）
+- 売りシグナルで一目クロスを根拠にできるのは、その日の「IKクロス」列が「下抜け」の日のみ
+- 「IKクロス」が空欄の日は、一目均衡表のクロスを根拠にしないこと
 
 【MAシグナルの記述ルール（必ず遵守）】
 - 「MAxx上抜け」（MA5上抜け・MA25上抜け・MA75上抜けなど）は買いシグナルの根拠にのみ使うこと。売りシグナルに「上抜け」という表現を使うことは禁止
-- 売りシグナルでMAを根拠にする場合は「MA5からの乖離過熱（X%）」「MA25からの乖離過熱（X%）」のように乖離率を明示すること
+- 売りシグナルでMAを根拠にする場合は「MA5からの乖離過熱（X%）」「MA25からの乖離過熱（X%）」のように乖離率を明示すること（※乖離過熱は必ず上方乖離、つまり価格がMAより上にある場合のみ使う。下方乖離を「乖離過熱」と表現しないこと）
 - 「MA5がMA25をゴールデンクロス」→買い根拠、「MA5がMA25をデッドクロス」→売り根拠として使うこと
 - BB中間線（25日MA）付近での利確根拠には「BB中心線付近で利確」と記述し、「MA25上抜け」とは書かないこと
+
+【BB%と売買シグナルの整合性ルール（必ず遵守）】
+- BB%（ボリンジャーバンドの位置）が0〜30%（下限付近）のときは買いシグナルの根拠として使うこと。売りシグナルに「BB下限付近」「BB%が低い」を根拠として使うことは禁止
+- BB%が70〜100%（上限付近）のときは売りシグナルの根拠として使うこと。買いシグナルに「BB上限付近」を根拠として使うことは禁止
+- 「MA25からの乖離過熱(X%)」を売り根拠にする場合、必ずその日のBB%も確認し、BB%が高い（50%超）ことと整合している場合のみ使うこと。BB%が低い日（30%未満）に乖離過熱を売り根拠にしてはいけない（矛盾するため）
 {trend_section}
 ## 利益トレード（{len(winners)}件）
 {fmt(winners)}
@@ -1484,52 +1507,99 @@ def _parse_ih_df(df):
     return rows
 
 
+def _scrape_minkabu_picks(code: str) -> list:
+    """みんかぶの株価予想（ピック）一覧をスクレイピングして返す"""
+    url = f"https://minkabu.jp/stock/{code}/pick"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0"}
+    r = _requests.get(url, headers=headers, timeout=12)
+    if r.status_code != 200:
+        return []
+    html = r.text
+    posts = []
+    # <li class="flex items-center ..."> ブロックを抽出
+    li_pat = _re.compile(r'<li class="flex items-center[^"]*">(.*?)</li>', _re.DOTALL)
+    for m in li_pat.finditer(html):
+        li = m.group(1)
+        # 買い/売り判定
+        dir_m = _re.search(r'bg-minkabuPicks(Buy|Sell)', li)
+        if not dir_m:
+            continue
+        direction = "買い" if dir_m.group(1) == "Buy" else "売り"
+        # リンクとコメントタイトル
+        link_m = _re.search(r'href="(/stock/\d+/pick/(\d+))"[^>]*>\s*(.*?)\s*</a>', li, _re.DOTALL)
+        if not link_m:
+            continue
+        pick_id  = link_m.group(2)
+        title    = _re.sub(r'\s+', ' ', link_m.group(3)).strip()
+        # ユーザー名
+        user_m = _re.search(r'<span>([^<]+?)さん</span>', li)
+        username = (user_m.group(1) + "さん") if user_m else ""
+        # 日付
+        date_m = _re.search(r'text-slate-500[^>]*>\s*([^<]+?)\s*</div>', li)
+        date_str = date_m.group(1).strip() if date_m else ""
+        posts.append({
+            "id":              pick_id,
+            "text":            title,
+            "created_at":      date_str,
+            "author_name":     username,
+            "author_username": "",
+            "author_image":    "",
+            "likes":           0,
+            "retweets":        0,
+            "replies":         0,
+            "direction":       direction,
+            "url":             f"https://minkabu.jp/stock/{code}/pick/{pick_id}",
+            "source":          "minkabu",
+        })
+    return posts[:50]
+
+
 @app.get("/x_posts")
 def get_x_posts(symbol: str = Query(...), name: str = Query("")):
-    """Twitter API v2でその銘柄の最新投稿50件を取得"""
+    """日本株: みんかぶ株価予想 / US株: Twitter API v2"""
+    # 日本株（4桁以下の数字コード）はみんかぶをスクレイピング
+    is_jp = symbol.isdigit() and len(symbol) <= 4
+    if is_jp:
+        try:
+            return _scrape_minkabu_picks(symbol)
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    # US株: Twitter API v2
     bearer = os.getenv("TWITTER_BEARER_TOKEN", "")
     if not bearer:
-        raise HTTPException(503, "Twitter Bearer Token not configured. EC2の.envにTWITTER_BEARER_TOKENを設定してください。")
-
-    # クエリ: 銘柄名 or コードで日本語ツイートを検索
+        raise HTTPException(503, "Twitter Bearer Token not configured")
     q_name = name.strip() or symbol
-    query = f'({q_name} OR {symbol}) lang:ja -is:retweet'
+    query  = f'({q_name} OR {symbol}) lang:en -is:retweet'
     headers = {"Authorization": f"Bearer {bearer}"}
-    params = {
-        "query": query,
-        "max_results": 50,
+    params  = {
+        "query": query, "max_results": 50,
         "tweet.fields": "created_at,author_id,public_metrics",
         "expansions": "author_id",
         "user.fields": "name,username,profile_image_url",
         "sort_order": "recency",
     }
     try:
-        r = _requests.get(
-            "https://api.twitter.com/2/tweets/search/recent",
-            headers=headers, params=params, timeout=15,
-        )
-        if r.status_code == 401:
-            raise HTTPException(401, "Twitter Bearer Token が無効です")
-        if r.status_code == 429:
-            raise HTTPException(429, "Twitter API レート制限に達しました")
+        r = _requests.get("https://api.twitter.com/2/tweets/search/recent",
+                          headers=headers, params=params, timeout=15)
+        if r.status_code == 401: raise HTTPException(401, "Twitter Bearer Token が無効です")
+        if r.status_code == 402: raise HTTPException(402, "Twitter API は有料プランが必要です（$100/月〜）")
+        if r.status_code == 429: raise HTTPException(429, "Twitter API レート制限に達しました")
         r.raise_for_status()
-        data = r.json()
+        data   = r.json()
         tweets = data.get("data") or []
-        users = {u["id"]: u for u in (data.get("includes") or {}).get("users", [])}
+        users  = {u["id"]: u for u in (data.get("includes") or {}).get("users", [])}
         result = []
         for tw in tweets:
             user = users.get(tw.get("author_id", ""), {})
-            m = tw.get("public_metrics") or {}
+            met  = tw.get("public_metrics") or {}
             result.append({
-                "id":              tw.get("id", ""),
-                "text":            tw.get("text", ""),
-                "created_at":      tw.get("created_at", ""),
-                "author_name":     user.get("name", ""),
-                "author_username": user.get("username", ""),
-                "author_image":    user.get("profile_image_url", ""),
-                "likes":           m.get("like_count", 0),
-                "retweets":        m.get("retweet_count", 0),
-                "replies":         m.get("reply_count", 0),
+                "id": tw.get("id", ""), "text": tw.get("text", ""),
+                "created_at": tw.get("created_at", ""),
+                "author_name": user.get("name", ""), "author_username": user.get("username", ""),
+                "author_image": user.get("profile_image_url", ""),
+                "likes": met.get("like_count", 0), "retweets": met.get("retweet_count", 0),
+                "replies": met.get("reply_count", 0), "source": "twitter",
             })
         return result
     except HTTPException:
