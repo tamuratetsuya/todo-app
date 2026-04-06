@@ -2569,7 +2569,7 @@ let pendingAnalysisInterval = '';
 let pendingSignals          = [];
 
 async function saveAnalysis() {
-  if (!pendingSignals.length || !pendingAnalysisSymbol) return;
+  if (!pendingAnalysisSymbol) return;
   const btn = document.getElementById('saveAnalysisBtn');
   btn.disabled = true;
   btn.innerHTML = '保存中...';
@@ -2792,20 +2792,14 @@ function applySignalMarkers() {
     candleSeries.setMarkers(realMarkers);
     return;
   }
-  const sigMarkers = aiSignals.map(s => {
-    let label = s.reason || '';
-    if (s.side === 'buy' && s.stop_loss) {
-      label += ` SL:${Number(s.stop_loss).toLocaleString()}`;
-    }
-    return {
-      time:     s.time,
-      position: s.side === 'buy' ? 'belowBar' : 'aboveBar',
-      color:    s.side === 'buy' ? '#818cf8' : '#c084fc',
-      shape:    s.side === 'buy' ? 'arrowUp' : 'arrowDown',
-      text:     label.length > 28 ? label.slice(0, 28) + '…' : label,
-      size:     2,
-    };
-  });
+  const sigMarkers = aiSignals.map(s => ({
+    time:     s.time,
+    position: s.side === 'buy' ? 'belowBar' : 'aboveBar',
+    color:    s.side === 'buy' ? '#818cf8' : '#c084fc',
+    shape:    s.side === 'buy' ? 'arrowUp' : 'arrowDown',
+    text:     '',
+    size:     2,
+  }));
   const all = [...realMarkers, ...sigMarkers].sort((a, b) => {
     if (typeof a.time === 'string') return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
     return a.time - b.time;

@@ -793,9 +793,16 @@
   const BODY_LIMIT = 100;
 
   function renderPost(p, i) {
-    const date = new Date(p.created_at).toLocaleDateString('ja-JP', {
+    const createdAt = new Date(p.created_at).toLocaleDateString('ja-JP', {
       year: 'numeric', month: 'long', day: 'numeric'
     });
+    const updatedAt = p.updated_at ? new Date(p.updated_at).toLocaleDateString('ja-JP', {
+      year: 'numeric', month: 'long', day: 'numeric'
+    }) : null;
+    const isSameDay = updatedAt === createdAt;
+    const dateHtml = updatedAt && !isSameDay
+      ? `${createdAt} <span style="font-size:11px;opacity:0.7;">（編集: ${updatedAt}）</span>`
+      : createdAt;
 
     let mediaHtml = '';
     if (p.media && p.media.length > 0) {
@@ -825,7 +832,7 @@
       <div class="post-card" style="animation-delay:${i * 0.08}s" onclick="location.href='blog-post.html?id=${p.id}'">
         ${mediaHtml}
         <div class="post-body">
-          <div class="post-meta">${date}</div>
+          <div class="post-meta">${dateHtml}</div>
           <a class="post-title post-title-link" href="blog-post.html?id=${p.id}" onclick="event.stopPropagation()">${escapeHtml(p.title)}</a>
           <div class="post-text post-text-${p.id}"></div>
           ${readMoreHtml}

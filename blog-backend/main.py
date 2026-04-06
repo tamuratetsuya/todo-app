@@ -47,9 +47,14 @@ def init_db():
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 title VARCHAR(500) NOT NULL,
                 body TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
         """)
+        try:
+            cur.execute("ALTER TABLE posts ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+        except Exception:
+            pass
         cur.execute("""
             CREATE TABLE IF NOT EXISTS media (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -102,7 +107,7 @@ def auth(password: str = Form(...)):
 def list_posts():
     conn = get_conn()
     with conn.cursor() as cur:
-        cur.execute("SELECT * FROM posts ORDER BY created_at DESC")
+        cur.execute("SELECT * FROM posts ORDER BY updated_at DESC")
         posts = cur.fetchall()
         for post in posts:
             cur.execute("SELECT * FROM media WHERE post_id = %s", (post["id"],))

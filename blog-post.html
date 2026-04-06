@@ -675,9 +675,16 @@
   }
 
   function renderPost(p) {
-    const date = new Date(p.created_at).toLocaleDateString('ja-JP', {
+    const createdAt = new Date(p.created_at).toLocaleDateString('ja-JP', {
       year: 'numeric', month: 'long', day: 'numeric'
     });
+    const updatedAt = p.updated_at ? new Date(p.updated_at).toLocaleDateString('ja-JP', {
+      year: 'numeric', month: 'long', day: 'numeric'
+    }) : null;
+    const isSameDay = updatedAt === createdAt;
+    const date = updatedAt && !isSameDay
+      ? `${createdAt} <span style="font-size:11px;opacity:0.7;">（編集: ${updatedAt}）</span>`
+      : createdAt;
 
     let mediaHtml = '';
     if (p.media && p.media.length > 0) {

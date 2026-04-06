@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- 背景：深緑グラデーション -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#2d8a50"/>
+      <stop offset="100%" stop-color="#0f4a25"/>
+    </radialGradient>
+    <radialGradient id="ball" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#d0d0d0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 背景円 -->
+  <circle cx="100" cy="100" r="100" fill="url(#bg)"/>
+
+  <!-- フェアウェイ（芝） -->
+  <ellipse cx="100" cy="155" rx="72" ry="22" fill="#1a6b35" opacity="0.7"/>
+
+  <!-- ピン（旗竿） -->
+  <rect x="108" y="58" width="3.5" height="72" rx="1.5" fill="#e8e0c8"/>
+
+  <!-- 旗 -->
+  <polygon points="111.5,58 111.5,82 134,70" fill="#e63946"/>
+
+  <!-- ゴルフボール -->
+  <circle cx="82" cy="148" r="18" fill="url(#ball)"/>
+  <!-- ディンプル -->
+  <circle cx="76" cy="143" r="2.2" fill="#c8c8c8" opacity="0.6"/>
+  <circle cx="84" cy="140" r="2" fill="#c8c8c8" opacity="0.6"/>
+  <circle cx="91" cy="145" r="2.2" fill="#c8c8c8" opacity="0.6"/>
+  <circle cx="79" cy="151" r="2" fill="#c8c8c8" opacity="0.6"/>
+  <circle cx="88" cy="153" r="2.2" fill="#c8c8c8" opacity="0.6"/>
+  <circle cx="82" cy="158" r="1.8" fill="#c8c8c8" opacity="0.6"/>
+
+  <!-- テキスト -->
+  <text x="100" y="34" font-family="Georgia, serif" font-size="13" font-weight="bold"
+        fill="#a8d8b0" text-anchor="middle" letter-spacing="2">GOLF</text>
+</svg>
