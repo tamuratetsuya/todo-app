@@ -107,7 +107,7 @@ def auth(password: str = Form(...)):
 def list_posts():
     conn = get_conn()
     with conn.cursor() as cur:
-        cur.execute("SELECT * FROM posts ORDER BY updated_at DESC")
+        cur.execute("SELECT * FROM posts ORDER BY updated_at DESC, created_at DESC")
         posts = cur.fetchall()
         for post in posts:
             cur.execute("SELECT * FROM media WHERE post_id = %s", (post["id"],))

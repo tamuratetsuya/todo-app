@@ -236,9 +236,29 @@
     flex-shrink: 0;
     display: none;
     flex-direction: column;
-    max-height: 260px;
+    height: 260px;
+    min-height: 80px;
+    max-height: 80vh;
   }
   .analysis-panel.visible { display: flex; }
+
+  .analysis-resize-handle {
+    height: 6px;
+    cursor: ns-resize;
+    background: transparent;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .analysis-resize-handle::before {
+    content: '';
+    width: 36px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+  }
+  .analysis-resize-handle:hover::before { background: var(--text2); }
 
   .analysis-header {
     display: flex;
@@ -1008,6 +1028,7 @@
 
 <!-- AI分析パネル -->
 <div class="analysis-panel" id="analysisPanel">
+  <div class="analysis-resize-handle" id="analysisResizeHandle"></div>
   <div class="analysis-header">
     <div class="analysis-header-title">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2895,6 +2916,42 @@ function closeAnalysis() {
   analysisPanel.classList.remove('visible');
   document.getElementById('saveAnalysisBtn').classList.add('inactive');
 }
+
+// リサイズハンドル
+(function() {
+  const handle = document.getElementById('analysisResizeHandle');
+  const panel  = document.getElementById('analysisPanel');
+  let startY, startH;
+  handle.addEventListener('mousedown', e => {
+    startY = e.clientY;
+    startH = panel.offsetHeight;
+    e.preventDefault();
+    const onMove = e => {
+      const h = startH - (e.clientY - startY);
+      panel.style.height = Math.max(80, Math.min(window.innerHeight * 0.8, h)) + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+  handle.addEventListener('touchstart', e => {
+    startY = e.touches[0].clientY;
+    startH = panel.offsetHeight;
+    const onMove = e => {
+      const h = startH - (e.touches[0].clientY - startY);
+      panel.style.height = Math.max(80, Math.min(window.innerHeight * 0.8, h)) + 'px';
+    };
+    const onEnd = () => {
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+    };
+    document.addEventListener('touchmove', onMove, { passive: true });
+    document.addEventListener('touchend', onEnd);
+  });
+})();
 
 async function runAnalysis() {
   const btn = document.getElementById('analyzeBtn');
