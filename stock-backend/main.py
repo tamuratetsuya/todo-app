@@ -2,10 +2,12 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
+from datetime import date, timedelta, datetime
 import yfinance as yf
 import pandas as pd
 import pymysql
 import os
+import requests as _requests
 from collections import defaultdict
 from dotenv import load_dotenv
 import boto3
@@ -80,6 +82,10 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        try:
+            cur.execute("ALTER TABLE analysis_history ADD COLUMN label VARCHAR(300)")
+        except Exception:
+            pass
         cur.execute("""
             CREATE TABLE IF NOT EXISTS signal_history (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -94,10 +100,42 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS news_cache (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                url VARCHAR(1000) NOT NULL,
+                title VARCHAR(500),
+                title_ja VARCHAR(500),
+                published BIGINT,
+                source VARCHAR(200),
+                summary_ja TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_news (symbol, url(500))
+            )
+        """)
         try:
             cur.execute("ALTER TABLE signal_history ADD COLUMN stop_loss FLOAT DEFAULT NULL")
         except Exception:
             pass
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS financials_cache (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                data MEDIUMTEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_fin (symbol)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS holders_cache (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                data MEDIUMTEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_hld (symbol)
+            )
+        """)
     conn.commit()
     conn.close()
 
@@ -435,7 +473,7 @@ def analyze_trades(body: dict = None):
             if latest and str(latest) >= recent_threshold:
                 continue
 
-            sym = f"{code}.T" if code.isdigit() else code
+            sym = f"{code}.T" if (code.isdigit() or (len(code) == 4 and code.isalnum())) else code
             fresh = fetch_from_yfinance(sym, "1d")
             if fresh:
                 c0 = get_conn()
@@ -537,7 +575,7 @@ def analyze_trades(body: dict = None):
 
                 needs_fetch = not latest2 or str(latest2) < recent_threshold
                 if needs_fetch:
-                    sym = f"{signal_symbol}.T" if signal_symbol.isdigit() else signal_symbol
+                    sym = f"{signal_symbol}.T" if (signal_symbol.isdigit() or (len(signal_symbol) == 4 and signal_symbol.isalnum())) else signal_symbol
                     fresh = fetch_from_yfinance(sym, signal_interval)
                     if fresh:
                         c2 = get_conn()
@@ -637,8 +675,48 @@ def analyze_trades(body: dict = None):
 ### 2. 負けトレードの傾向
 ### 3. 具体的な改善アドバイス"""
 
+        # VIX現在値を取得
+        vix_current = None
+        try:
+            import yfinance as yf
+            vix_hist = yf.Ticker("^VIX").history(period="3d")
+            if not vix_hist.empty:
+                vix_current = round(float(vix_hist["Close"].iloc[-1]), 2)
+        except Exception:
+            pass
+        vix_line = f"現在のVIX指数: {vix_current}" if vix_current else "現在のVIX指数: 取得不可"
+        vix_level = ""
+        if vix_current:
+            if vix_current >= 30:
+                vix_level = "（極度の恐怖水準：原則買い禁止）"
+            elif vix_current >= 22:
+                vix_level = "（高ボラティリティ：よほど強いシグナルでない限り買い禁止）"
+            elif vix_current >= 15:
+                vix_level = "（やや不安定：慎重に判断）"
+            else:
+                vix_level = "（安定水準：通常通り判断）"
+
         prompt = f"""あなたはスイングトレード（数日〜数週間の中期保有）の専門アナリストです。
 以下のトレード履歴と、各トレード時点での技術指標の状況（MA5/MA25乖離、ボリンジャーバンド位置、一目均衡表の転換線/基準線の関係、出来高動向）を基に、詳細な分析をしてください。
+
+【VIX指数ルール（必ず遵守）】
+{vix_line}{vix_level}
+- VIX 22以上：よほど強いシグナル（複数の指標が強く一致）でない限り買いシグナルを生成しないこと
+- VIX 30以上：買いシグナルは原則生成しないこと。売り・様子見を優先する
+- VIX 22未満：通常ルールで判断してよい
+- シグナルのreasonにVIX水準を必ず記載すること（例:「VIX18・安定水準」「VIX25・高VIXのため見送り推奨」）
+
+【一目均衡表のシグナル判断ルール（必ず遵守）】
+- 買いシグナル：転換線が基準線を「上抜けたその瞬間（クロスの発生）」かつ価格が雲の上にある場合のみ
+- 売りシグナル：転換線が基準線を「下抜けたその瞬間（クロスの発生）」かつ価格が雲の下にある場合のみ
+- 転換線が基準線より上にある状態が継続している場合は「買いサインが消えた」ではなく「強気継続中」と判断すること
+- 転換線が基準線の上にある状態での利確は、価格がBB上限タッチやMA乖離率の過熱など別の根拠を使うこと
+
+【MAシグナルの記述ルール（必ず遵守）】
+- 「MAxx上抜け」（MA5上抜け・MA25上抜け・MA75上抜けなど）は買いシグナルの根拠にのみ使うこと。売りシグナルに「上抜け」という表現を使うことは禁止
+- 売りシグナルでMAを根拠にする場合は「MA5からの乖離過熱（X%）」「MA25からの乖離過熱（X%）」のように乖離率を明示すること
+- 「MA5がMA25をゴールデンクロス」→買い根拠、「MA5がMA25をデッドクロス」→売り根拠として使うこと
+- BB中間線（25日MA）付近での利確根拠には「BB中心線付近で利確」と記述し、「MA25上抜け」とは書かないこと
 {trend_section}
 ## 利益トレード（{len(winners)}件）
 {fmt(winners)}
@@ -677,14 +755,18 @@ def analyze_trades(body: dict = None):
 
 @app.post("/history/analysis")
 def save_analysis(data: dict):
-    symbol = data.get("symbol", "")
-    label  = data.get("label", symbol)
+    symbol  = data.get("symbol", "")
+    label   = data.get("label", symbol)
+    content = data.get("content", "")
     if not symbol:
         raise HTTPException(400, "No symbol")
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("INSERT INTO analysis_history (analysis_text) VALUES (%s)", (label,))
+            cur.execute(
+                "INSERT INTO analysis_history (label, analysis_text) VALUES (%s, %s)",
+                (label, content)
+            )
         conn.commit()
         with conn.cursor() as cur:
             cur.execute("SELECT LAST_INSERT_ID() as id")
@@ -713,11 +795,11 @@ def get_analysis_history():
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, LEFT(analysis_text, 100) as preview, created_at "
+                "SELECT id, COALESCE(label, LEFT(analysis_text, 100)) as label, created_at "
                 "FROM analysis_history ORDER BY created_at DESC LIMIT 20"
             )
             rows = cur.fetchall()
-        return [{"id": r["id"], "symbol": r["preview"], "created_at": str(r["created_at"])} for r in rows]
+        return [{"id": r["id"], "symbol": r["label"], "created_at": str(r["created_at"])} for r in rows]
     finally:
         conn.close()
 
@@ -914,11 +996,774 @@ def suggest_signals(symbol: str = Query(...), interval: str = Query("1d")):
     return signals
 
 
+# ===== BOJ MEETING DATES =====
+BOJ_MEETINGS = [
+    # 2025
+    {"date": "2025-01-24", "result": "政策金利0.25%→0.5%に引き上げ"},
+    {"date": "2025-03-19", "result": "政策金利0.5%据え置き"},
+    {"date": "2025-05-01", "result": "政策金利0.5%据え置き"},
+    {"date": "2025-06-17", "result": None},
+    {"date": "2025-07-31", "result": None},
+    {"date": "2025-09-19", "result": None},
+    {"date": "2025-10-29", "result": None},
+    {"date": "2025-12-19", "result": None},
+    # 2026
+    {"date": "2026-01-24", "result": None},
+    {"date": "2026-03-19", "result": None},
+    {"date": "2026-05-01", "result": None},
+    {"date": "2026-06-17", "result": None},
+    {"date": "2026-07-31", "result": None},
+    {"date": "2026-09-18", "result": None},
+    {"date": "2026-10-29", "result": None},
+    {"date": "2026-12-18", "result": None},
+]
+
+# ===== BOJ TANKAN DATES =====
+BOJ_TANKAN = [
+    # 2025
+    {"date": "2025-04-01", "detail": "2025年3月調査", "result": "大企業製造業DI +12"},
+    {"date": "2025-07-01", "detail": "2025年6月調査", "result": None},
+    {"date": "2025-10-01", "detail": "2025年9月調査", "result": None},
+    {"date": "2026-01-14", "detail": "2025年12月調査", "result": None},
+    # 2026
+    {"date": "2026-04-01", "detail": "2026年3月調査", "result": None},
+    {"date": "2026-07-01", "detail": "2026年6月調査", "result": None},
+    {"date": "2026-10-01", "detail": "2026年9月調査", "result": None},
+]
+
+# ===== US ECONOMIC EVENTS =====
+US_ECON_EVENTS = [
+    # FOMC 2025
+    {"date": "2025-01-29", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": "政策金利据え置き4.25-4.5%"},
+    {"date": "2025-03-19", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": "政策金利据え置き4.25-4.5%"},
+    {"date": "2025-05-07", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": "政策金利据え置き4.25-4.5%"},
+    {"date": "2025-06-18", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2025-07-30", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2025-09-17", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2025-10-29", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2025-12-10", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    # FOMC 2026
+    {"date": "2026-01-28", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2026-03-18", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2026-04-29", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2026-06-10", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2026-07-29", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2026-09-16", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2026-10-28", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    {"date": "2026-12-09", "title": "FOMC（米連邦公開市場委員会）", "detail": "米国の金融政策決定会合", "result": None},
+    # US CPI 2025
+    {"date": "2025-01-15", "title": "米CPI発表", "detail": "2024年12月分の米消費者物価指数", "result": "前年比+2.9%"},
+    {"date": "2025-02-12", "title": "米CPI発表", "detail": "2025年1月分の米消費者物価指数", "result": "前年比+3.0%"},
+    {"date": "2025-03-12", "title": "米CPI発表", "detail": "2025年2月分の米消費者物価指数", "result": "前年比+2.8%"},
+    {"date": "2025-04-10", "title": "米CPI発表", "detail": "2025年3月分の米消費者物価指数", "result": None},
+    {"date": "2025-05-13", "title": "米CPI発表", "detail": "2025年4月分の米消費者物価指数", "result": None},
+    {"date": "2025-06-11", "title": "米CPI発表", "detail": "2025年5月分の米消費者物価指数", "result": None},
+    {"date": "2025-07-11", "title": "米CPI発表", "detail": "2025年6月分の米消費者物価指数", "result": None},
+    {"date": "2025-08-12", "title": "米CPI発表", "detail": "2025年7月分の米消費者物価指数", "result": None},
+    {"date": "2025-09-10", "title": "米CPI発表", "detail": "2025年8月分の米消費者物価指数", "result": None},
+    {"date": "2025-10-15", "title": "米CPI発表", "detail": "2025年9月分の米消費者物価指数", "result": None},
+    {"date": "2025-11-13", "title": "米CPI発表", "detail": "2025年10月分の米消費者物価指数", "result": None},
+    {"date": "2025-12-10", "title": "米CPI発表", "detail": "2025年11月分の米消費者物価指数", "result": None},
+    # US CPI 2026
+    {"date": "2026-01-14", "title": "米CPI発表", "detail": "2025年12月分の米消費者物価指数", "result": None},
+    {"date": "2026-02-11", "title": "米CPI発表", "detail": "2026年1月分の米消費者物価指数", "result": None},
+    {"date": "2026-03-11", "title": "米CPI発表", "detail": "2026年2月分の米消費者物価指数", "result": None},
+    {"date": "2026-04-10", "title": "米CPI発表", "detail": "2026年3月分の米消費者物価指数", "result": None},
+    {"date": "2026-05-13", "title": "米CPI発表", "detail": "2026年4月分の米消費者物価指数", "result": None},
+    # US NFP 2025 (first Friday of each month)
+    {"date": "2025-01-10", "title": "米雇用統計（NFP）", "detail": "2024年12月分の非農業部門雇用者数", "result": "25.6万人増"},
+    {"date": "2025-02-07", "title": "米雇用統計（NFP）", "detail": "2025年1月分の非農業部門雇用者数", "result": "14.3万人増"},
+    {"date": "2025-03-07", "title": "米雇用統計（NFP）", "detail": "2025年2月分の非農業部門雇用者数", "result": "15.1万人増"},
+    {"date": "2025-04-04", "title": "米雇用統計（NFP）", "detail": "2025年3月分の非農業部門雇用者数", "result": None},
+    {"date": "2025-05-02", "title": "米雇用統計（NFP）", "detail": "2025年4月分の非農業部門雇用者数", "result": None},
+    {"date": "2025-06-06", "title": "米雇用統計（NFP）", "detail": "2025年5月分の非農業部門雇用者数", "result": None},
+    {"date": "2025-07-03", "title": "米雇用統計（NFP）", "detail": "2025年6月分の非農業部門雇用者数", "result": None},
+    {"date": "2025-08-01", "title": "米雇用統計（NFP）", "detail": "2025年7月分の非農業部門雇用者数", "result": None},
+    {"date": "2025-09-05", "title": "米雇用統計（NFP）", "detail": "2025年8月分の非農業部門雇用者数", "result": None},
+    {"date": "2025-10-03", "title": "米雇用統計（NFP）", "detail": "2025年9月分の非農業部門雇用者数", "result": None},
+    {"date": "2025-11-07", "title": "米雇用統計（NFP）", "detail": "2025年10月分の非農業部門雇用者数", "result": None},
+    {"date": "2025-12-05", "title": "米雇用統計（NFP）", "detail": "2025年11月分の非農業部門雇用者数", "result": None},
+    {"date": "2026-01-09", "title": "米雇用統計（NFP）", "detail": "2025年12月分の非農業部門雇用者数", "result": None},
+    {"date": "2026-02-06", "title": "米雇用統計（NFP）", "detail": "2026年1月分の非農業部門雇用者数", "result": None},
+    {"date": "2026-03-06", "title": "米雇用統計（NFP）", "detail": "2026年2月分の非農業部門雇用者数", "result": None},
+    {"date": "2026-04-03", "title": "米雇用統計（NFP）", "detail": "2026年3月分の非農業部門雇用者数", "result": None},
+    {"date": "2026-05-01", "title": "米雇用統計（NFP）", "detail": "2026年4月分の非農業部門雇用者数", "result": None},
+    # US GDP 2025 (quarterly advance estimates)
+    {"date": "2025-01-30", "title": "米GDP（速報値）", "detail": "2024年Q4 GDP速報値", "result": None},
+    {"date": "2025-04-30", "title": "米GDP（速報値）", "detail": "2025年Q1 GDP速報値", "result": None},
+    {"date": "2025-07-30", "title": "米GDP（速報値）", "detail": "2025年Q2 GDP速報値", "result": None},
+    {"date": "2025-10-29", "title": "米GDP（速報値）", "detail": "2025年Q3 GDP速報値", "result": None},
+    {"date": "2026-01-28", "title": "米GDP（速報値）", "detail": "2025年Q4 GDP速報値", "result": None},
+    {"date": "2026-04-29", "title": "米GDP（速報値）", "detail": "2026年Q1 GDP速報値", "result": None},
+]
+
+
+@app.get("/events")
+def get_events(
+    symbol: str = Query(...),
+    date_from: str = Query(...),
+    date_to: str = Query(...),
+):
+    try:
+        d_from = date.fromisoformat(date_from)
+        d_to   = date.fromisoformat(date_to)
+    except ValueError:
+        raise HTTPException(400, "Invalid date format. Use YYYY-MM-DD")
+
+    today = date.today()
+    events = []
+
+    # --- Company events via yfinance ---
+    sym = f"{symbol}.T" if (symbol.isdigit() or (len(symbol) == 4 and symbol.isalnum())) else symbol
+    try:
+        ticker = yf.Ticker(sym)
+
+        # Earnings dates
+        try:
+            ed = ticker.earnings_dates
+            if ed is not None and not ed.empty:
+                for idx, row in ed.iterrows():
+                    try:
+                        d = idx.date() if hasattr(idx, 'date') else date.fromisoformat(str(idx)[:10])
+                        if d < d_from or d > d_to:
+                            continue
+                        eps_est = row.get("EPS Estimate") if hasattr(row, 'get') else None
+                        eps_act = row.get("Reported EPS") if hasattr(row, 'get') else None
+                        detail = "決算発表"
+                        result = None
+                        if eps_est is not None and not (isinstance(eps_est, float) and pd.isna(eps_est)):
+                            detail = f"EPS予想: {eps_est}"
+                        if eps_act is not None and not (isinstance(eps_act, float) and pd.isna(eps_act)):
+                            result = f"EPS実績: {eps_act}"
+                        events.append({
+                            "date":   d.isoformat(),
+                            "type":   "company",
+                            "title":  "決算発表",
+                            "detail": detail,
+                            "result": result,
+                        })
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Dividends
+        try:
+            divs = ticker.dividends
+            if divs is not None and not divs.empty:
+                for idx, val in divs.items():
+                    try:
+                        d = idx.date() if hasattr(idx, 'date') else date.fromisoformat(str(idx)[:10])
+                        if d < d_from or d > d_to:
+                            continue
+                        events.append({
+                            "date":   d.isoformat(),
+                            "type":   "company",
+                            "title":  "配当落ち日",
+                            "detail": f"配当金: {round(float(val), 4)}",
+                            "result": None,
+                        })
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Stock splits
+        try:
+            splits = ticker.splits
+            if splits is not None and not splits.empty:
+                for idx, val in splits.items():
+                    try:
+                        d = idx.date() if hasattr(idx, 'date') else date.fromisoformat(str(idx)[:10])
+                        if d < d_from or d > d_to:
+                            continue
+                        events.append({
+                            "date":   d.isoformat(),
+                            "type":   "company",
+                            "title":  "株式分割",
+                            "detail": f"分割比率: {val}",
+                            "result": None,
+                        })
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    except Exception:
+        pass
+
+    # --- BOJ events ---
+    _monex = "https://mst.monex.co.jp/pc/servlet/ITS/report/EconomyIndexCalendar"
+    for m in BOJ_MEETINGS:
+        d = date.fromisoformat(m["date"])
+        if d_from <= d <= d_to:
+            result = m["result"] if d <= today else None
+            events.append({
+                "date":   m["date"],
+                "type":   "boj",
+                "title":  "日銀金融政策決定会合",
+                "detail": "日本銀行による金融政策の決定会合（最終日）",
+                "result": result,
+                "url":    _monex,
+            })
+
+    # --- BOJ Tankan ---
+    for t in BOJ_TANKAN:
+        d = date.fromisoformat(t["date"])
+        if d_from <= d <= d_to:
+            result = t["result"] if d <= today else None
+            events.append({
+                "date":   t["date"],
+                "type":   "boj",
+                "title":  "日銀短観（企業短期経済観測調査）",
+                "detail": t["detail"],
+                "result": result,
+                "url":    _monex,
+            })
+
+    # --- US economic events ---
+    _econ_urls = {
+        "FOMC": _monex,
+        "CPI":  _monex,
+        "NFP":  _monex,
+        "GDP":  _monex,
+    }
+    for e in US_ECON_EVENTS:
+        d = date.fromisoformat(e["date"])
+        if d_from <= d <= d_to:
+            result = e["result"] if d <= today else None
+            url = next((v for k, v in _econ_urls.items() if k in e["title"]), None)
+            events.append({
+                "date":   e["date"],
+                "type":   "us_econ",
+                "title":  e["title"],
+                "detail": e["detail"],
+                "result": result,
+                "url":    url,
+            })
+
+    events.sort(key=lambda x: x["date"])
+    return events
+
+
+@app.get("/news")
+def get_news(symbol: str = Query(...)):
+    """銘柄関連ニュースをYahoo Finance RSS + yfinance newsから取得しDBに差分保存、直近1週間を返す"""
+    import feedparser, re as re2, calendar as cal_mod
+    sym = f"{symbol}.T" if (symbol.isdigit() or (len(symbol) == 4 and symbol.isalnum())) else symbol
+    one_week_ago_ms = int((datetime.utcnow().timestamp() - 7 * 86400) * 1000)
+
+    conn = get_conn()
+    try:
+        # 既存URLを取得して差分判定用セット作成
+        with conn.cursor() as cur:
+            cur.execute("SELECT url FROM news_cache WHERE symbol=%s", (symbol,))
+            existing_urls = {row["url"] for row in cur.fetchall()}
+
+        new_items = []
+
+        # yfinance news (新構造: n["content"] にフィールドあり)
+        try:
+            import yfinance as yf
+            t = yf.Ticker(sym)
+            news = t.news or []
+            for n in news[:20]:
+                c = n.get("content") or n  # 新構造はcontentキー、旧構造はフラット
+                title = c.get("title", "")
+                # URL
+                canon = c.get("canonicalUrl") or {}
+                url = canon.get("url", "") if isinstance(canon, dict) else ""
+                if not url:
+                    url = c.get("link") or c.get("url") or n.get("link") or n.get("url") or ""
+                if not url:
+                    continue
+                # 日時
+                pub_str = c.get("pubDate") or c.get("displayTime") or ""
+                published = None
+                if pub_str:
+                    try:
+                        from datetime import timezone
+                        dt = datetime.strptime(pub_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                        published = int(dt.timestamp() * 1000)
+                    except Exception:
+                        pass
+                if published is None:
+                    pt = c.get("providerPublishTime") or n.get("providerPublishTime")
+                    if pt:
+                        published = int(pt) * 1000
+                provider = c.get("provider") or {}
+                source = provider.get("displayName", "") if isinstance(provider, dict) else c.get("publisher", "")
+                new_items.append({
+                    "url": url, "title": title, "published": published,
+                    "source": source, "summary_ja": None, "title_ja": None,
+                })
+        except Exception:
+            pass
+
+        # Yahoo Finance Japan RSS（銘柄別）
+        try:
+            code_only = symbol.replace(".T", "")
+            feed = feedparser.parse(f"https://finance.yahoo.co.jp/rss/company/{code_only}")
+            for entry in feed.entries[:15]:
+                url = entry.get("link", "")
+                if not url:
+                    continue
+                published = None
+                if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                    published = cal_mod.timegm(entry.published_parsed) * 1000
+                summary_raw = entry.get("summary", "")
+                summary_ja = re2.sub('<[^>]+>', '', summary_raw)[:300] if summary_raw else None
+                new_items.append({
+                    "url": url,
+                    "title": entry.get("title", ""),
+                    "published": published,
+                    "source": "Yahoo!ファイナンス",
+                    "summary_ja": summary_ja,
+                    "title_ja": entry.get("title", ""),
+                })
+        except Exception:
+            pass
+
+        # Google News RSS: 銘柄名・業種で検索（日本語・英語）
+        def fetch_google_news(query: str, lang: str, limit: int = 10):
+            import urllib.parse
+            hl = "ja" if lang == "ja" else "en"
+            gl = "JP" if lang == "ja" else "US"
+            ceid = f"{gl}:{hl}"
+            q = urllib.parse.quote(query)
+            url_rss = f"https://news.google.com/rss/search?q={q}&hl={hl}&gl={gl}&ceid={ceid}"
+            results = []
+            try:
+                feed = feedparser.parse(url_rss)
+                for entry in feed.entries[:limit]:
+                    u = entry.get("link", "")
+                    if not u:
+                        continue
+                    published = None
+                    if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                        published = cal_mod.timegm(entry.published_parsed) * 1000
+                    results.append({
+                        "url": u,
+                        "title": entry.get("title", ""),
+                        "published": published,
+                        "source": entry.get("source", {}).get("title", "Google News") if hasattr(entry.get("source", {}), "get") else "Google News",
+                        "summary_ja": None,
+                        "title_ja": entry.get("title", "") if lang == "ja" else None,
+                    })
+            except Exception:
+                pass
+            return results
+
+        # yfinanceから会社名・業種・セクターを取得
+        company_name_ja = ""
+        company_name_en = ""
+        sector_ja = ""
+        industry_ja = ""
+        try:
+            import yfinance as yf
+            info = yf.Ticker(sym).info or {}
+            company_name_en = info.get("longName") or info.get("shortName") or ""
+            sector_en = info.get("sector", "")
+            industry_en = info.get("industry", "")
+            # 日本株は longName が日本語の場合あり
+            if any(ord(c) > 0x3000 for c in company_name_en):
+                company_name_ja = company_name_en
+                company_name_en = info.get("shortName", "")
+        except Exception:
+            pass
+
+        # Google News 検索クエリ構築
+        code_only = symbol.replace(".T", "")
+
+        # 日本語: 銘柄コード or 会社名
+        ja_query = company_name_ja if company_name_ja else code_only
+        new_items += fetch_google_news(ja_query, "ja", 10)
+
+        # 英語: 会社名
+        if company_name_en:
+            new_items += fetch_google_news(company_name_en, "en", 8)
+
+        # 業種・セクター（日本語Google News）- Bedrockで翻訳した用語で検索
+        if sector_en or industry_en:
+            sector_query_en = industry_en or sector_en
+            new_items += fetch_google_news(sector_query_en, "en", 5)
+
+        # 差分のみ（既存DBにないURL）
+        diff_items = [i for i in new_items if i["url"] not in existing_urls]
+
+        # 英語タイトルをBedrockで翻訳
+        to_translate = [i for i in diff_items if not i.get("title_ja") and i.get("title")]
+        if to_translate:
+            try:
+                titles = "\n".join(f"{idx+1}. {i['title']}" for idx, i in enumerate(to_translate))
+                body = json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 1000,
+                    "messages": [{"role": "user", "content": f"以下の英語ニュースタイトルを日本語に翻訳してください。番号付きで返してください。\n{titles}"}]
+                })
+                resp = boto3.client("bedrock-runtime", region_name="us-east-1").invoke_model(
+                    modelId="anthropic.claude-3-haiku-20240307-v1:0", body=body,
+                    contentType="application/json", accept="application/json"
+                )
+                text = json.loads(resp["body"].read())["content"][0]["text"]
+                lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
+                for idx, item in enumerate(to_translate):
+                    for line in lines:
+                        if line.startswith(f"{idx+1}."):
+                            item["title_ja"] = line[len(f"{idx+1}."):].strip()
+                            break
+            except Exception:
+                pass
+
+        # 差分をDBに保存
+        if diff_items:
+            with conn.cursor() as cur:
+                for i in diff_items:
+                    try:
+                        cur.execute(
+                            "INSERT IGNORE INTO news_cache (symbol, url, title, title_ja, published, source, summary_ja) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                            (symbol, i["url"], i.get("title"), i.get("title_ja"), i.get("published"), i.get("source"), i.get("summary_ja"))
+                        )
+                    except Exception:
+                        pass
+            conn.commit()
+
+        # DBから直近1週間のデータを返す
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT url, title, title_ja, published, source, summary_ja FROM news_cache WHERE symbol=%s AND published >= %s ORDER BY published DESC LIMIT 30",
+                (symbol, one_week_ago_ms)
+            )
+            rows = cur.fetchall()
+
+        return [{"url": r["url"], "title": r["title"], "title_ja": r["title_ja"],
+                 "published": r["published"], "source": r["source"], "summary_ja": r["summary_ja"]}
+                for r in rows]
+    finally:
+        conn.close()
+
+
+def _parse_ih_df(df):
+    """institutional_holders / mutualfund_holders をパース（yfinanceの実際のカラム名に対応）"""
+    rows = []
+    if df is None or df.empty:
+        return rows
+    cols = {str(c).lower(): c for c in df.columns}
+
+    def find_col(*candidates):
+        for cand in candidates:
+            for k, v in cols.items():
+                if cand.lower() in k:
+                    return v
+        return None
+
+    c_holder  = find_col("holder")
+    c_shares  = find_col("share")
+    c_pct     = find_col("pctheld", "% out", "pct_held", "pct held")
+    c_value   = find_col("value")
+    c_change  = find_col("pctchange", "% change", "pct_change")
+    c_date    = find_col("date reported", "date")
+
+    def g(row, col, default=None):
+        if col is None: return default
+        v = row[col]
+        return None if (v is None or (isinstance(v, float) and pd.isna(v))) else v
+
+    for _, row in df.iterrows():
+        try:
+            rows.append({
+                "holder":     str(g(row, c_holder, "")),
+                "shares":     int(float(g(row, c_shares, 0) or 0)),
+                "pct_held":   float(g(row, c_pct, 0) or 0),
+                "value":      int(float(g(row, c_value, 0) or 0)),
+                "pct_change": float(g(row, c_change, 0) or 0),
+                "date":       str(g(row, c_date, ""))[:10],
+            })
+        except Exception:
+            pass
+    return rows
+
+
+@app.get("/x_posts")
+def get_x_posts(symbol: str = Query(...), name: str = Query("")):
+    """Twitter API v2でその銘柄の最新投稿50件を取得"""
+    bearer = os.getenv("TWITTER_BEARER_TOKEN", "")
+    if not bearer:
+        raise HTTPException(503, "Twitter Bearer Token not configured. EC2の.envにTWITTER_BEARER_TOKENを設定してください。")
+
+    # クエリ: 銘柄名 or コードで日本語ツイートを検索
+    q_name = name.strip() or symbol
+    query = f'({q_name} OR {symbol}) lang:ja -is:retweet'
+    headers = {"Authorization": f"Bearer {bearer}"}
+    params = {
+        "query": query,
+        "max_results": 50,
+        "tweet.fields": "created_at,author_id,public_metrics",
+        "expansions": "author_id",
+        "user.fields": "name,username,profile_image_url",
+        "sort_order": "recency",
+    }
+    try:
+        r = _requests.get(
+            "https://api.twitter.com/2/tweets/search/recent",
+            headers=headers, params=params, timeout=15,
+        )
+        if r.status_code == 401:
+            raise HTTPException(401, "Twitter Bearer Token が無効です")
+        if r.status_code == 429:
+            raise HTTPException(429, "Twitter API レート制限に達しました")
+        r.raise_for_status()
+        data = r.json()
+        tweets = data.get("data") or []
+        users = {u["id"]: u for u in (data.get("includes") or {}).get("users", [])}
+        result = []
+        for tw in tweets:
+            user = users.get(tw.get("author_id", ""), {})
+            m = tw.get("public_metrics") or {}
+            result.append({
+                "id":              tw.get("id", ""),
+                "text":            tw.get("text", ""),
+                "created_at":      tw.get("created_at", ""),
+                "author_name":     user.get("name", ""),
+                "author_username": user.get("username", ""),
+                "author_image":    user.get("profile_image_url", ""),
+                "likes":           m.get("like_count", 0),
+                "retweets":        m.get("retweet_count", 0),
+                "replies":         m.get("reply_count", 0),
+            })
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/holders")
+def get_holders(symbol: str = Query(...)):
+    """機関投資家・主要株主データをyfinanceから取得しDBキャッシュ"""
+    sym = f"{symbol}.T" if (symbol.isdigit() or (len(symbol) == 4 and symbol.isalnum())) else symbol
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data, updated_at FROM holders_cache WHERE symbol=%s", (symbol,))
+            row = cur.fetchone()
+            if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 86400:
+                return json.loads(row["data"])
+
+        t = yf.Ticker(sym)
+        result = {
+            "institutional": [], "mutualfund": [],
+            "aggregate": {"count": 0, "pct_held": 0.0, "float_pct": 0.0, "insider_pct": 0.0},
+            "currency": "",
+        }
+        try:
+            result["currency"] = (t.info or {}).get("currency", "")
+        except Exception:
+            pass
+
+        # major_holders から集計サマリー取得
+        try:
+            mh = t.major_holders
+            if mh is not None and not mh.empty:
+                mh_dict = {}
+                for _, r in mh.iterrows():
+                    if hasattr(r, 'index') and len(r) >= 2:
+                        mh_dict[str(r.index[0])] = r.iloc[0]
+                    elif len(r.values) >= 1:
+                        # Breakdown / Value形式
+                        pass
+                # インデックスベースで取得
+                idx_vals = {}
+                for idx_val, data_val in mh.iterrows():
+                    idx_vals[str(idx_val)] = data_val.iloc[0]
+                agg = result["aggregate"]
+                for k, v in idx_vals.items():
+                    kl = k.lower()
+                    try:
+                        fv = float(v)
+                        if "institutionscount" in kl or "institutions_count" in kl or kl == "institutionscount":
+                            agg["count"] = int(fv)
+                        elif "institutionspercentheld" in kl and "float" not in kl:
+                            agg["pct_held"] = fv
+                        elif "institutionsfloat" in kl:
+                            agg["float_pct"] = fv
+                        elif "insider" in kl:
+                            agg["insider_pct"] = fv
+                    except Exception:
+                        pass
+                # Breakdown列形式の場合
+                if "Breakdown" in mh.columns:
+                    for _, r in mh.iterrows():
+                        k = str(r.get("Breakdown","")).lower()
+                        try:
+                            fv = float(r.get("Value", 0) or 0)
+                            if "institutionscount" in k:
+                                agg["count"] = int(fv)
+                            elif "institutionspercentheld" in k and "float" not in k:
+                                agg["pct_held"] = fv
+                            elif "institutionsfloat" in k:
+                                agg["float_pct"] = fv
+                            elif "insider" in k:
+                                agg["insider_pct"] = fv
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        try:
+            result["institutional"] = _parse_ih_df(t.institutional_holders)
+        except Exception:
+            pass
+        try:
+            result["mutualfund"] = _parse_ih_df(t.mutualfund_holders)
+        except Exception:
+            pass
+
+        # 集計がまだ空なら個別リストから計算
+        agg = result["aggregate"]
+        all_holders = result["institutional"] + result["mutualfund"]
+        if agg["count"] == 0 and all_holders:
+            agg["count"] = len(set(h["holder"] for h in all_holders))
+        if agg["pct_held"] == 0 and all_holders:
+            agg["pct_held"] = sum(h["pct_held"] for h in all_holders)
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO holders_cache (symbol,data) VALUES (%s,%s) ON DUPLICATE KEY UPDATE data=%s,updated_at=NOW()",
+                (symbol, json.dumps(result), json.dumps(result))
+            )
+        conn.commit()
+        return result
+    except Exception as e:
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/financials")
+def get_financials(symbol: str = Query(...)):
+    """年次・四半期財務データ（売上・利益・前年比・将来予測）"""
+    sym = f"{symbol}.T" if (symbol.isdigit() or (len(symbol) == 4 and symbol.isalnum())) else symbol
+
+    EXACT_KEYS = {
+        "revenue": ["Total Revenue", "Operating Revenue"],
+        "gross":   ["Gross Profit"],
+        "op_inc":  ["Operating Income", "Total Operating Income As Reported", "EBIT"],
+        "net_inc": ["Net Income", "Net Income Common Stockholders",
+                    "Net Income From Continuing Operation Net Minority Interest"],
+    }
+
+    def safe_exact(df, field, col):
+        for key in EXACT_KEYS[field]:
+            if key in df.index:
+                try:
+                    v = df.loc[key, col]
+                    if pd.notna(v): return float(v)
+                except Exception:
+                    pass
+        return None
+
+    def build_rows(df, max_cols):
+        cols = list(df.columns)[:max_cols]
+        rows = []
+        for i, col in enumerate(cols):
+            revenue = safe_exact(df, "revenue", col)
+            gross   = safe_exact(df, "gross",   col)
+            op_inc  = safe_exact(df, "op_inc",  col)
+            net_inc = safe_exact(df, "net_inc", col)
+            rev_yoy = net_yoy = None
+            if i + 1 < len(cols):
+                prev  = cols[i + 1]
+                rev_p = safe_exact(df, "revenue", prev)
+                net_p = safe_exact(df, "net_inc", prev)
+                if rev_p and rev_p != 0 and revenue is not None:
+                    rev_yoy = round((revenue - rev_p) / abs(rev_p) * 100, 1)
+                if net_p and net_p != 0 and net_inc is not None:
+                    net_yoy = round((net_inc - net_p) / abs(net_p) * 100, 1)
+            rows.append({
+                "period": str(col)[:10], "revenue": revenue, "gross": gross,
+                "op_inc": op_inc, "net_inc": net_inc,
+                "rev_yoy": rev_yoy, "net_yoy": net_yoy, "is_estimate": False,
+            })
+        return rows
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data, updated_at FROM financials_cache WHERE symbol=%s", (symbol,))
+            row = cur.fetchone()
+            if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 21600:
+                return json.loads(row["data"])
+
+        t = yf.Ticker(sym)
+        result = {"annual": [], "quarterly": [], "estimates": [], "currency": ""}
+        try:
+            result["currency"] = (t.info or {}).get("currency", "")
+        except Exception:
+            pass
+
+        try:
+            af = t.income_stmt
+            if af is None or af.empty: af = t.financials
+            if af is not None and not af.empty:
+                result["annual"] = build_rows(af, 5)
+        except Exception:
+            pass
+
+        try:
+            qf = t.quarterly_income_stmt
+            if qf is None or qf.empty: qf = t.quarterly_financials
+            if qf is not None and not qf.empty:
+                result["quarterly"] = build_rows(qf, 12)
+        except Exception:
+            pass
+
+        try:
+            re_df = t.revenue_estimate
+            ee_df = t.earnings_estimate
+            if re_df is not None and not re_df.empty:
+                for idx, erow in re_df.iterrows():
+                    rev_avg = None
+                    net_avg = None
+                    try:
+                        v = erow.get("avg") if hasattr(erow, "get") else erow.iloc[0]
+                        if pd.notna(v): rev_avg = float(v)
+                    except Exception:
+                        pass
+                    try:
+                        if ee_df is not None and not ee_df.empty and idx in ee_df.index:
+                            er = ee_df.loc[idx]
+                            v2 = er.get("avg") if hasattr(er, "get") else er.iloc[0]
+                            if pd.notna(v2): net_avg = float(v2)
+                    except Exception:
+                        pass
+                    result["estimates"].append({
+                        "period": str(idx), "revenue": rev_avg, "net_inc": net_avg,
+                        "gross": None, "op_inc": None, "rev_yoy": None, "net_yoy": None,
+                        "is_estimate": True,
+                    })
+        except Exception:
+            pass
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO financials_cache (symbol,data) VALUES (%s,%s) ON DUPLICATE KEY UPDATE data=%s,updated_at=NOW()",
+                (symbol, json.dumps(result), json.dumps(result))
+            )
+        conn.commit()
+        return result
+    except Exception as e:
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
 @app.get("/candles")
 def get_candles(symbol: str = Query(...), interval: str = Query("1d")):
     if interval not in INTERVALS:
         raise HTTPException(400, "Invalid interval")
-    sym = f"{symbol}.T" if symbol.isdigit() else symbol
+    # 日本株コード判定: 数字のみ or 4桁英数字（例: 314A, 318A）も .T を付与
+    sym = f"{symbol}.T" if (symbol.isdigit() or (len(symbol) == 4 and symbol.isalnum())) else symbol
     try:
         conn = get_conn()
         try:

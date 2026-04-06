@@ -220,14 +220,36 @@
 
   .sidebar-section:first-child {
     flex: 0 0 auto;
-    max-height: 40%;
+    height: 40%;
+    min-height: 60px;
     border-bottom: 1px solid var(--border);
+    overflow: hidden;
   }
 
   .sidebar-section:last-child {
     flex: 1;
+    min-height: 60px;
     overflow: hidden;
   }
+
+  .sidebar-resize-handle {
+    height: 6px;
+    cursor: ns-resize;
+    background: transparent;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-resize-handle::before {
+    content: '';
+    width: 28px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+  }
+  .sidebar-resize-handle:hover::before { background: var(--text2); }
 
   /* ===== AI ANALYSIS PANEL ===== */
   .analysis-panel {
@@ -263,25 +285,83 @@
   .analysis-header {
     display: flex;
     align-items: center;
-    padding: 12px 18px;
+    padding: 0 12px 0 0;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+    height: 38px;
   }
-  .analysis-header-title {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text2);
+  .analysis-tabs {
+    display: flex;
+    height: 100%;
+  }
+  .analysis-tab {
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 5px;
+    padding: 0 14px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text2);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.15s;
+    height: 100%;
+    margin-bottom: -1px;
   }
-  .analysis-header-title svg { color: var(--text2); flex-shrink: 0; }
+  .analysis-tab:hover { color: var(--text); }
+  .analysis-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .analysis-header-spacer { flex: 1; }
+
+  /* ニュース */
+  .news-item {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .news-item:hover { background: var(--bg3); }
+  .news-item-title { font-size: 12px; color: var(--text); font-weight: 500; line-height: 1.4; margin-bottom: 4px; }
+  .news-item-meta { font-size: 10px; color: var(--text2); display: flex; gap: 8px; align-items: center; }
+  .news-item-source { color: var(--accent); }
+  .news-detail { padding: 12px 14px; font-size: 12px; color: var(--text); line-height: 1.6; }
+  .news-detail-back { display: flex; align-items: center; gap: 6px; color: var(--text2); font-size: 11px; cursor: pointer; margin-bottom: 10px; }
+  .news-detail-back:hover { color: var(--text); }
+  .news-loading { padding: 20px; text-align: center; color: var(--text2); font-size: 12px; }
+  .news-translated { font-size: 10px; color: var(--text2); margin-top: 6px; font-style: italic; }
+  /* X投稿 */
+  #xBody { padding: 0; overflow: hidden; }
+  #xBody iframe, #xBody .twitter-timeline { width: 100% !important; min-height: 100%; }
+  .x-open-link { display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 12px; color: var(--text2); font-size: 13px; }
+  .x-open-link a { color: #1d9bf0; text-decoration: none; font-size: 13px; }
+  /* 機関投資家 */
+  .holders-section { padding: 10px 14px; }
+  .holders-section-title { font-size: 11px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; margin-top: 12px; }
+  .holders-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .holders-table th { color: var(--text2); font-weight: 500; padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .holders-table th:first-child { text-align: left; }
+  .holders-table td { padding: 5px 6px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text); }
+  .holders-table td:first-child { text-align: left; color: var(--text); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .holders-table tr:hover td { background: var(--bg3); }
+  .holders-major { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+  .holders-major-item { background: var(--bg3); border-radius: 6px; padding: 8px 10px; }
+  .holders-major-item .label { font-size: 10px; color: var(--text2); margin-bottom: 2px; }
+  .holders-major-item .value { font-size: 14px; font-weight: 600; color: var(--text); }
+
+  .analysis-save-bar {
+    padding: 6px 14px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+  }
 
   #saveAnalysisBtn {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     background: none;
     border: 1px solid var(--border);
     color: var(--text2);
@@ -598,6 +678,19 @@
     font-size: 11px;
   }
 
+  .fav-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px 2px 0;
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .fav-btn.active { color: #f59e0b; }
+  .fav-btn:hover { color: #f59e0b; }
+
   .pnl-table .td-pnl {
     text-align: right;
     font-weight: 600;
@@ -794,6 +887,76 @@
   }
   #signalTooltip.sell { border-left-color: #c084fc; }
 
+  #indTooltip {
+    display: none;
+    position: fixed;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text2);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 199;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  /* Event marker layer */
+  #eventMarkerLayer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .event-marker {
+    position: absolute;
+    top: 4px;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 10px solid currentColor;
+    transform: translateX(-5px);
+    cursor: pointer;
+    pointer-events: auto;
+    transition: opacity 0.1s;
+  }
+  .event-marker:hover { opacity: 0.8; }
+  .event-marker.type-company { color: #818cf8; }
+  .event-marker.type-boj     { color: #f85149; }
+  .event-marker.type-us_econ { color: #3fb950; }
+
+  #eventTooltip {
+    display: none;
+    position: fixed;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid #818cf8;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text);
+    max-width: 280px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    pointer-events: auto;
+    z-index: 300;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    line-height: 1.6;
+  }
+  #eventTooltip.type-boj     { border-left-color: #f85149; }
+  #eventTooltip.type-us_econ { border-left-color: #3fb950; }
+  #eventTooltip .ev-title    { font-weight: 600; margin-bottom: 2px; }
+  #eventTooltip .ev-detail   { color: var(--text2); font-size: 11px; }
+  #eventTooltip .ev-result   { color: var(--green); font-size: 11px; margin-top: 3px; }
+  #eventTooltip .ev-link     { display: inline-block; color: #58a6ff; font-size: 11px; margin-top: 4px; text-decoration: none; }
+  #eventTooltip .ev-link:hover { text-decoration: underline; }
+
   /* Drag overlay */
   #dragOverlay {
     position: fixed;
@@ -949,6 +1112,7 @@
       </div>
     </div>
 
+    <div class="sidebar-resize-handle" id="sidebarResizeHandle"></div>
     <div class="sidebar-section">
       <div class="section-title">約定履歴</div>
       <div class="scroll-area" id="tradeBody">
@@ -961,6 +1125,9 @@
     <div id="chartContainer">
       <div id="candleLegend"></div>
       <div id="signalTooltip"></div>
+      <div id="indTooltip"></div>
+      <div id="eventMarkerLayer"></div>
+      <div id="eventTooltip"></div>
       <div id="noDataMsg">
         <div id="noDataLoading" style="display:none;flex-direction:column;align-items:center;gap:12px;">
           <div class="chart-spinner"></div>
@@ -1006,11 +1173,11 @@
 <!-- インジケーターパネル -->
 <div class="ind-panel" id="indPanel">
   <div class="ind-panel-title">インジケーター</div>
-  <label class="ind-label"><input type="checkbox" id="chkMA" checked> 移動平均線（MA 5/25/75）</label>
-  <label class="ind-label"><input type="checkbox" id="chkBB" checked> ボリンジャーバンド</label>
-  <label class="ind-label"><input type="checkbox" id="chkIchi"> 一目均衡表</label>
-  <label class="ind-label"><input type="checkbox" id="chkSR"> 支持線 / 抵抗線</label>
-  <label class="ind-label"><input type="checkbox" id="chkTL"> トレンドライン</label>
+  <label class="ind-label" title="過去5・25・75日間の終値平均。短期(5)が長期(25/75)を上抜けると買いシグナル、下抜けると売りシグナル。トレンドの方向と強さを把握する基本指標。"><input type="checkbox" id="chkMA" checked> 移動平均線（MA 5/25/75）</label>
+  <label class="ind-label" title="移動平均線を中心に、標準偏差×2の上下バンドを描画。価格がバンドに触れると反転しやすく、バンド幅が広いほど値動きが大きい相場。スクイーズ（バンド収縮）後の大きな動きに注目。"><input type="checkbox" id="chkBB" checked> ボリンジャーバンド</label>
+  <label class="ind-label" title="転換線（9日）・基準線（26日）・遅行線・雲（先行スパン1/2）で構成。価格が雲の上なら上昇トレンド、下なら下降トレンド。転換線が基準線を上抜ける「ゴールデンクロス」が買いシグナル。"><input type="checkbox" id="chkIchi" checked> 一目均衡表</label>
+  <label class="ind-label" title="過去の価格が何度も反発した水平ライン。支持線（下値の床）は買いゾーン、抵抗線（上値の天井）は売りゾーン。ラインを明確に突破すると、支持線と抵抗線が入れ替わる（役割転換）。"><input type="checkbox" id="chkSR" checked> 支持線 / 抵抗線</label>
+  <label class="ind-label" title="高値同士・安値同士を結んだ斜めのライン。上昇トレンドラインは安値を結んだサポート、下降トレンドラインは高値を結んだレジスタンス。ラインを割り込むとトレンド転換のサイン。"><input type="checkbox" id="chkTL" checked> トレンドライン</label>
 </div>
 
 <!-- 履歴パネル -->
@@ -1030,26 +1197,28 @@
 <div class="analysis-panel" id="analysisPanel">
   <div class="analysis-resize-handle" id="analysisResizeHandle"></div>
   <div class="analysis-header">
-    <div class="analysis-header-title">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path>
-      </svg>
-      AI トレード分析
+    <div class="analysis-tabs">
+      <button class="analysis-tab active" id="tabAnalysis" onclick="switchAnalysisTab('analysis')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
+        AI分析
+      </button>
+      <button class="analysis-tab" id="tabNews" onclick="switchAnalysisTab('news')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8M15 18h-5M10 6h8v4h-8V6Z"></path></svg>
+        最新ニュース
+      </button>
+      <button class="analysis-tab" id="tabX" onclick="switchAnalysisTab('x')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.742l7.733-8.835L1.254 2.25H8.08l4.253 5.622 5.91-5.622Zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+        X投稿
+      </button>
+      <button class="analysis-tab" id="tabHolders" onclick="switchAnalysisTab('holders')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        機関投資家
+      </button>
+      <button class="analysis-tab" id="tabFinancials" onclick="switchAnalysisTab('financials')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+        財務
+      </button>
     </div>
-    <div class="analysis-header-spacer"></div>
-    <button id="saveAnalysisBtn" class="inactive" onclick="saveAnalysis()">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-        <polyline points="17 21 17 13 7 13 7 21"></polyline>
-        <polyline points="7 3 7 8 15 8"></polyline>
-      </svg>
-      履歴に保存
-    </button>
-    <button class="analysis-close" onclick="closeAnalysis()" title="閉じる">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
-      </svg>
-    </button>
   </div>
   <div class="viewpoints-bar" id="viewpointsBar">
     <span class="viewpoints-label">観点:</span>
@@ -1060,6 +1229,20 @@
     </div>
   </div>
   <div class="analysis-body" id="analysisBody"></div>
+  <div class="analysis-save-bar" id="analysisSaveBar" style="display:none;">
+    <button id="saveAnalysisBtn" class="inactive" onclick="saveAnalysis()" title="履歴に保存">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+        <polyline points="7 3 7 8 15 8"></polyline>
+      </svg>
+      履歴に保存
+    </button>
+  </div>
+  <div class="analysis-body" id="newsBody" style="display:none;"></div>
+  <div class="analysis-body" id="xBody" style="display:none;"></div>
+  <div class="analysis-body" id="holdersBody" style="display:none;"></div>
+  <div class="analysis-body" id="financialsBody" style="display:none;"></div>
 </div>
 
 <div id="dragOverlay">CSVファイルをドロップ</div>
@@ -1067,6 +1250,19 @@
 <script>
 // ===== CONSTANTS =====
 const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:8020' : '/api/stock';
+
+// ===== FAVORITES =====
+let favorites = JSON.parse(localStorage.getItem('stockFavorites') || '[]');
+function isFavorite(code) { return favorites.includes(code); }
+function toggleFavorite(code) {
+  if (isFavorite(code)) {
+    favorites = favorites.filter(c => c !== code);
+  } else {
+    favorites.push(code);
+  }
+  localStorage.setItem('stockFavorites', JSON.stringify(favorites));
+  renderPnl();
+}
 
 // ===== RDS API =====
 function rawTradeKey(t) {
@@ -1118,7 +1314,7 @@ let candleData = [];    // raw candle array from API
 let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
-let indicatorSeries = [];
+let indicatorSeries = []; // [{series, label}]
 
 // ===== DOM REFS =====
 const stockSelect  = document.getElementById('stockSelect');
@@ -1199,6 +1395,7 @@ function initChart() {
 
   setupSignalTooltip();
   setupCandleLegend();
+  initEventMarkerSubscription();
 }
 
 function setupCandleLegend() {
@@ -1296,7 +1493,7 @@ function clearIndicators() {
     try { candleSeries.detachPrimitive(ichimokuCloudPrimitive); } catch(e) {}
     ichimokuCloudPrimitive = null;
   }
-  for (const s of indicatorSeries) {
+  for (const { series: s } of indicatorSeries) {
     try { chart.removeSeries(s); } catch(e) {}
   }
   indicatorSeries = [];
@@ -1431,7 +1628,7 @@ function applyIndicators() {
       const ma = calcMA(closes, period);
       const s = chart.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
       s.setData(makePoints(ma));
-      indicatorSeries.push(s);
+      indicatorSeries.push({ series: s, label: `MA${period}（${period}日移動平均）` });
     }
   }
 
@@ -1442,15 +1639,15 @@ function applyIndicators() {
 
     const sUpper = chart.addLineSeries({ color: bbColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
     sUpper.setData(makePoints(upper));
-    indicatorSeries.push(sUpper);
+    indicatorSeries.push({ series: sUpper, label: 'BB 上限（+2σ）' });
 
     const sMid = chart.addLineSeries({ color: bbColor, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
     sMid.setData(makePoints(middle));
-    indicatorSeries.push(sMid);
+    indicatorSeries.push({ series: sMid, label: 'BB 中心線（25日MA）' });
 
     const sLower = chart.addLineSeries({ color: bbColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
     sLower.setData(makePoints(lower));
-    indicatorSeries.push(sLower);
+    indicatorSeries.push({ series: sLower, label: 'BB 下限（−2σ）' });
   }
 
   // ===== Ichimoku =====
@@ -1459,11 +1656,11 @@ function applyIndicators() {
 
     const sTenkan = chart.addLineSeries({ color: '#e11d48', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
     sTenkan.setData(makePoints(tenkan));
-    indicatorSeries.push(sTenkan);
+    indicatorSeries.push({ series: sTenkan, label: '転換線（9日）' });
 
     const sKijun = chart.addLineSeries({ color: '#2563eb', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
     sKijun.setData(makePoints(kijun));
-    indicatorSeries.push(sKijun);
+    indicatorSeries.push({ series: sKijun, label: '基準線（26日）' });
 
     // 雲: Canvas プリミティブで SpanA と SpanB の間を正確に塗り分け
     const spanAPoints = makePoints(spanAArr, extTimes);
@@ -1475,15 +1672,15 @@ function applyIndicators() {
 
     const sSpanA = chart.addLineSeries({ color: 'rgba(34,197,94,0.9)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
     sSpanA.setData(spanAPoints);
-    indicatorSeries.push(sSpanA);
+    indicatorSeries.push({ series: sSpanA, label: '先行スパン1（雲の上限）' });
 
     const sSpanB = chart.addLineSeries({ color: 'rgba(239,68,68,0.9)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
     sSpanB.setData(spanBPoints);
-    indicatorSeries.push(sSpanB);
+    indicatorSeries.push({ series: sSpanB, label: '先行スパン2（雲の下限）' });
 
     const sChikou = chart.addLineSeries({ color: '#7c3aed', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
     sChikou.setData(makePoints(chikou));
-    indicatorSeries.push(sChikou);
+    indicatorSeries.push({ series: sChikou, label: '遅行線（26日遅行）' });
   }
 
   // ===== Trend Lines =====
@@ -1492,26 +1689,26 @@ function applyIndicators() {
     if (tl.uptrend) {
       const s = chart.addLineSeries({ color: 'rgba(63,185,80,0.85)', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
       s.setData([tl.uptrend.start, tl.uptrend.end]);
-      indicatorSeries.push(s);
+      indicatorSeries.push({ series: s, label: '上昇トレンドライン' });
     }
     if (tl.downtrend) {
       const s = chart.addLineSeries({ color: 'rgba(248,81,73,0.85)', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
       s.setData([tl.downtrend.start, tl.downtrend.end]);
-      indicatorSeries.push(s);
+      indicatorSeries.push({ series: s, label: '下降トレンドライン' });
     }
     if (tl.doubleBottom) {
       const fTime = candleData[tl.doubleBottom.l1.idx].time;
       const lTime = candleData[candleData.length - 1].time;
       const s = chart.addLineSeries({ color: 'rgba(251,191,36,0.8)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
       s.setData([{ time: fTime, value: tl.doubleBottom.neckline }, { time: lTime, value: tl.doubleBottom.neckline }]);
-      indicatorSeries.push(s);
+      indicatorSeries.push({ series: s, label: 'ダブルボトム ネックライン' });
     }
     if (tl.doubleTop) {
       const fTime = candleData[tl.doubleTop.h1.idx].time;
       const lTime = candleData[candleData.length - 1].time;
       const s = chart.addLineSeries({ color: 'rgba(251,191,36,0.8)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
       s.setData([{ time: fTime, value: tl.doubleTop.neckline }, { time: lTime, value: tl.doubleTop.neckline }]);
-      indicatorSeries.push(s);
+      indicatorSeries.push({ series: s, label: 'ダブルトップ ネックライン' });
     }
   }
 
@@ -1527,7 +1724,7 @@ function applyIndicators() {
         priceLineVisible: false, lastValueVisible: false,
       });
       s.setData([{ time: firstTime, value: level }, { time: lastTime, value: level }]);
-      indicatorSeries.push(s);
+      indicatorSeries.push({ series: s, label: `支持線 ¥${Number(level).toLocaleString()}` });
     }
     for (const level of resistances) {
       const s = chart.addLineSeries({
@@ -1536,7 +1733,7 @@ function applyIndicators() {
         priceLineVisible: false, lastValueVisible: false,
       });
       s.setData([{ time: firstTime, value: level }, { time: lastTime, value: level }]);
-      indicatorSeries.push(s);
+      indicatorSeries.push({ series: s, label: `抵抗線 ¥${Number(level).toLocaleString()}` });
     }
   }
 }
@@ -1899,7 +2096,12 @@ async function loadChart() {
 
     applyIndicators();
     applyMarkers();
-    setTimeout(() => scrollToRecent(), 50);
+    clearEventMarkers();
+    setTimeout(() => {
+      scrollToRecent();
+      chart.timeScale().scrollToPosition(10, false);
+      loadEventMarkers();
+    }, 50);
 
     // 銘柄切替時: AIシグナルON中かつ analysis_id があれば DBから新銘柄のシグナルを取得
     if (showSignals && currentAnalysisId) {
@@ -1922,6 +2124,92 @@ async function loadChart() {
   } finally {
     setLoading(false);
   }
+}
+
+// ===== EVENT MARKERS =====
+let eventData = [];
+let eventMarkerUnsubscribe = null;
+const eventMarkerLayer = document.getElementById('eventMarkerLayer');
+const eventTooltip     = document.getElementById('eventTooltip');
+let _evHideTimer = null;
+
+// Tooltip hover: マーカーから離れても tooltip 上にいる間は消えない
+eventTooltip.addEventListener('mouseenter', () => clearTimeout(_evHideTimer));
+eventTooltip.addEventListener('mouseleave', () => { eventTooltip.style.display = 'none'; });
+
+function clearEventMarkers() {
+  eventMarkerLayer.innerHTML = '';
+  eventData = [];
+  eventTooltip.style.display = 'none';
+}
+
+function drawEventMarkers() {
+  if (!chart || !eventData.length) return;
+  eventMarkerLayer.innerHTML = '';
+
+  for (const ev of eventData) {
+    const x = chart.timeScale().timeToCoordinate(ev.date);
+    if (x === null || x === undefined) continue;
+
+    const marker = document.createElement('div');
+    marker.className = `event-marker type-${ev.type}`;
+    marker.style.left = x + 'px';
+
+    marker.addEventListener('mouseenter', () => {
+      clearTimeout(_evHideTimer);
+      const titleEl  = `<div class="ev-title">${ev.title}</div>`;
+      const detailEl = ev.detail  ? `<div class="ev-detail">${ev.detail}</div>` : '';
+      const resultEl = ev.result  ? `<div class="ev-result">結果: ${ev.result}</div>` : '';
+      const dateEl   = `<div class="ev-detail">${ev.date}</div>`;
+      const linkEl   = ev.url ? `<a class="ev-link" href="${ev.url}" target="_blank" rel="noopener">詳細を見る ↗</a>` : '';
+      eventTooltip.innerHTML = titleEl + dateEl + detailEl + resultEl + linkEl;
+      eventTooltip.className = `type-${ev.type}`;
+
+      const rect = chartContainer.getBoundingClientRect();
+      let left = rect.left + x + 12;
+      let top  = rect.top + 20;
+      eventTooltip.style.display = 'block';
+      const tw = eventTooltip.offsetWidth;
+      if (left + tw > window.innerWidth - 8) left = rect.left + x - tw - 12;
+      eventTooltip.style.left = left + 'px';
+      eventTooltip.style.top  = top  + 'px';
+    });
+
+    marker.addEventListener('mouseleave', () => {
+      _evHideTimer = setTimeout(() => { eventTooltip.style.display = 'none'; }, 150);
+    });
+
+    eventMarkerLayer.appendChild(marker);
+  }
+}
+
+async function loadEventMarkers() {
+  if (!currentSymbol || !chart) return;
+
+  const today    = new Date();
+  const dateFrom = new Date(today);
+  dateFrom.setMonth(dateFrom.getMonth() - 6);
+  const dateTo   = new Date(today);
+  dateTo.setDate(dateTo.getDate() + 14);
+
+  const fmt = d => d.toISOString().slice(0, 10);
+
+  try {
+    const url = `${API}/events?symbol=${encodeURIComponent(currentSymbol)}&date_from=${fmt(dateFrom)}&date_to=${fmt(dateTo)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return;
+    eventData = await resp.json();
+    drawEventMarkers();
+  } catch(e) {
+    console.warn('Event markers fetch failed:', e);
+  }
+}
+
+function initEventMarkerSubscription() {
+  if (!chart) return;
+  chart.timeScale().subscribeVisibleTimeRangeChange(() => {
+    drawEventMarkers();
+  });
 }
 
 // ===== FORMAT HELPERS =====
@@ -1983,37 +2271,56 @@ function renderPnl() {
   totalPnlEl.textContent = fmtPnl(totalPnl);
   totalPnlEl.className = 'total-pnl ' + (totalPnl >= 0 ? 'green' : 'red');
 
+  // お気に入りを先頭に
+  rows.sort((a, b) => (isFavorite(b.code) ? 1 : 0) - (isFavorite(a.code) ? 1 : 0));
+  holdingRows.sort((a, b) => (isFavorite(b.code) ? 1 : 0) - (isFavorite(a.code) ? 1 : 0));
+
   pnlBody.innerHTML = '';
   const table = document.createElement('table');
   table.className = 'pnl-table';
 
-  for (const { code, name, pnl, isPartial } of rows) {
+  const addRow = (code, name, pnlCell, isPartial) => {
     const tr = document.createElement('tr');
     if (code === currentSymbol) tr.classList.add('selected');
-    tr.innerHTML = `
-      <td>
-        <div class="td-name">${esc(name)}${isPartial ? ' <span style="font-size:10px;color:var(--text2)">(一部保有中)</span>' : ''}</div>
-        <div class="td-code">${esc(code)}</div>
-      </td>
-      <td class="td-pnl ${pnl >= 0 ? 'green' : 'red'}">${fmtPnl(pnl)}</td>
-    `;
+    const favBtn = document.createElement('button');
+    favBtn.className = 'fav-btn' + (isFavorite(code) ? ' active' : '');
+    favBtn.textContent = isFavorite(code) ? '★' : '☆';
+    favBtn.title = 'お気に入り';
+    favBtn.addEventListener('click', e => { e.stopPropagation(); toggleFavorite(code); });
+
+    const tdName = document.createElement('td');
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'td-name';
+    nameDiv.style.display = 'flex';
+    nameDiv.style.alignItems = 'center';
+    nameDiv.appendChild(favBtn);
+    const nameText = document.createElement('span');
+    nameText.innerHTML = esc(name) + (isPartial ? ' <span style="font-size:10px;color:var(--text2)">(一部保有中)</span>' : '');
+    nameDiv.appendChild(nameText);
+    tdName.appendChild(nameDiv);
+    const codeDiv = document.createElement('div');
+    codeDiv.className = 'td-code';
+    codeDiv.style.paddingLeft = '20px';
+    codeDiv.textContent = code;
+    tdName.appendChild(codeDiv);
+    tr.appendChild(tdName);
+    tr.appendChild(pnlCell);
     tr.addEventListener('click', () => selectSymbol(code));
     table.appendChild(tr);
+  };
+
+  for (const { code, name, pnl, isPartial } of rows) {
+    const td = document.createElement('td');
+    td.className = `td-pnl ${pnl >= 0 ? 'green' : 'red'}`;
+    td.textContent = fmtPnl(pnl);
+    addRow(code, name, td, isPartial);
   }
 
-  // 保有中（未決済）
-  for (const { code, name, buyCost } of holdingRows) {
-    const tr = document.createElement('tr');
-    if (code === currentSymbol) tr.classList.add('selected');
-    tr.innerHTML = `
-      <td>
-        <div class="td-name">${esc(name)}</div>
-        <div class="td-code">${esc(code)}</div>
-      </td>
-      <td class="td-pnl" style="color:var(--text2);font-size:11px;"></td>
-    `;
-    tr.addEventListener('click', () => selectSymbol(code));
-    table.appendChild(tr);
+  for (const { code, name } of holdingRows) {
+    const td = document.createElement('td');
+    td.className = 'td-pnl';
+    td.style.cssText = 'color:var(--text2);font-size:11px;';
+    addRow(code, name, td, false);
   }
 
   pnlBody.appendChild(table);
@@ -2056,6 +2363,7 @@ function selectSymbol(code) {
   currentSymbol = code;
   stockSelect.value = code;
   aiSignals = [];  // 銘柄変更時にシグナルリセット
+  xLoadedSymbol = ''; holdersLoadedSymbol = ''; financialsLoadedSymbol = '';
   for (const s of stopLossSeries) { try { chart.removeSeries(s); } catch(e) {} }
   stopLossSeries = [];
   renderPnl();
@@ -2597,10 +2905,11 @@ async function saveAnalysis() {
   try {
     // 銘柄名ラベルで保存
     const label = (stockNames[pendingAnalysisSymbol] || pendingAnalysisSymbol) + ' (' + pendingAnalysisSymbol + ')';
+    const content = document.getElementById('analysisBody').innerHTML;
     const res = await fetch(`${API}/history/analysis`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ symbol: pendingAnalysisSymbol, label }),
+      body: JSON.stringify({ symbol: pendingAnalysisSymbol, label, content }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { analysis_id } = await res.json();
@@ -2690,6 +2999,22 @@ async function loadHistorySignals(id, symbolLabel, el) {
     await new Promise(r => setTimeout(r, 800)); // チャート読み込み待ち
   }
 
+  // 分析テキストを読み込んで表示
+  try {
+    const detailRes = await fetch(`${API}/history/analysis/${id}`);
+    if (detailRes.ok) {
+      const detail = await detailRes.json();
+      if (detail.analysis) {
+        const analysisPanel = document.getElementById('analysisPanel');
+        const analysisBody  = document.getElementById('analysisBody');
+        analysisBody.innerHTML = detail.analysis;
+        analysisPanel.classList.add('visible');
+        document.getElementById('saveAnalysisBtn').classList.add('inactive');
+        document.getElementById('analysisSaveBar').style.display = 'none';
+      }
+    }
+  } catch(e) {}
+
   // シグナルを読み込んでチャートに適用
   try {
     const interval = TF_INTERVAL[currentInterval];
@@ -2727,9 +3052,42 @@ let stopLossSeries = [];
 const signalToggleBtn = document.getElementById('signalToggleBtn');
 const signalTooltip   = document.getElementById('signalTooltip');
 
+const indTooltip = document.getElementById('indTooltip');
+
 function setupSignalTooltip() {
   if (!chart) return;
   chart.subscribeCrosshairMove(param => {
+    // インジケータツールチップ
+    if (param.point && indicatorSeries.length) {
+      const mouseY = param.point.y;
+      let closest = null, minDist = 14; // 14px以内
+      for (const { series: s, label } of indicatorSeries) {
+        try {
+          const val = param.seriesData.get(s);
+          if (val == null) continue;
+          const price = typeof val === 'object' ? (val.value ?? val.close) : val;
+          const coord = s.priceToCoordinate(price);
+          if (coord == null) continue;
+          const dist = Math.abs(coord - mouseY);
+          if (dist < minDist) { minDist = dist; closest = label; }
+        } catch(e) {}
+      }
+      if (closest) {
+        const rect = chartContainer.getBoundingClientRect();
+        let x = rect.left + param.point.x + 14;
+        let y = rect.top  + param.point.y - 10;
+        if (x + 220 > window.innerWidth) x = rect.left + param.point.x - 224;
+        indTooltip.textContent = closest;
+        indTooltip.style.left = x + 'px';
+        indTooltip.style.top  = y + 'px';
+        indTooltip.style.display = 'block';
+      } else {
+        indTooltip.style.display = 'none';
+      }
+    } else {
+      indTooltip.style.display = 'none';
+    }
+
     if (!showSignals || !aiSignals.length || !param.point || !param.time) {
       signalTooltip.style.display = 'none';
       return;
@@ -2912,12 +3270,490 @@ async function toggleSignals() {
 const analysisPanel = document.getElementById('analysisPanel');
 const analysisBody  = document.getElementById('analysisBody');
 
+// ===== NEWS TAB =====
+let currentNewsTab = 'analysis';
+
+function switchAnalysisTab(tab) {
+  currentNewsTab = tab;
+  ['analysis','news','x','holders','financials'].forEach(t => {
+    document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.toggle('active', t === tab);
+  });
+  document.getElementById('analysisBody').style.display    = tab === 'analysis'   ? '' : 'none';
+  document.getElementById('viewpointsBar').style.display   = tab === 'analysis'   ? '' : 'none';
+  document.getElementById('analysisSaveBar').style.display = tab === 'analysis'   ? '' : 'none';
+  document.getElementById('newsBody').style.display        = tab === 'news'       ? '' : 'none';
+  document.getElementById('xBody').style.display           = tab === 'x'          ? '' : 'none';
+  document.getElementById('holdersBody').style.display     = tab === 'holders'    ? '' : 'none';
+  document.getElementById('financialsBody').style.display  = tab === 'financials' ? '' : 'none';
+  if (tab === 'news')       loadNews();
+  if (tab === 'x')          loadXPosts();
+  if (tab === 'holders')    loadHolders();
+  if (tab === 'financials') loadFinancials();
+}
+
+// ===== X投稿タブ =====
+let xLoadedSymbol = '';
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function loadXPosts() {
+  const sym = currentSymbol;
+  if (!sym) return;
+  const xBody = document.getElementById('xBody');
+  document.getElementById('analysisPanel').classList.add('visible');
+  if (xLoadedSymbol === sym) return;
+  xLoadedSymbol = sym;
+  xBody.innerHTML = '<div class="news-loading">取得中...</div>';
+
+  const name = stockNames[sym] || '';
+  try {
+    const res = await fetch(`${API}/x_posts?symbol=${encodeURIComponent(sym)}&name=${encodeURIComponent(name)}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const posts = await res.json();
+    renderXPosts(posts, sym, name);
+  } catch(e) {
+    xLoadedSymbol = '';
+    xBody.innerHTML = `<div class="news-loading" style="color:var(--red)">取得失敗: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderXPosts(posts, sym, name) {
+  const xBody = document.getElementById('xBody');
+  if (!posts.length) {
+    xBody.innerHTML = '<div class="news-loading">投稿が見つかりませんでした</div>';
+    return;
+  }
+  const label = name || sym;
+  let html = `<div style="padding:10px 14px 4px;font-size:11px;color:var(--text2)">「${escapeHtml(label)}」の最新X投稿 ${posts.length}件</div>`;
+  for (const p of posts) {
+    const date = p.created_at
+      ? new Date(p.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})
+      : '';
+    const tweetUrl = `https://x.com/${escapeHtml(p.author_username)}/status/${escapeHtml(p.id)}`;
+    const img = p.author_image
+      ? `<img src="${escapeHtml(p.author_image)}" style="width:28px;height:28px;border-radius:50%;flex-shrink:0">`
+      : `<div style="width:28px;height:28px;border-radius:50%;background:var(--border);flex-shrink:0"></div>`;
+    html += `<div class="news-item" style="cursor:pointer" onclick="window.open('${tweetUrl}','_blank')">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        ${img}
+        <div style="min-width:0">
+          <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.author_name)}</div>
+          <div style="font-size:10px;color:var(--text2)">@${escapeHtml(p.author_username)} · ${date}</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.5;white-space:pre-wrap;word-break:break-word">${escapeHtml(p.text)}</div>
+      <div style="display:flex;gap:14px;margin-top:5px;font-size:10px;color:var(--text2)">
+        <span>♥ ${p.likes}</span><span>↻ ${p.retweets}</span><span>💬 ${p.replies}</span>
+      </div>
+    </div>`;
+  }
+  xBody.innerHTML = html;
+}
+
+// ===== 機関投資家タブ =====
+let holdersLoadedSymbol = '';
+async function loadHolders() {
+  const sym = currentSymbol;
+  if (!sym) return;
+  const body = document.getElementById('holdersBody');
+  document.getElementById('analysisPanel').classList.add('visible');
+  if (holdersLoadedSymbol === sym) return;
+  holdersLoadedSymbol = sym;
+  body.innerHTML = '<div class="news-loading">取得中...</div>';
+  try {
+    const res = await fetch(`${API}/holders?symbol=${encodeURIComponent(sym)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    renderHolders(d);
+  } catch(e) {
+    holdersLoadedSymbol = '';
+    body.innerHTML = `<div class="news-loading" style="color:var(--red)">取得失敗: ${e.message}</div>`;
+  }
+}
+
+function renderHolders(d) {
+  const body = document.getElementById('holdersBody');
+  const inst  = d.institutional || [];
+  const mf    = d.mutualfund    || [];
+  const agg   = d.aggregate     || {};
+  const all   = [...inst, ...mf];
+
+  if (!all.length && !agg.count) {
+    body.innerHTML = '<div class="news-loading">データなし（日本株は非対応の場合があります）</div>';
+    return;
+  }
+
+  // 集計計算
+  const totalShares   = all.reduce((s, h) => s + (h.shares || 0), 0);
+  const totalPct      = agg.pct_held ? (agg.pct_held * 100).toFixed(2) : (all.reduce((s, h) => s + (h.pct_held || 0), 0) * 100).toFixed(2);
+  const count         = agg.count || all.length;
+  // 前回との比較（pct_changeの合計から買越・売越を判断）
+  const totalChange   = all.reduce((s, h) => s + (h.pct_change || 0), 0);
+  const netBuy        = all.filter(h => (h.pct_change || 0) > 0).length;
+  const netSell       = all.filter(h => (h.pct_change || 0) < 0).length;
+
+  function fmtShares(v) {
+    if (!v) return '-';
+    if (v >= 1e8) return (v/1e4).toFixed(2)+'万';
+    if (v >= 1e4) return (v/1e4).toFixed(2)+'万';
+    if (v >= 1e6) return (v/1e6).toFixed(2)+'M';
+    return v.toLocaleString();
+  }
+  function fmtPct(v) {
+    if (v == null) return '-';
+    return (v * 100).toFixed(2) + '%';
+  }
+  function changeColor(v) {
+    if (v > 0) return 'var(--green)';
+    if (v < 0) return 'var(--red)';
+    return 'var(--text2)';
+  }
+  function changeStr(v) {
+    if (v == null || v === 0) return '－';
+    const sign = v > 0 ? '+' : '';
+    return sign + (v * 100).toFixed(2) + '%';
+  }
+
+  // ヘッダー
+  let html = `<div style="padding:14px 14px 10px;border-bottom:1px solid var(--border);">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">機関数</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text)">${count.toLocaleString()}社</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">
+          <span style="color:var(--green)">▲買${netBuy}</span>
+          <span style="margin:0 4px;color:var(--text2)">|</span>
+          <span style="color:var(--red)">▼売${netSell}</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">持株総数</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text)">${fmtShares(totalShares)}</div>
+        <div style="font-size:11px;color:${changeColor(totalChange)};margin-top:2px">${changeStr(totalChange)}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">持株比率</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text)">${totalPct}%</div>
+        ${agg.float_pct ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">Float: ${(agg.float_pct*100).toFixed(2)}%</div>` : ''}
+      </div>
+    </div>
+  </div>`;
+
+  // 個別リストテーブル（画像の下部テーブル相当）
+  const sorted = [...all].sort((a, b) => (b.shares || 0) - (a.shares || 0));
+
+  html += `<table class="holders-table" style="margin:0">
+    <thead><tr>
+      <th style="text-align:left">保有者</th>
+      <th>株数</th>
+      <th>持株比率</th>
+      <th>変動</th>
+      <th>報告日</th>
+    </tr></thead>
+    <tbody>`;
+
+  for (const h of sorted) {
+    const chg    = h.pct_change || 0;
+    const chgStr = chg === 0 ? '<span style="color:var(--text2)">－</span>'
+                 : `<span style="color:${changeColor(chg)}">${chg > 0 ? '+' : ''}${(chg*100).toFixed(2)}%</span>`;
+    const pctBar = Math.min((h.pct_held || 0) * 100 * 3, 100);
+    html += `<tr>
+      <td title="${h.holder}" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${h.holder}</td>
+      <td>${fmtShares(h.shares)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px">
+          <div style="width:36px;height:3px;background:var(--bg3);border-radius:2px">
+            <div style="width:${pctBar}%;height:100%;background:#f0883e;border-radius:2px"></div>
+          </div>
+          <span>${fmtPct(h.pct_held)}</span>
+        </div>
+      </td>
+      <td>${chgStr}</td>
+      <td style="font-size:10px">${h.date || '-'}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  body.innerHTML = html;
+}
+
+// ===== 財務タブ =====
+let financialsLoadedSymbol = '';
+async function loadFinancials() {
+  const sym = currentSymbol;
+  if (!sym) return;
+  const body = document.getElementById('financialsBody');
+  document.getElementById('analysisPanel').classList.add('visible');
+  if (financialsLoadedSymbol === sym) return;
+  financialsLoadedSymbol = sym;
+  body.innerHTML = '<div class="news-loading">取得中...</div>';
+  try {
+    const res = await fetch(`${API}/financials?symbol=${encodeURIComponent(sym)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    renderFinancials(d);
+  } catch(e) {
+    financialsLoadedSymbol = '';
+    body.innerHTML = `<div class="news-loading" style="color:var(--red)">取得失敗: ${e.message}</div>`;
+  }
+}
+
+function renderFinancials(d) {
+  const body = document.getElementById('financialsBody');
+  const annual    = d.annual    || [];
+  const quarterly = d.quarterly || [];
+  const cur = d.currency || '';
+
+  if (!annual.length && !quarterly.length) {
+    body.innerHTML = '<div class="news-loading">財務データなし</div>';
+    return;
+  }
+
+  function fmtV(v) {
+    if (v == null) return '-';
+    const sign = v < 0 ? '-' : '';
+    const a = Math.abs(v);
+    if (a >= 1e12) return sign + (a/1e12).toFixed(1) + 'T';
+    if (a >= 1e9)  return sign + (a/1e9).toFixed(1)  + 'B';
+    if (a >= 1e6)  return sign + (a/1e6).toFixed(1)  + 'M';
+    return sign + a.toFixed(0);
+  }
+  function yoySpan(v) {
+    if (v == null) return '<span style="color:var(--text2)">-</span>';
+    const c = v >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<span style="color:${c};font-size:10px">${v>=0?'+':''}${v}%</span>`;
+  }
+
+  // SVG棒グラフ生成
+  function buildBarChart(rows, title) {
+    if (!rows.length) return '';
+    const revenueVals = rows.map(r => r.revenue || 0);
+    const netVals     = rows.map(r => r.net_inc  || 0);
+    const maxV = Math.max(...revenueVals, 1);
+    const W = 280, H = 100, barW = Math.max(8, Math.floor((W - rows.length*4) / rows.length));
+    const gap = Math.floor((W - barW * rows.length) / (rows.length + 1));
+
+    let svgBars = '';
+    rows.forEach((r, i) => {
+      const x = gap + i*(barW + gap);
+      const revH  = Math.max(2, (r.revenue||0)/maxV * H);
+      const netH  = Math.max(0, (r.net_inc||0)/maxV * H);
+      const netC  = (r.net_inc||0) >= 0 ? '#3fb950' : '#f85149';
+      const label = r.period.slice(0,7);
+      svgBars += `
+        <rect x="${x}" y="${H-revH}" width="${barW}" height="${revH}" fill="#58a6ff" opacity="0.4" rx="2"/>
+        <rect x="${x+2}" y="${H-netH}" width="${barW-4}" height="${netH}" fill="${netC}" opacity="0.85" rx="2"/>
+        <text x="${x+barW/2}" y="${H+10}" text-anchor="middle" fill="#8b949e" font-size="7">${label}</text>`;
+      if (r.rev_yoy != null) {
+        const yc = r.rev_yoy >= 0 ? '#3fb950' : '#f85149';
+        svgBars += `<text x="${x+barW/2}" y="${H-revH-3}" text-anchor="middle" fill="${yc}" font-size="7">${r.rev_yoy>=0?'+':''}${r.rev_yoy}%</text>`;
+      }
+    });
+
+    return `
+      <div style="padding:10px 14px 0;">
+        <div class="holders-section-title" style="margin:0 0 6px">${title} ${cur?'('+cur+')':''}</div>
+        <div style="display:flex;gap:12px;margin-bottom:6px;font-size:10px;color:var(--text2)">
+          <span><span style="display:inline-block;width:10px;height:8px;background:#58a6ff;opacity:0.4;border-radius:1px;margin-right:3px;vertical-align:middle"></span>売上</span>
+          <span><span style="display:inline-block;width:10px;height:8px;background:#3fb950;border-radius:1px;margin-right:3px;vertical-align:middle"></span>純利益</span>
+        </div>
+        <svg width="${W}" height="${H+20}" style="overflow:visible">${svgBars}</svg>
+      </div>`;
+  }
+
+  // テーブル生成
+  function buildTable(rows) {
+    let html = '<table class="holders-table" style="margin-top:6px"><thead><tr><th>期間</th><th>売上</th><th>前年比</th><th>粗利</th><th>営業利益</th><th>純利益</th><th>前年比</th></tr></thead><tbody>';
+    for (const r of rows) {
+      const netColor = (r.net_inc||0) >= 0 ? '' : 'color:var(--red)';
+      html += `<tr>
+        <td>${r.period}</td>
+        <td>${fmtV(r.revenue)}</td>
+        <td>${yoySpan(r.rev_yoy)}</td>
+        <td>${fmtV(r.gross)}</td>
+        <td>${fmtV(r.op_inc)}</td>
+        <td style="${netColor}">${fmtV(r.net_inc)}</td>
+        <td>${yoySpan(r.net_yoy)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    return html;
+  }
+
+  const estimates = d.estimates || [];
+
+  // テーブル生成（予測行はイタリック＋色分け）
+  function buildTable(rows, showEstimate) {
+    let html = '<table class="holders-table" style="margin-top:6px"><thead><tr><th>期間</th><th>売上</th><th>前年比</th><th>粗利</th><th>営業利益</th><th>純利益</th><th>前年比</th></tr></thead><tbody>';
+    for (const r of rows) {
+      const netColor = (r.net_inc||0) >= 0 ? '' : 'color:var(--red)';
+      const estStyle = r.is_estimate ? 'opacity:0.7;font-style:italic;' : '';
+      const estLabel = r.is_estimate ? ' <span style="font-size:9px;color:#f0883e">[予測]</span>' : '';
+      html += `<tr style="${estStyle}">
+        <td>${r.period}${estLabel}</td>
+        <td>${fmtV(r.revenue)}</td>
+        <td>${yoySpan(r.rev_yoy)}</td>
+        <td>${fmtV(r.gross)}</td>
+        <td>${fmtV(r.op_inc)}</td>
+        <td style="${netColor}">${fmtV(r.net_inc)}</td>
+        <td>${yoySpan(r.net_yoy)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    return html;
+  }
+
+  // SVG棒グラフ（予測を点線枠で区別）
+  function buildBarChart(rows, title) {
+    if (!rows.length) return '';
+    const maxV = Math.max(...rows.map(r => r.revenue || 0), 1);
+    const W = 300, H = 110;
+    const barW = Math.max(10, Math.floor((W - rows.length * 4) / rows.length));
+    const gap  = Math.max(2, Math.floor((W - barW * rows.length) / (rows.length + 1)));
+    let svgBars = '';
+    rows.forEach((r, i) => {
+      const x     = gap + i * (barW + gap);
+      const revH  = Math.max(2, (r.revenue || 0) / maxV * H);
+      const netH  = Math.max(0, Math.abs(r.net_inc || 0) / maxV * H);
+      const netC  = (r.net_inc || 0) >= 0 ? '#3fb950' : '#f85149';
+      const label = r.period.slice(0, 7);
+      const alpha = r.is_estimate ? '0.25' : '0.4';
+      const stroke = r.is_estimate ? `stroke="#f0883e" stroke-width="1" stroke-dasharray="2,2"` : '';
+      svgBars += `
+        <rect x="${x}" y="${H-revH}" width="${barW}" height="${revH}" fill="#58a6ff" opacity="${alpha}" rx="2" ${stroke}/>
+        <rect x="${x+2}" y="${H-netH}" width="${Math.max(0,barW-4)}" height="${netH}" fill="${netC}" opacity="${r.is_estimate?'0.4':'0.85'}" rx="2"/>
+        <text x="${x+barW/2}" y="${H+10}" text-anchor="middle" fill="#8b949e" font-size="7">${label}</text>`;
+      if (r.rev_yoy != null) {
+        const yc = r.rev_yoy >= 0 ? '#3fb950' : '#f85149';
+        svgBars += `<text x="${x+barW/2}" y="${H-revH-3}" text-anchor="middle" fill="${yc}" font-size="7">${r.rev_yoy>=0?'+':''}${r.rev_yoy}%</text>`;
+      }
+    });
+    return `<div style="padding:10px 14px 0;">
+      <div class="holders-section-title" style="margin:0 0 6px">${title} ${cur?'('+cur+')':''}</div>
+      <div style="display:flex;gap:12px;margin-bottom:6px;font-size:10px;color:var(--text2)">
+        <span><span style="display:inline-block;width:10px;height:8px;background:#58a6ff;opacity:0.4;border-radius:1px;margin-right:3px;vertical-align:middle"></span>売上</span>
+        <span><span style="display:inline-block;width:10px;height:8px;background:#3fb950;border-radius:1px;margin-right:3px;vertical-align:middle"></span>純利益</span>
+        ${estimates.length ? '<span><span style="display:inline-block;width:10px;height:8px;border:1px dashed #f0883e;border-radius:1px;margin-right:3px;vertical-align:middle"></span><span style="color:#f0883e">予測</span></span>' : ''}
+      </div>
+      <svg width="${W}" height="${H+20}" style="overflow:visible">${svgBars}</svg>
+    </div>`;
+  }
+
+  let html = '';
+  if (annual.length || estimates.length) {
+    // annualは最新→古い順、estimatesは未来期間 → グラフは古い→新い→未来の順に並べる
+    const annualSorted = [...annual].sort((a,b) => a.period.localeCompare(b.period));
+    const estSorted    = [...estimates].sort((a,b) => a.period.localeCompare(b.period));
+    const annualWithEst = [...annualSorted, ...estSorted];
+    html += buildBarChart(annualWithEst, '年次 + アナリスト予測');
+    // テーブルは新しい順（最新→古い）→予測（近い方から）
+    const tableRows = [...annual, ...estSorted];
+    html += '<div style="padding:0 14px 10px">' + buildTable(tableRows) + '</div>';
+  }
+  if (quarterly.length) {
+    html += buildBarChart(quarterly.slice(0, 12).reverse(), '四半期（直近）');
+    html += '<div style="padding:0 14px 14px">' + buildTable(quarterly.slice(0, 12)) + '</div>';
+  }
+  if (!html) html = '<div class="news-loading">財務データなし</div>';
+  body.innerHTML = html;
+}
+
+async function loadNews() {
+  const sym = currentSymbol;
+  if (!sym) return;
+  const newsBody = document.getElementById('newsBody');
+  newsBody.innerHTML = '<div class="news-loading">ニュース取得中...</div>';
+  document.getElementById('analysisPanel').classList.add('visible');
+  try {
+    const res = await fetch(`${API}/news?symbol=${encodeURIComponent(sym)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const items = await res.json();
+    renderNewsList(items);
+  } catch(e) {
+    newsBody.innerHTML = `<div class="news-loading" style="color:var(--red)">取得失敗: ${e.message}</div>`;
+  }
+}
+
+function renderNewsList(items) {
+  const newsBody = document.getElementById('newsBody');
+  if (!items.length) {
+    newsBody.innerHTML = '<div class="news-loading">ニュースがありません</div>';
+    return;
+  }
+  newsBody.innerHTML = '';
+  for (const item of items) {
+    const div = document.createElement('div');
+    div.className = 'news-item';
+    const dateStr = item.published ? new Date(item.published).toLocaleString('ja-JP', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    div.innerHTML = `
+      <div class="news-item-title">${esc(item.title_ja || item.title)}</div>
+      ${item.title_ja && item.title !== item.title_ja ? `<div class="news-translated">原文: ${esc(item.title)}</div>` : ''}
+      <div class="news-item-meta">
+        <span class="news-item-source">${esc(item.source || '')}</span>
+        <span>${dateStr}</span>
+      </div>`;
+    div.addEventListener('click', () => showNewsDetail(item));
+    newsBody.appendChild(div);
+  }
+}
+
+function showNewsDetail(item) {
+  const newsBody = document.getElementById('newsBody');
+  const dateStr = item.published ? new Date(item.published).toLocaleString('ja-JP') : '';
+  newsBody.innerHTML = `
+    <div class="news-detail">
+      <div class="news-detail-back" onclick="loadNews()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        一覧に戻る
+      </div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text)">${esc(item.title_ja || item.title)}</div>
+      ${item.title_ja && item.title !== item.title_ja ? `<div class="news-translated" style="margin-bottom:8px">原文: ${esc(item.title)}</div>` : ''}
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px">${esc(item.source||'')} · ${dateStr}</div>
+      <div>${item.summary_ja ? esc(item.summary_ja).replace(/\n/g,'<br>') : '<a href="'+esc(item.url)+'" target="_blank" style="color:var(--accent)">記事を開く</a>'}</div>
+      ${item.url ? `<div style="margin-top:12px"><a href="${esc(item.url)}" target="_blank" style="color:var(--accent);font-size:11px">元記事を開く →</a></div>` : ''}
+    </div>`;
+}
+
 function closeAnalysis() {
   analysisPanel.classList.remove('visible');
   document.getElementById('saveAnalysisBtn').classList.add('inactive');
 }
 
-// リサイズハンドル
+// サイドバーリサイズハンドル
+(function() {
+  const handle  = document.getElementById('sidebarResizeHandle');
+  const sidebar = handle.closest('.sidebar');
+  const topSec  = sidebar.querySelector('.sidebar-section:first-child');
+  let startY, startH;
+  const drag = e => {
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const sidebarH = sidebar.offsetHeight;
+    const h = Math.max(60, Math.min(sidebarH - 80, startH + (clientY - startY)));
+    topSec.style.height = h + 'px';
+  };
+  const up = e => {
+    document.removeEventListener('mousemove', drag);
+    document.removeEventListener('mouseup', up);
+    document.removeEventListener('touchmove', drag);
+    document.removeEventListener('touchend', up);
+  };
+  handle.addEventListener('mousedown', e => {
+    startY = e.clientY; startH = topSec.offsetHeight; e.preventDefault();
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', up);
+  });
+  handle.addEventListener('touchstart', e => {
+    startY = e.touches[0].clientY; startH = topSec.offsetHeight;
+    document.addEventListener('touchmove', drag, { passive: true });
+    document.addEventListener('touchend', up);
+  });
+})();
+
+// AI分析パネルリサイズハンドル
 (function() {
   const handle = document.getElementById('analysisResizeHandle');
   const panel  = document.getElementById('analysisPanel');
@@ -2991,8 +3827,10 @@ async function runAnalysis() {
 
     const saveBtn = document.getElementById('saveAnalysisBtn');
     saveBtn.classList.remove('inactive', 'saved');
-    saveBtn.textContent = ''; // rebuild
-    saveBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> 履歴に保存`;
+    saveBtn.disabled = false;
+    saveBtn.onclick = saveAnalysis;
+    saveBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> 履歴に保存`;
+    document.getElementById('analysisSaveBar').style.display = '';
 
     // 銘柄が変わっていなければチャートにシグナル反映
     const symbolChanged = currentSymbol !== analysisSymbol;
