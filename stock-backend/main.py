@@ -976,6 +976,39 @@ def get_signals(analysis_id: int, symbol: str = Query(...), interval: str = Quer
         conn.close()
 
 
+@app.get("/signals")
+def get_signals(symbol: str = Query(...), interval: str = Query("1d")):
+    """ルールベースシグナルを返す（銘柄表示時に自動呼び出し）"""
+    # ローソク足データを最新化
+    try:
+        from datetime import datetime as _dt2, timedelta as _td
+        recent_threshold = (_dt2.utcnow().date() - _td(days=3)).isoformat()
+        c0 = get_conn()
+        try:
+            with c0.cursor() as cur:
+                cur.execute(
+                    "SELECT MAX(candle_time) as latest FROM candles WHERE symbol=%s AND interval_type=%s",
+                    (symbol, interval)
+                )
+                row0 = c0.cursor().fetchone() if False else cur.fetchone()
+                latest0 = row0['latest'] if row0 else None
+        finally:
+            c0.close()
+        if not latest0 or str(latest0) < recent_threshold:
+            sym = f"{symbol}.T" if (symbol.isdigit() or (len(symbol) == 4 and symbol.isalnum())) else symbol
+            fresh = fetch_from_yfinance(sym, interval)
+            if fresh:
+                c0 = get_conn()
+                try:
+                    save_candles_to_db(c0, symbol, interval, fresh)
+                finally:
+                    c0.close()
+    except Exception:
+        pass
+    signals = generate_rule_signals(symbol, interval)
+    return {"signals": signals}
+
+
 @app.get("/suggest")
 def suggest_signals(symbol: str = Query(...), interval: str = Query("1d")):
     """ローソク足データから技術指標でAI推奨買い/売りシグナルを生成"""

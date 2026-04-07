@@ -1177,7 +1177,11 @@
   <div class="analysis-resize-handle" id="analysisResizeHandle"></div>
   <div class="analysis-header">
     <div class="analysis-tabs">
-      <button class="analysis-tab active" id="tabNews" onclick="switchAnalysisTab('news')">
+      <button class="analysis-tab active" id="tabRules" onclick="switchAnalysisTab('rules')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+        観点
+      </button>
+      <button class="analysis-tab" id="tabNews" onclick="switchAnalysisTab('news')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8M15 18h-5M10 6h8v4h-8V6Z"></path></svg>
         最新ニュース
       </button>
@@ -1204,6 +1208,31 @@
     </div>
   </div>
   <div class="analysis-body" id="analysisBody" style="display:none;"></div>
+  <div class="analysis-body" id="rulesBody" style="overflow-y:auto;padding:14px 16px;font-size:12px;line-height:1.7;color:var(--text);">
+    <div style="font-weight:600;margin-bottom:8px;color:var(--accent);">買いシグナル ルール（ポイントスコアリング、2pt以上で発生）</div>
+    <ul style="margin:0 0 14px 0;padding-left:18px;">
+      <li><b>TL</b> — 上昇トレンドライン近傍（直近20本の安値トレンドライン±2%以内）</li>
+      <li><b>GC</b> — ゴールデンクロス（MA5がMA25を上抜け）</li>
+      <li><b>IK3</b> — 一目三役好転（転換線&gt;基準線 かつ 終値&gt;雲上限 かつ 遅行線&gt;26本前終値）</li>
+      <li><b>BB反転</b> — BB下限(BB%≤30)から反転上昇（前日比プラス）</li>
+      <li><b>BBウォーク</b> — BBバンドウォーク（BB%≥80を3本以上継続）</li>
+      <li><b>抵抗ブレイク</b> — 抵抗線ブレイク（直近20本高値を終値で上抜け）</li>
+      <li><b>支持反転</b> — 支持線で反転（直近20本安値±1.5%以内で前日比プラス）</li>
+      <li><b>IK↑</b> — 一目均衡表・転換線が基準線を上抜け</li>
+    </ul>
+    <div style="font-weight:600;margin-bottom:8px;color:#f85149;">売りシグナル ルール（いずれか1つで発生）</div>
+    <ul style="margin:0 0 14px 0;padding-left:18px;">
+      <li><b>DC</b> — デッドクロス（MA5がMA25を下抜け）</li>
+      <li><b>BB↑</b> — BB上限到達（BB%≥70に初めて達した日）</li>
+      <li><b>IK↓</b> — 一目均衡表・転換線が基準線を下抜け</li>
+    </ul>
+    <div style="font-weight:600;margin-bottom:8px;color:var(--blue);">フィルター</div>
+    <ul style="margin:0;padding-left:18px;">
+      <li>VIX≥30の日は買いシグナルを生成しない</li>
+      <li>同じ方向のシグナルは10本以内にクールダウン（連続発生なし）</li>
+      <li>買いシグナルには直近20本安値の-2%（エントリー価格の85〜95%）を損切りとして設定</li>
+    </ul>
+  </div>
   <div class="analysis-save-bar" id="analysisSaveBar" style="display:none;">
     <button id="saveAnalysisBtn" class="inactive" onclick="saveAnalysis()" title="履歴に保存">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -2078,15 +2107,16 @@ async function loadChart() {
       loadEventMarkers();
     }, 50);
 
-    // 銘柄切替時: AIシグナルON中かつ analysis_id があれば DBから新銘柄のシグナルを取得
-    if (showSignals && currentAnalysisId) {
+    // 銘柄表示時: ルールベースシグナルを自動取得
+    {
       const iv = TF_INTERVAL[currentInterval];
       try {
-        const sigRes = await fetch(`${API}/history/signals/${currentAnalysisId}?symbol=${encodeURIComponent(currentSymbol)}&interval=${iv}`);
+        const sigRes = await fetch(`${API}/signals?symbol=${encodeURIComponent(currentSymbol)}&interval=${iv}`);
         if (sigRes.ok) {
           const raw = await sigRes.json();
           const isDateChart = candleData.length && typeof candleData[0].time === 'string';
-          aiSignals = dedupeSignals(raw.map(s => ({ ...s, time: isDateChart ? s.time : Number(s.time) })));
+          aiSignals = dedupeSignals((raw.signals || []).map(s => ({ ...s, time: isDateChart ? s.time : Number(s.time) })));
+          showSignals = true;
           applySignalMarkers();
         }
       } catch(e) {}
@@ -3246,13 +3276,15 @@ const analysisPanel = document.getElementById('analysisPanel');
 const analysisBody  = document.getElementById('analysisBody');
 
 // ===== NEWS TAB =====
-let currentNewsTab = 'news';
+let currentNewsTab = 'rules';
 
 function switchAnalysisTab(tab) {
   currentNewsTab = tab;
-  ['news','x','holders','financials'].forEach(t => {
-    document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.toggle('active', t === tab);
+  ['rules','news','x','holders','financials'].forEach(t => {
+    const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (el) el.classList.toggle('active', t === tab);
   });
+  document.getElementById('rulesBody').style.display       = tab === 'rules'      ? '' : 'none';
   document.getElementById('newsBody').style.display        = tab === 'news'       ? '' : 'none';
   document.getElementById('xBody').style.display           = tab === 'x'          ? '' : 'none';
   document.getElementById('holdersBody').style.display     = tab === 'holders'    ? '' : 'none';
