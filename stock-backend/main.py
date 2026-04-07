@@ -446,6 +446,7 @@ def parse_signals(text: str) -> list:
     import re
     m = re.search(r'---SIGNALS_START---\s*(.*?)\s*---SIGNALS_END---', text, re.DOTALL)
     if not m:
+        print(f"[PARSE_SIGNALS] SIGNALS block not found in response. Last 200 chars: {text[-200:]}")
         return []
     try:
         raw = json.loads(m.group(1))
@@ -454,9 +455,8 @@ def parse_signals(text: str) -> list:
             if isinstance(s, dict) and 'date' in s and 'side' in s:
                 sl = s.get('stop_loss', None)
                 price = s.get('price', 0) or 0
-                # stop_loss は必ずエントリー価格より低くなければならない
                 if sl is not None and price > 0 and float(sl) >= float(price):
-                    sl = None  # 不正な損切り価格は無効化
+                    sl = None
                 signals.append({
                     "time":      s['date'],
                     "side":      s['side'],
@@ -464,8 +464,10 @@ def parse_signals(text: str) -> list:
                     "reason":    s.get('reason', ''),
                     "stop_loss": sl,
                 })
+        print(f"[PARSE_SIGNALS] parsed {len(signals)} signals")
         return signals
-    except Exception:
+    except Exception as e:
+        print(f"[PARSE_SIGNALS] JSON parse error: {e}, raw: {m.group(1)[:200]}")
         return []
 
 
@@ -927,16 +929,17 @@ def analyze_trades(body: dict = None):
                     if vix_val is not None and vix_val >= 30:
                         skip = True
 
-                if s['side'] == 'sell':
-                    # IKクロス「上抜け」日の売りシグナルのみ除外
-                    if ik_map.get(date_key) == "上抜け":
-                        skip = True
+                # IKクロスフィルターは誤検知が多いため無効化
 
                 if not skip:
                     filtered.append(s)
+                else:
+                    print(f"[SIGNAL_FILTER] excluded {s['side']} {s.get('time','')} bb={bb_map.get(str(s.get('time',''))[:10])} ik={ik_map.get(str(s.get('time',''))[:10])}")
+            print(f"[SIGNAL_FILTER] {len(signals)} -> {len(filtered)}")
             signals = filtered
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback
+        print(f"[SIGNAL_FILTER_ERROR] {e}\n{traceback.format_exc()}")
 
     return {"analysis": analysis_text, "signals": signals}
 
