@@ -588,8 +588,8 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             sl = min(sl, round(price * 0.95, 1))
             return sl
 
-        # 最低スコア閾値: 1pt以上で買いシグナル
-        BUY_THRESHOLD = 1
+        # 最低スコア閾値: 2pt以上で買いシグナル表示
+        BUY_THRESHOLD = 2
         signals = []
 
         for i in range(1, len(candles)):
@@ -654,8 +654,8 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     "stop_loss": stop_loss(i, price),
                 })
 
-            # 売りシグナル
-            if sell_tags:
+            # 売りシグナル（-2pt以下）
+            if len(sell_tags) >= 2:
                 score_str = f"[-{len(sell_tags)}pt]"
                 signals.append({
                     "time":      date_key,
