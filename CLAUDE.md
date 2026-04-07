@@ -55,6 +55,15 @@ ssh ... "cp /tmp/main.py ~/calendar-backend/main.py && sudo systemctl restart ca
 cd /Users/tamura/claude_code && git add -A && git commit -m "..." && git push origin main
 ```
 
+## 必須ルール: 本番デプロイ前に必ずgit commit & push
+
+本番（/usr/share/nginx/html/）へのデプロイは、必ず以下の順番で行う：
+
+1. git add → git commit → git push
+2. 本番デプロイ
+
+stgデプロイはgit不要。本番デプロイ時のみ必須。どのPCからの作業でも同じルール。
+
 ---
 
 ## 承認済み仕様（変更不要）

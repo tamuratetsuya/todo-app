@@ -446,7 +446,6 @@ def parse_signals(text: str) -> list:
     import re
     m = re.search(r'---SIGNALS_START---\s*(.*?)\s*---SIGNALS_END---', text, re.DOTALL)
     if not m:
-        print(f"[PARSE_SIGNALS] SIGNALS block not found in response. Last 200 chars: {text[-200:]}")
         return []
     try:
         raw = json.loads(m.group(1))
@@ -464,10 +463,8 @@ def parse_signals(text: str) -> list:
                     "reason":    s.get('reason', ''),
                     "stop_loss": sl,
                 })
-        print(f"[PARSE_SIGNALS] parsed {len(signals)} signals")
         return signals
-    except Exception as e:
-        print(f"[PARSE_SIGNALS] JSON parse error: {e}, raw: {m.group(1)[:200]}")
+    except Exception:
         return []
 
 
@@ -933,13 +930,9 @@ def analyze_trades(body: dict = None):
 
                 if not skip:
                     filtered.append(s)
-                else:
-                    print(f"[SIGNAL_FILTER] excluded {s['side']} {s.get('time','')} bb={bb_map.get(str(s.get('time',''))[:10])} ik={ik_map.get(str(s.get('time',''))[:10])}")
-            print(f"[SIGNAL_FILTER] {len(signals)} -> {len(filtered)}")
             signals = filtered
-    except Exception as e:
-        import traceback
-        print(f"[SIGNAL_FILTER_ERROR] {e}\n{traceback.format_exc()}")
+    except Exception:
+        pass
 
     return {"analysis": analysis_text, "signals": signals}
 
