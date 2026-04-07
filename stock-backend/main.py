@@ -373,12 +373,34 @@ def build_candle_summary(symbol: str, interval: str) -> str:
         conn.close()
         if not candles:
             return ""
-        # 時間足ごとに送る本数を調整（トークン節約のため列は date,close,MA25,BB%,IKクロス に絞る）
+        # 時間足ごとに送る本数を調整（トークン節約のため列は date,close,MA25,BB%,IKクロス,VIX に絞る）
         limits = {"1wk": len(candles), "1d": 400, "1h": 120}
         target = candles[-limits.get(interval, 400):]
         closes = [c['close'] for c in target]
         highs  = [c.get('high',  c['close']) for c in target]
         lows   = [c.get('low',   c['close']) for c in target]
+
+        # VIX過去データを取得（1d足のみ。他の足は現在値のみ使用）
+        vix_by_date = {}
+        try:
+            import yfinance as yf
+            from datetime import datetime, timezone, timedelta
+            # データ範囲を計算
+            def to_date_str(c):
+                t = c['time']
+                if isinstance(t, str): return t[:10]
+                return datetime.fromtimestamp(int(t), tz=timezone.utc).strftime('%Y-%m-%d')
+            first_date = to_date_str(target[0])
+            last_date  = to_date_str(target[-1])
+            # 終了日の翌日まで取得
+            end_dt = (datetime.strptime(last_date, '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
+            vix_df = yf.Ticker("^VIX").history(start=first_date, end=end_dt)
+            if not vix_df.empty:
+                for idx, row in vix_df.iterrows():
+                    d = str(idx)[:10]
+                    vix_by_date[d] = round(float(row['Close']), 1)
+        except Exception:
+            pass
 
         def _tk(i):
             if i < 8: return None
@@ -387,13 +409,14 @@ def build_candle_summary(symbol: str, interval: str) -> str:
             if i < 25: return None
             return (max(highs[i-25:i+1]) + min(lows[i-25:i+1])) / 2
 
-        lines = ["日時,終値,MA25,BB%,IKクロス"]
+        lines = ["日時,終値,MA25,BB%,IKクロス,VIX"]
         for i, c in enumerate(target):
             t = c['time'] if isinstance(c['time'], str) else str(c['time'])
             if not isinstance(c['time'], str):
                 from datetime import datetime, timezone
                 ts = int(c['time'])
                 t = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
+            date_key = t[:10]
             ma25 = round(sum(closes[max(0,i-24):i+1]) / min(i+1, 25), 1)
             bb_pct = ""
             if i >= 19:
@@ -411,7 +434,8 @@ def build_candle_summary(symbol: str, interval: str) -> str:
                 if tk_c and kj_c and tk_p and kj_p:
                     if tk_p <= kj_p and tk_c > kj_c: ik = "上抜け"
                     elif tk_p >= kj_p and tk_c < kj_c: ik = "下抜け"
-            lines.append(f"{t},{c['close']},{ma25},{bb_pct},{ik}")
+            vix_val = vix_by_date.get(date_key, "")
+            lines.append(f"{t},{c['close']},{ma25},{bb_pct},{ik},{vix_val}")
         return "\n".join(lines)
     except Exception:
         return ""
@@ -693,7 +717,7 @@ def analyze_trades(body: dict = None):
 ### 2. 負けトレードの傾向
 ### 3. 具体的な改善アドバイス"""
 
-        # VIX現在値を取得
+        # VIX現在値を取得（プロンプト参考用）
         vix_current = None
         try:
             import yfinance as yf
@@ -702,27 +726,29 @@ def analyze_trades(body: dict = None):
                 vix_current = round(float(vix_hist["Close"].iloc[-1]), 2)
         except Exception:
             pass
-        vix_line = f"現在のVIX指数: {vix_current}" if vix_current else "現在のVIX指数: 取得不可"
+        vix_line = f"最新VIX指数（参考）: {vix_current}" if vix_current else "最新VIX指数: 取得不可"
         vix_level = ""
         if vix_current:
             if vix_current >= 30:
-                vix_level = "（極度の恐怖水準：原則買い禁止）"
+                vix_level = "（極度の恐怖水準）"
             elif vix_current >= 22:
-                vix_level = "（高ボラティリティ：よほど強いシグナルでない限り買い禁止）"
+                vix_level = "（高ボラティリティ）"
             elif vix_current >= 15:
-                vix_level = "（やや不安定：慎重に判断）"
+                vix_level = "（やや不安定）"
             else:
-                vix_level = "（安定水準：通常通り判断）"
+                vix_level = "（安定水準）"
 
         prompt = f"""あなたはスイングトレード（数日〜数週間の中期保有）の専門アナリストです。
 以下のトレード履歴と、各トレード時点での技術指標の状況（MA5/MA25乖離、ボリンジャーバンド位置、一目均衡表の転換線/基準線の関係、出来高動向）を基に、詳細な分析をしてください。
 
 【VIX指数ルール（必ず遵守）】
 {vix_line}{vix_level}
-- VIX 22以上：よほど強いシグナル（複数の指標が強く一致）でない限り買いシグナルを生成しないこと
-- VIX 30以上：買いシグナルは原則生成しないこと。売り・様子見を優先する
-- VIX 22未満：通常ルールで判断してよい
-- シグナルのreasonにVIX水準を必ず記載すること（例:「VIX18・安定水準」「VIX25・高VIXのため見送り推奨」）
+- ローソク足データの「VIX」列に各日付の実際のVIX値が記載されている。シグナルを生成する際は必ずその日付のVIX列の値を参照すること（現在値ではなくその日の実際の値）
+- VIX列が空の日付は直前の値を引き継いで判断すること
+- その日のVIX 30以上：買いシグナルは原則生成しないこと
+- その日のVIX 22以上30未満：よほど強いシグナル（複数の指標が強く一致）でない限り買いシグナルを生成しないこと
+- その日のVIX 22未満：通常ルールで判断してよい
+- シグナルのreasonにその日の実際のVIX値を必ず記載すること（例:「VIX18・安定水準」「VIX45・高VIXのため見送り」）。VIX列にない値を推測で書いてはいけない
 
 【一目均衡表のシグナル判断ルール（必ず遵守）】
 - CSVに「IKクロス」列があり、その日の実際のクロス発生を示す（空欄=クロスなし、「上抜け」=転換線が基準線を上抜け、「下抜け」=転換線が基準線を下抜け）
