@@ -826,33 +826,75 @@ def analyze_trades(body: dict = None):
     analysis_text = re.sub(r'\s*---SIGNALS_START---.*?---SIGNALS_END---', '', full_text, flags=re.DOTALL).strip()
     signals = parse_signals(full_text)
 
-    # サーバーサイドVIX検証：買いシグナルの日付のVIXが22以上なら除外
+    # サーバーサイド検証
     try:
         import yfinance as yf
         from datetime import datetime as dt3, timedelta
-        buy_dates = [s['time'] for s in signals if s['side'] == 'buy']
-        if buy_dates:
-            min_date = min(buy_dates)
-            max_date = max(buy_dates)
+
+        all_dates = [s['time'] for s in signals]
+        if all_dates:
+            min_date = min(all_dates)
+            max_date = max(all_dates)
             end_dt = (dt3.strptime(max_date[:10], '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
+
+            # VIXデータ取得
             vix_df = yf.Ticker("^VIX").history(start=min_date[:10], end=end_dt)
             vix_map = {}
             if not vix_df.empty:
                 for idx, row in vix_df.iterrows():
                     vix_map[str(idx)[:10]] = float(row['Close'])
-            # VIXが22以上の日の買いシグナルを除外
+
+            # BB%マップをcandle summaryから構築
+            bb_map = {}
+            if signal_symbol and signal_interval:
+                try:
+                    conn2 = get_conn()
+                    candles2 = load_candles_from_db(conn2, signal_symbol, signal_interval)
+                    conn2.close()
+                    closes2 = [c['close'] for c in candles2]
+                    for i, c in enumerate(candles2):
+                        if i < 19: continue
+                        c20 = closes2[i-19:i+1]
+                        mean = sum(c20) / 20
+                        std = (sum((x - mean)**2 for x in c20) / 20) ** 0.5
+                        upper = mean + 2 * std
+                        lower = mean - 2 * std
+                        if upper != lower:
+                            bp = (c['close'] - lower) / (upper - lower) * 100
+                        else:
+                            bp = 50
+                        t = c['time'] if isinstance(c['time'], str) else None
+                        if t is None:
+                            from datetime import timezone
+                            t = dt3.fromtimestamp(int(c['time']), tz=timezone.utc).strftime('%Y-%m-%d')
+                        bb_map[str(t)[:10]] = round(bp, 1)
+                except Exception:
+                    pass
+
+            def get_prev_val(m, date_key):
+                val = m.get(date_key)
+                if val is None:
+                    for d, v in sorted(m.items()):
+                        if d <= date_key:
+                            val = v
+                return val
+
             filtered = []
             for s in signals:
+                date_key = str(s['time'])[:10]
+
                 if s['side'] == 'buy':
-                    date_key = str(s['time'])[:10]
-                    vix_val = vix_map.get(date_key)
-                    if vix_val is None:
-                        # 前後の値で補間
-                        for d, v in sorted(vix_map.items()):
-                            if d <= date_key:
-                                vix_val = v
+                    # VIX>=22の日の買いシグナルを除外
+                    vix_val = get_prev_val(vix_map, date_key)
                     if vix_val is not None and vix_val >= 22:
-                        continue  # 除外
+                        continue
+
+                if s['side'] == 'sell':
+                    # BB%<70%の日の売りシグナルを除外
+                    bb_val = get_prev_val(bb_map, date_key)
+                    if bb_val is not None and bb_val < 70:
+                        continue
+
                 filtered.append(s)
             signals = filtered
     except Exception:
