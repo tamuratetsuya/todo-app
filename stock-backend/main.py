@@ -916,39 +916,21 @@ def analyze_trades(body: dict = None):
                 return val
 
             # reason文言チェック用禁止キーワード
-            sell_reason_forbidden = ["MA5上抜け", "MA25上抜け", "MA75上抜け", "転換線が基準線を上抜け", "MA25下抜け", "MA5下抜け", "BB中間", "BB中心"]
-
             filtered = []
             for s in signals:
                 date_key = str(s['time'])[:10]
-                reason   = s.get('reason', '')
                 skip = False
 
                 if s['side'] == 'buy':
-                    # VIX>=30の極高値の日のみ除外（>=22は緩めすぎて全除外になるため）
+                    # VIX>=30の極高値の日のみ除外
                     vix_val = get_prev_val(vix_map, date_key)
                     if vix_val is not None and vix_val >= 30:
                         skip = True
-                    # IKクロスが「下抜け」の日の買いシグナルを除外
-                    if not skip and ik_map.get(date_key) == "下抜け":
-                        skip = True
-                    # 「ゴールデンクロス」と書いているのに実際にGCが発生していない日を除外
-                    if not skip and "ゴールデンクロス" in reason and mac_map and mac_map.get(date_key) != "golden":
-                        skip = True
 
                 if s['side'] == 'sell':
-                    # IKクロスが「上抜け」（買いサイン）の日の売りシグナルを除外
+                    # IKクロス「上抜け」日の売りシグナルのみ除外
                     if ik_map.get(date_key) == "上抜け":
                         skip = True
-                    # 「デッドクロス」と書いているのに実際にDCが発生していない日を除外
-                    if not skip and "デッドクロス" in reason and mac_map and mac_map.get(date_key) != "dead":
-                        skip = True
-                    # reasonに売り禁止ワードが含まれている場合除外
-                    if not skip:
-                        for kw in sell_reason_forbidden:
-                            if kw in reason:
-                                skip = True
-                                break
 
                 if not skip:
                     filtered.append(s)
