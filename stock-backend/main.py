@@ -634,6 +634,16 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 sell_tags.append("DC")
             if ik == "下抜け":
                 sell_tags.append("IK↓")
+            # 抵抗線の手前（直近20本高値の-2%以内まで接近）
+            if i >= 20:
+                resistance = max(highs[i-20:i])
+                if closes[i] >= resistance * 0.98 and closes[i] < resistance:
+                    sell_tags.append("抵抗手前")
+            # 支持線の下抜け（直近20本安値を終値で下抜け）
+            if i >= 20:
+                support = min(lows[i-20:i])
+                if closes[i] < support and closes[i-1] >= support:
+                    sell_tags.append("支持下抜け")
 
             # 買いシグナル（閾値以上）
             if len(buy_tags) >= BUY_THRESHOLD and (i - last_buy_i) >= COOLDOWN:
