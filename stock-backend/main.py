@@ -580,6 +580,27 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if i < n - 1 + 19: return False
             return all((_bb(j) or 0) >= 80 for j in range(i-n+1, i+1))
 
+        def _kumo(i):
+            """現在足iの雲上限・下限を返す (None, None) if insufficient data"""
+            if i < 52: return None, None
+            def tk(j):
+                if j < 8: return None
+                return (max(highs[j-8:j+1]) + min(lows[j-8:j+1])) / 2
+            def kj(j):
+                if j < 25: return None
+                return (max(highs[j-25:j+1]) + min(lows[j-25:j+1])) / 2
+            def sb(j):
+                if j < 51: return None
+                return (max(highs[j-51:j+1]) + min(lows[j-51:j+1])) / 2
+            t26 = tk(i - 26)
+            k26 = kj(i - 26)
+            s26 = sb(i - 26)
+            if t26 is None or k26 is None or s26 is None: return None, None
+            sa = (t26 + k26) / 2
+            kumo_top = max(sa, s26)
+            kumo_bot = min(sa, s26)
+            return kumo_top, kumo_bot
+
         def stop_loss(i, price):
             start = max(0, i - 19)
             recent_low = min(lows[start:i+1])
@@ -626,26 +647,45 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if vix is not None and vix <= 17:
                 buy_tags.append("VIX低")
 
-            # ---- 売り条件（各-1pt）----
+            # ---- 売り条件（sell_tags: 表示用、sell_pts: スコア合計）----
             sell_tags = []
+            sell_pts  = 0
+            def add_sell(tag, pts=1):
+                sell_tags.append(tag)
+                nonlocal sell_pts
+                sell_pts += pts
+
             if ma5_c and ma25_c and ma5_p and ma25_p and ma5_p >= ma25_p and ma5_c < ma25_c:
-                sell_tags.append("DC")
+                add_sell("DC")
             if ik == "下抜け":
-                sell_tags.append("IK↓")
+                add_sell("IK↓")
             if i >= 20:
                 resistance = max(highs[i-20:i])
                 if closes[i] >= resistance * 0.98 and closes[i] < resistance:
-                    sell_tags.append("抵抗手前")
+                    add_sell("抵抗手前")
             if i >= 20:
                 support = min(lows[i-20:i])
                 if closes[i] < support and closes[i-1] >= support:
-                    sell_tags.append("支持下抜け")
-            # VIX≥20: 不安定水準
+                    add_sell("支持下抜け")
             if vix is not None and vix >= 20:
-                sell_tags.append("VIX高")
+                add_sell("VIX高")
+
+            # 一目雲: 雲に下向きに入った(-1pt) / 雲を下抜け(-2pt)
+            if i >= 1:
+                kt_c, kb_c = _kumo(i)
+                kt_p, kb_p = _kumo(i - 1)
+                if kt_c and kb_c and kt_p and kb_p:
+                    was_above  = closes[i-1] > kt_p            # 前日: 雲の上
+                    was_in     = kb_p <= closes[i-1] <= kt_p   # 前日: 雲の中
+                    now_in     = kb_c <= closes[i]  <= kt_c    # 今日: 雲の中
+                    now_below  = closes[i] < kb_c              # 今日: 雲の下
+                    if was_above and now_in:
+                        add_sell("雲侵入", 1)
+                    elif (was_above or was_in) and now_below:
+                        add_sell("雲下抜け", 2)
 
             # 全日付のポイントを記録
-            scores[date_key] = {"buy": len(buy_tags), "sell": len(sell_tags)}
+            scores[date_key] = {"buy": len(buy_tags), "sell": sell_pts}
 
             # 買いシグナル
             if len(buy_tags) >= BUY_THRESHOLD:
@@ -659,8 +699,8 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 })
 
             # 売りシグナル（-2pt以下）
-            if len(sell_tags) >= 2:
-                score_str = f"[-{len(sell_tags)}pt]"
+            if sell_pts >= 2:
+                score_str = f"[-{sell_pts}pt]"
                 signals.append({
                     "time":      date_key,
                     "side":      "sell",
