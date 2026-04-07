@@ -466,18 +466,6 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if isinstance(t, str): return t[:10]
             return _dt.fromtimestamp(int(t), tz=timezone.utc).strftime('%Y-%m-%d')
 
-        # VIXデータ取得
-        vix_by_date = {}
-        try:
-            first_date = get_date(candles[0])
-            last_date  = get_date(candles[-1])
-            end_dt = (_dt.strptime(last_date, '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
-            vix_df = yf.Ticker("^VIX").history(start=first_date, end=end_dt)
-            if not vix_df.empty:
-                for idx, row in vix_df.iterrows():
-                    vix_by_date[str(idx)[:10]] = round(float(row['Close']), 1)
-        except Exception:
-            pass
 
         def _ma(i, n):
             if i < n - 1: return None
@@ -571,14 +559,6 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if i < n - 1 + 19: return False
             return all((_bb(j) or 0) >= 80 for j in range(i-n+1, i+1))
 
-        def get_vix(date_key):
-            v = vix_by_date.get(date_key)
-            if v is None:
-                for d, val in sorted(vix_by_date.items(), reverse=True):
-                    if d <= date_key:
-                        return val
-            return v
-
         def stop_loss(i, price):
             start = max(0, i - 19)
             recent_low = min(lows[start:i+1])
@@ -587,11 +567,8 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             sl = min(sl, round(price * 0.95, 1))
             return sl
 
-        # 最低スコア閾値: 2pt以上で買いシグナル
-        BUY_THRESHOLD = 2
-        COOLDOWN = 10
-        last_buy_i  = -COOLDOWN
-        last_sell_i = -COOLDOWN
+        # 最低スコア閾値: 1pt以上で買いシグナル
+        BUY_THRESHOLD = 1
         signals = []
 
         for i in range(1, len(candles)):
@@ -602,9 +579,8 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             ik       = _ik_cross(i)
             ma5_c    = _ma(i, 5);   ma5_p  = _ma(i-1, 5)
             ma25_c   = _ma(i, 25);  ma25_p = _ma(i-1, 25)
-            vix      = get_vix(date_key)
 
-            # ---- 買いポイント集計 ----
+            # ---- 買いポイント集計（各+1pt）----
             buy_tags = []
 
             if _trendline_near(i):
@@ -624,50 +600,42 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if ik == "上抜け":
                 buy_tags.append("IK↑")
 
-            # VIXフィルター
-            if vix is not None and vix >= 30:
-                buy_tags = []
-
-            # ---- 売り条件 ----
+            # ---- 売り条件（各-1pt）----
             sell_tags = []
             if ma5_c and ma25_c and ma5_p and ma25_p and ma5_p >= ma25_p and ma5_c < ma25_c:
                 sell_tags.append("DC")
             if ik == "下抜け":
                 sell_tags.append("IK↓")
-            # 抵抗線の手前（直近20本高値の-2%以内まで接近）
             if i >= 20:
                 resistance = max(highs[i-20:i])
                 if closes[i] >= resistance * 0.98 and closes[i] < resistance:
                     sell_tags.append("抵抗手前")
-            # 支持線の下抜け（直近20本安値を終値で下抜け）
             if i >= 20:
                 support = min(lows[i-20:i])
                 if closes[i] < support and closes[i-1] >= support:
                     sell_tags.append("支持下抜け")
 
-            # 買いシグナル（閾値以上）
-            if len(buy_tags) >= BUY_THRESHOLD and (i - last_buy_i) >= COOLDOWN:
-                vix_note = f"(VIX{vix})" if vix else ""
-                score_str = f"[{len(buy_tags)}pt]"
+            # 買いシグナル
+            if len(buy_tags) >= BUY_THRESHOLD:
+                score_str = f"[+{len(buy_tags)}pt]"
                 signals.append({
                     "time":      date_key,
                     "side":      "buy",
                     "price":     round(price, 1),
-                    "reason":    score_str + "・".join(buy_tags) + vix_note,
+                    "reason":    score_str + "・".join(buy_tags),
                     "stop_loss": stop_loss(i, price),
                 })
-                last_buy_i = i
 
             # 売りシグナル
-            if sell_tags and (i - last_sell_i) >= COOLDOWN:
+            if sell_tags:
+                score_str = f"[-{len(sell_tags)}pt]"
                 signals.append({
                     "time":      date_key,
                     "side":      "sell",
                     "price":     round(price, 1),
-                    "reason":    "・".join(sell_tags),
+                    "reason":    score_str + "・".join(sell_tags),
                     "stop_loss": None,
                 })
-                last_sell_i = i
 
         return signals
     except Exception:

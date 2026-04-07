@@ -1209,29 +1209,23 @@
   </div>
   <div class="analysis-body" id="analysisBody" style="display:none;"></div>
   <div class="analysis-body" id="rulesBody" style="overflow-y:auto;padding:14px 16px;font-size:12px;line-height:1.7;color:var(--text);">
-    <div style="font-weight:600;margin-bottom:8px;color:var(--accent);">買いシグナル ルール（ポイントスコアリング、2pt以上で発生）</div>
+    <div style="font-weight:600;margin-bottom:8px;color:var(--accent);">買いシグナル ルール（各 <span style="color:var(--accent);">+1pt</span>、1pt以上で発生）</div>
     <ul style="margin:0 0 14px 0;padding-left:18px;">
-      <li><b>TL</b> — 上昇トレンドライン近傍（直近20本の安値トレンドライン±2%以内）</li>
-      <li><b>GC</b> — ゴールデンクロス（MA5がMA25を上抜け）</li>
-      <li><b>IK3</b> — 一目三役好転（転換線&gt;基準線 かつ 終値&gt;雲上限 かつ 遅行線&gt;26本前終値）</li>
-      <li><b>BB反転</b> — BB下限(BB%≤30)から反転上昇（前日比プラス）</li>
-      <li><b>BBウォーク</b> — BBバンドウォーク（BB%≥80を3本以上継続）</li>
-      <li><b>抵抗ブレイク</b> — 抵抗線ブレイク（直近20本高値を終値で上抜け）</li>
-      <li><b>支持反転</b> — 支持線で反転（直近20本安値±1.5%以内で前日比プラス）</li>
-      <li><b>IK↑</b> — 一目均衡表・転換線が基準線を上抜け</li>
+      <li><b>TL</b> +1pt — 上昇トレンドライン近傍（直近20本の安値トレンドライン±2%以内）</li>
+      <li><b>GC</b> +1pt — ゴールデンクロス（MA5がMA25を上抜け）</li>
+      <li><b>IK3</b> +1pt — 一目三役好転（転換線&gt;基準線 かつ 終値&gt;雲上限 かつ 遅行線&gt;26本前終値）</li>
+      <li><b>BB反転</b> +1pt — BB下限(BB%≤30)から反転上昇（前日比プラス）</li>
+      <li><b>BBウォーク</b> +1pt — BBバンドウォーク（BB%≥80を3本以上継続）</li>
+      <li><b>抵抗ブレイク</b> +1pt — 抵抗線ブレイク（直近20本高値を終値で上抜け）</li>
+      <li><b>支持反転</b> +1pt — 支持線で反転（直近20本安値±1.5%以内で前日比プラス）</li>
+      <li><b>IK↑</b> +1pt — 一目均衡表・転換線が基準線を上抜け</li>
     </ul>
-    <div style="font-weight:600;margin-bottom:8px;color:#f85149;">売りシグナル ルール（いずれか1つで発生）</div>
-    <ul style="margin:0 0 14px 0;padding-left:18px;">
-      <li><b>DC</b> — デッドクロス（MA5がMA25を下抜け）</li>
-      <li><b>IK↓</b> — 一目均衡表・転換線が基準線を下抜け</li>
-      <li><b>抵抗手前</b> — 抵抗線の手前（直近20本高値の-2%以内まで接近）</li>
-      <li><b>支持下抜け</b> — 支持線の下抜け（直近20本安値を終値で下抜け）</li>
-    </ul>
-    <div style="font-weight:600;margin-bottom:8px;color:var(--blue);">フィルター</div>
+    <div style="font-weight:600;margin-bottom:8px;color:#f85149;">売りシグナル ルール（各 <span style="color:#f85149;">-1pt</span>、1つ以上で発生）</div>
     <ul style="margin:0;padding-left:18px;">
-      <li>VIX≥30の日は買いシグナルを生成しない</li>
-      <li>同じ方向のシグナルは10本以内にクールダウン（連続発生なし）</li>
-      <li>買いシグナルには直近20本安値の-2%（エントリー価格の85〜95%）を損切りとして設定</li>
+      <li><b>DC</b> -1pt — デッドクロス（MA5がMA25を下抜け）</li>
+      <li><b>IK↓</b> -1pt — 一目均衡表・転換線が基準線を下抜け</li>
+      <li><b>抵抗手前</b> -1pt — 抵抗線の手前（直近20本高値の-2%以内まで接近）</li>
+      <li><b>支持下抜け</b> -1pt — 支持線の下抜け（直近20本安値を終値で下抜け）</li>
     </ul>
   </div>
   <div class="analysis-save-bar" id="analysisSaveBar" style="display:none;">
