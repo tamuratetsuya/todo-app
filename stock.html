@@ -1076,28 +1076,7 @@
     読み込み中...
   </div>
 
-  <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-    <button id="historyBtn" onclick="toggleHistoryPanel()">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 8v4l3 3"></path><circle cx="12" cy="12" r="10"></circle>
-      </svg>
-      履歴
-    </button>
-    <button id="signalToggleBtn" onclick="toggleSignals()">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"></path>
-      </svg>
-      AIシグナル
-    </button>
-    <button id="analyzeBtn" onclick="runAnalysis()">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"></circle>
-        <path d="M12 8v4l3 3"></path>
-      </svg>
-      AI分析
-    </button>
-  </div>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center;"></div>
 </header>
 
 <div class="main">
@@ -1198,11 +1177,7 @@
   <div class="analysis-resize-handle" id="analysisResizeHandle"></div>
   <div class="analysis-header">
     <div class="analysis-tabs">
-      <button class="analysis-tab active" id="tabAnalysis" onclick="switchAnalysisTab('analysis')">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
-        AI分析
-      </button>
-      <button class="analysis-tab" id="tabNews" onclick="switchAnalysisTab('news')">
+      <button class="analysis-tab active" id="tabNews" onclick="switchAnalysisTab('news')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8M15 18h-5M10 6h8v4h-8V6Z"></path></svg>
         最新ニュース
       </button>
@@ -1220,7 +1195,7 @@
       </button>
     </div>
   </div>
-  <div class="viewpoints-bar" id="viewpointsBar">
+  <div class="viewpoints-bar" id="viewpointsBar" style="display:none;">
     <span class="viewpoints-label">観点:</span>
     <div id="vpTags"></div>
     <div class="vp-add-form">
@@ -1228,7 +1203,7 @@
       <button id="vpAddBtn" onclick="addViewpoint()">追加</button>
     </div>
   </div>
-  <div class="analysis-body" id="analysisBody"></div>
+  <div class="analysis-body" id="analysisBody" style="display:none;"></div>
   <div class="analysis-save-bar" id="analysisSaveBar" style="display:none;">
     <button id="saveAnalysisBtn" class="inactive" onclick="saveAnalysis()" title="履歴に保存">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -3271,16 +3246,13 @@ const analysisPanel = document.getElementById('analysisPanel');
 const analysisBody  = document.getElementById('analysisBody');
 
 // ===== NEWS TAB =====
-let currentNewsTab = 'analysis';
+let currentNewsTab = 'news';
 
 function switchAnalysisTab(tab) {
   currentNewsTab = tab;
-  ['analysis','news','x','holders','financials'].forEach(t => {
+  ['news','x','holders','financials'].forEach(t => {
     document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.toggle('active', t === tab);
   });
-  document.getElementById('analysisBody').style.display    = tab === 'analysis'   ? '' : 'none';
-  document.getElementById('viewpointsBar').style.display   = tab === 'analysis'   ? '' : 'none';
-  document.getElementById('analysisSaveBar').style.display = tab === 'analysis'   ? '' : 'none';
   document.getElementById('newsBody').style.display        = tab === 'news'       ? '' : 'none';
   document.getElementById('xBody').style.display           = tab === 'x'          ? '' : 'none';
   document.getElementById('holdersBody').style.display     = tab === 'holders'    ? '' : 'none';
