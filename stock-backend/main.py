@@ -689,7 +689,7 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             # 全日付のポイントを記録
             scores[date_key] = {"buy": len(buy_tags), "sell": sell_pts}
 
-            # 買いシグナル: 前回買い後に0ptを経由した場合のみ許可
+            # 買いシグナル: 0pt経由 または 直前に売りシグナルが出た後に3pt以上で許可
             buy_pt = len(buy_tags)
             if buy_pt == 0:
                 buy_reset = True
@@ -704,7 +704,7 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 })
                 buy_reset = False
 
-            # 売りシグナル（-2pt以下）: 前回売り後に0ptを経由した場合のみ許可
+            # 売りシグナル（-2pt以下）: 0pt経由 または 直前に買いシグナルが出た後で許可
             if sell_pts == 0:
                 sell_reset = True
             if sell_pts >= 2 and sell_reset:
@@ -717,6 +717,7 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     "stop_loss": None,
                 })
                 sell_reset = False
+                buy_reset = True  # 売りシグナル後は買いシグナルを許可
 
         return {"signals": signals, "scores": scores}
     except Exception:
