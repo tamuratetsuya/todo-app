@@ -916,7 +916,7 @@ def analyze_trades(body: dict = None):
                 return val
 
             # reason文言チェック用禁止キーワード
-            sell_reason_forbidden = ["上抜け", "MA25下抜け", "MA5下抜け", "BB中間", "BB中心", "BB%=3", "BB%=4", "BB%=5", "BB%=6"]
+            sell_reason_forbidden = ["MA5上抜け", "MA25上抜け", "MA75上抜け", "転換線が基準線を上抜け", "MA25下抜け", "MA5下抜け", "BB中間", "BB中心"]
 
             filtered = []
             for s in signals:
