@@ -1437,22 +1437,21 @@ function setupCandleLegend() {
       `<span class="leg-pct">${pctStr}</span>`;
     legend.style.display = 'flex';
 
-    // シグナルポイント表示
-    if (aiSignals && aiSignals.length) {
+    // シグナルポイント表示（全日付）
+    {
       const dateKey = typeof param.time === 'string' ? param.time : new Date(param.time * 1000).toISOString().slice(0, 10);
-      const matched = aiSignals.filter(s => String(s.time).slice(0, 10) === dateKey);
-      if (matched.length) {
-        sigLegend.innerHTML = matched.map(s => {
-          const cls = s.side === 'buy' ? 'sig-buy' : 'sig-sell';
-          const reason = s.reason || '';
-          return `<span class="${cls}">${reason}</span>`;
-        }).join('　');
+      const sc = signalScores[dateKey];
+      if (sc !== undefined) {
+        const buyPt  = sc.buy  || 0;
+        const sellPt = sc.sell || 0;
+        sigLegend.innerHTML =
+          `<span class="sig-buy">買い +${buyPt}pt</span>` +
+          `<span style="color:var(--text2);opacity:0.4;margin:0 4px;">|</span>` +
+          `<span class="sig-sell">売り -${sellPt}pt</span>`;
         sigLegend.style.display = 'flex';
       } else {
         sigLegend.style.display = 'none';
       }
-    } else {
-      sigLegend.style.display = 'none';
     }
   });
 }
@@ -2147,6 +2146,7 @@ async function loadChart() {
           const raw = await sigRes.json();
           const isDateChart = candleData.length && typeof candleData[0].time === 'string';
           aiSignals = dedupeSignals((raw.signals || []).map(s => ({ ...s, time: isDateChart ? s.time : Number(s.time) })));
+          signalScores = raw.scores || {};
           showSignals = true;
           applySignalMarkers();
         }
@@ -3083,6 +3083,7 @@ async function deleteHistoryItem(id, el) {
 
 // ===== AI SIGNALS =====
 let aiSignals = [];
+let signalScores = {};  // date -> {buy: pt, sell: pt}
 let showSignals = false;
 let stopLossSeries = [];
 const signalToggleBtn = document.getElementById('signalToggleBtn');

@@ -591,6 +591,7 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
         # 最低スコア閾値: 3pt以上で買いシグナル表示
         BUY_THRESHOLD = 3
         signals = []
+        scores = {}  # date -> {buy: pt, sell: pt}
 
         for i in range(1, len(candles)):
             date_key = get_date(candles[i])
@@ -643,6 +644,9 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if vix is not None and vix >= 20:
                 sell_tags.append("VIX高")
 
+            # 全日付のポイントを記録
+            scores[date_key] = {"buy": len(buy_tags), "sell": len(sell_tags)}
+
             # 買いシグナル
             if len(buy_tags) >= BUY_THRESHOLD:
                 score_str = f"[+{len(buy_tags)}pt]"
@@ -672,9 +676,9 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if s['side'] != last_side:
                 deduped.append(s)
                 last_side = s['side']
-        return deduped
+        return {"signals": deduped, "scores": scores}
     except Exception:
-        return []
+        return {"signals": [], "scores": {}}
 
 
 @app.post("/analyze")
@@ -854,7 +858,8 @@ def analyze_trades(body: dict = None):
         conn.close()
 
     # ルールベースシグナル生成
-    signals = generate_rule_signals(signal_symbol, signal_interval) if signal_symbol else []
+    result = generate_rule_signals(signal_symbol, signal_interval) if signal_symbol else {"signals": [], "scores": {}}
+    signals = result["signals"]
 
     return {"analysis": analysis_text, "signals": signals}
 
@@ -1016,8 +1021,8 @@ def get_signals(symbol: str = Query(...), interval: str = Query("1d")):
                     c0.close()
     except Exception:
         pass
-    signals = generate_rule_signals(symbol, interval)
-    return {"signals": signals}
+    result = generate_rule_signals(symbol, interval)
+    return result
 
 
 @app.get("/suggest")
