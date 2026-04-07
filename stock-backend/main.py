@@ -845,9 +845,10 @@ def analyze_trades(body: dict = None):
                 for idx, row in vix_df.iterrows():
                     vix_map[str(idx)[:10]] = float(row['Close'])
 
-            # BB%・IKクロスマップをcandle dataから構築
-            bb_map = {}
-            ik_map = {}  # date -> "上抜け" | "下抜け" | ""
+            # BB%・IKクロス・MAクロスマップをcandle dataから構築
+            bb_map  = {}
+            ik_map  = {}  # date -> "上抜け" | "下抜け" | ""
+            mac_map = {}  # date -> "golden" | "dead" | ""  (MA5/MA25クロス)
             if signal_symbol and signal_interval:
                 try:
                     conn2 = get_conn()
@@ -863,6 +864,9 @@ def analyze_trades(body: dict = None):
                     def _kj2(i):
                         if i < 25: return None
                         return (max(highs2[i-25:i+1]) + min(lows2[i-25:i+1])) / 2
+                    def _ma(i, n):
+                        if i < n - 1: return None
+                        return sum(closes2[i-n+1:i+1]) / n
 
                     for i, c in enumerate(candles2):
                         t = c['time'] if isinstance(c['time'], str) else None
@@ -890,6 +894,16 @@ def analyze_trades(body: dict = None):
                                 if tk_p <= kj_p and tk_c > kj_c: ik = "上抜け"
                                 elif tk_p >= kj_p and tk_c < kj_c: ik = "下抜け"
                         ik_map[dk] = ik
+
+                        # MA5/MA25クロス
+                        mac = ""
+                        if i > 0:
+                            ma5_c, ma25_c = _ma(i, 5), _ma(i, 25)
+                            ma5_p, ma25_p = _ma(i-1, 5), _ma(i-1, 25)
+                            if ma5_c and ma25_c and ma5_p and ma25_p:
+                                if ma5_p <= ma25_p and ma5_c > ma25_c: mac = "golden"
+                                elif ma5_p >= ma25_p and ma5_c < ma25_c: mac = "dead"
+                        mac_map[dk] = mac
                 except Exception:
                     pass
 
@@ -919,6 +933,9 @@ def analyze_trades(body: dict = None):
                     # IKクロスが「下抜け」の日の買いシグナルを除外
                     if not skip and ik_map.get(date_key) == "下抜け":
                         skip = True
+                    # reasonに「ゴールデンクロス」と書いているのに実際はGCでない日を除外
+                    if not skip and "ゴールデンクロス" in reason and mac_map.get(date_key) != "golden":
+                        skip = True
                     # reasonに買い禁止ワードが含まれている場合除外
                     if not skip:
                         for kw in buy_reason_forbidden:
@@ -934,6 +951,10 @@ def analyze_trades(body: dict = None):
                     # IKクロスが「上抜け」（買いサイン）の日の売りシグナルを除外
                     if not skip and ik_map.get(date_key) == "上抜け":
                         skip = True
+                    # reasonに「デッドクロス」と書いているのに実際はデッドクロスでない日を除外
+                    if not skip and "デッドクロス" in reason and mac_map.get(date_key) != "dead":
+                        skip = True
+                    # reasonにゴールデンクロスと書いているのに実際はゴールデンクロスでない買いシグナルも除外（後段で対応）
                     # reasonに売り禁止ワードが含まれている場合除外
                     if not skip:
                         for kw in sell_reason_forbidden:
