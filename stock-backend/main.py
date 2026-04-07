@@ -612,7 +612,9 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
         # 最低スコア閾値: 3pt以上で買いシグナル表示
         BUY_THRESHOLD = 3
         signals = []
-        scores = {}  # date -> {buy: pt, sell: pt}
+        scores = {}       # date -> {buy: pt, sell: pt}
+        buy_reset  = True  # 0ptを経由したらTrue（初回は許可）
+        sell_reset = True
 
         for i in range(1, len(candles)):
             date_key = get_date(candles[i])
@@ -687,9 +689,12 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             # 全日付のポイントを記録
             scores[date_key] = {"buy": len(buy_tags), "sell": sell_pts}
 
-            # 買いシグナル
-            if len(buy_tags) >= BUY_THRESHOLD:
-                score_str = f"[+{len(buy_tags)}pt]"
+            # 買いシグナル: 前回買い後に0ptを経由した場合のみ許可
+            buy_pt = len(buy_tags)
+            if buy_pt == 0:
+                buy_reset = True
+            if buy_pt >= BUY_THRESHOLD and buy_reset:
+                score_str = f"[+{buy_pt}pt]"
                 signals.append({
                     "time":      date_key,
                     "side":      "buy",
@@ -697,9 +702,12 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     "reason":    score_str + "・".join(buy_tags),
                     "stop_loss": stop_loss(i, price),
                 })
+                buy_reset = False
 
-            # 売りシグナル（-2pt以下）
-            if sell_pts >= 2:
+            # 売りシグナル（-2pt以下）: 前回売り後に0ptを経由した場合のみ許可
+            if sell_pts == 0:
+                sell_reset = True
+            if sell_pts >= 2 and sell_reset:
                 score_str = f"[-{sell_pts}pt]"
                 signals.append({
                     "time":      date_key,
@@ -708,15 +716,9 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     "reason":    score_str + "・".join(sell_tags),
                     "stop_loss": None,
                 })
+                sell_reset = False
 
-        # 連続シグナルの除去: 同じ方向が連続する場合は最初（最古）だけ残す
-        deduped = []
-        last_side = None
-        for s in signals:
-            if s['side'] != last_side:
-                deduped.append(s)
-                last_side = s['side']
-        return {"signals": deduped, "scores": scores}
+        return {"signals": signals, "scores": scores}
     except Exception:
         return {"signals": [], "scores": {}}
 
