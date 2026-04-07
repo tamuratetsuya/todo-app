@@ -769,7 +769,7 @@ def analyze_trades(body: dict = None):
         "messages": [{"role": "user", "content": prompt}]
     })
     response = bedrock.invoke_model(
-        modelId="anthropic.claude-3-5-sonnet-20241022-v2:0",
+        modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
         body=bedrock_body,
         contentType="application/json",
         accept="application/json"
@@ -1434,7 +1434,7 @@ def get_news(symbol: str = Query(...)):
                     "messages": [{"role": "user", "content": f"以下の英語ニュースタイトルを日本語に翻訳してください。番号付きで返してください。\n{titles}"}]
                 })
                 resp = boto3.client("bedrock-runtime", region_name="us-east-1").invoke_model(
-                    modelId="anthropic.claude-3-5-sonnet-20241022-v2:0", body=body,
+                    modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", body=body,
                     contentType="application/json", accept="application/json"
                 )
                 text = json.loads(resp["body"].read())["content"][0]["text"]
