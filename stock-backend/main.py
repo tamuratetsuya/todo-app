@@ -665,7 +665,14 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     "stop_loss": None,
                 })
 
-        return signals
+        # 連続シグナルの除去: 同じ方向が連続する場合は最初（最古）だけ残す
+        deduped = []
+        last_side = None
+        for s in signals:
+            if s['side'] != last_side:
+                deduped.append(s)
+                last_side = s['side']
+        return deduped
     except Exception:
         return []
 
