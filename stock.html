@@ -787,6 +787,19 @@
   #candleLegend .leg-pct { font-size: 13px; font-weight: 600; }
   #candleLegend.up .leg-pct { color: #3fb950; }
   #candleLegend.down .leg-pct { color: #f85149; }
+  #signalLegend {
+    position: absolute;
+    top: 34px;
+    left: 12px;
+    display: none;
+    font-size: 11px;
+    gap: 8px;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #signalLegend .sig-buy  { color: #3fb950; font-weight: 600; }
+  #signalLegend .sig-sell { color: #f85149; font-weight: 600; }
+  #signalLegend .sig-reason { color: var(--text2); opacity: 0.75; font-size: 10px; }
 
   /* ===== ADD STOCK MODAL ===== */
   #addStockModal {
@@ -1103,6 +1116,7 @@
   <div class="chart-area">
     <div id="chartContainer">
       <div id="candleLegend"></div>
+      <div id="signalLegend"></div>
       <div id="signalTooltip"></div>
       <div id="indTooltip"></div>
       <div id="eventMarkerLayer"></div>
@@ -1402,13 +1416,15 @@ function initChart() {
 function setupCandleLegend() {
   if (!chart) return;
   const legend = document.getElementById('candleLegend');
+  const sigLegend = document.getElementById('signalLegend');
   chart.subscribeCrosshairMove(param => {
     if (!param.time || !param.seriesData) {
       legend.style.display = 'none';
+      sigLegend.style.display = 'none';
       return;
     }
     const d = param.seriesData.get(candleSeries);
-    if (!d) { legend.style.display = 'none'; return; }
+    if (!d) { legend.style.display = 'none'; sigLegend.style.display = 'none'; return; }
     const fmt = v => Number(v).toLocaleString('ja-JP', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
     const pct = ((d.close - d.open) / d.open * 100);
     const pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
@@ -1420,6 +1436,24 @@ function setupCandleLegend() {
       `<span><span class="leg-label">C</span><span class="leg-c">${fmt(d.close)}</span></span>` +
       `<span class="leg-pct">${pctStr}</span>`;
     legend.style.display = 'flex';
+
+    // シグナルポイント表示
+    if (aiSignals && aiSignals.length) {
+      const dateKey = typeof param.time === 'string' ? param.time : new Date(param.time * 1000).toISOString().slice(0, 10);
+      const matched = aiSignals.filter(s => String(s.time).slice(0, 10) === dateKey);
+      if (matched.length) {
+        sigLegend.innerHTML = matched.map(s => {
+          const cls = s.side === 'buy' ? 'sig-buy' : 'sig-sell';
+          const reason = s.reason || '';
+          return `<span class="${cls}">${reason}</span>`;
+        }).join('　');
+        sigLegend.style.display = 'flex';
+      } else {
+        sigLegend.style.display = 'none';
+      }
+    } else {
+      sigLegend.style.display = 'none';
+    }
   });
 }
 
