@@ -466,6 +466,27 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if isinstance(t, str): return t[:10]
             return _dt.fromtimestamp(int(t), tz=timezone.utc).strftime('%Y-%m-%d')
 
+        # VIXデータ取得
+        vix_by_date = {}
+        try:
+            first_date = get_date(candles[0])
+            last_date  = get_date(candles[-1])
+            end_dt = (_dt.strptime(last_date, '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
+            vix_df = yf.Ticker("^VIX").history(start=first_date, end=end_dt)
+            if not vix_df.empty:
+                for idx, row in vix_df.iterrows():
+                    vix_by_date[str(idx)[:10]] = round(float(row['Close']), 1)
+        except Exception:
+            pass
+
+        def get_vix(date_key):
+            v = vix_by_date.get(date_key)
+            if v is None:
+                for d, val in sorted(vix_by_date.items(), reverse=True):
+                    if d <= date_key:
+                        return val
+            return v
+
 
         def _ma(i, n):
             if i < n - 1: return None
@@ -579,6 +600,7 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             ik       = _ik_cross(i)
             ma5_c    = _ma(i, 5);   ma5_p  = _ma(i-1, 5)
             ma25_c   = _ma(i, 25);  ma25_p = _ma(i-1, 25)
+            vix      = get_vix(date_key)
 
             # ---- 買いポイント集計（各+1pt）----
             buy_tags = []
@@ -599,6 +621,9 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 buy_tags.append("支持反転")
             if ik == "上抜け":
                 buy_tags.append("IK↑")
+            # VIX≤17: 安定水準
+            if vix is not None and vix <= 17:
+                buy_tags.append("VIX低")
 
             # ---- 売り条件（各-1pt）----
             sell_tags = []
@@ -614,6 +639,9 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 support = min(lows[i-20:i])
                 if closes[i] < support and closes[i-1] >= support:
                     sell_tags.append("支持下抜け")
+            # VIX≥20: 不安定水準
+            if vix is not None and vix >= 20:
+                sell_tags.append("VIX高")
 
             # 買いシグナル
             if len(buy_tags) >= BUY_THRESHOLD:
