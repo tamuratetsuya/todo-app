@@ -917,7 +917,6 @@ def analyze_trades(body: dict = None):
 
             # reason文言チェック用禁止キーワード
             sell_reason_forbidden = ["上抜け", "MA25下抜け", "MA5下抜け", "BB中間", "BB中心", "BB%=3", "BB%=4", "BB%=5", "BB%=6"]
-            buy_reason_forbidden  = ["下抜け", "BB上限", "高値圏"]
 
             filtered = []
             for s in signals:
@@ -926,35 +925,24 @@ def analyze_trades(body: dict = None):
                 skip = False
 
                 if s['side'] == 'buy':
-                    # VIX>=22の日を除外
+                    # VIX>=30の極高値の日のみ除外（>=22は緩めすぎて全除外になるため）
                     vix_val = get_prev_val(vix_map, date_key)
-                    if vix_val is not None and vix_val >= 22:
+                    if vix_val is not None and vix_val >= 30:
                         skip = True
                     # IKクロスが「下抜け」の日の買いシグナルを除外
                     if not skip and ik_map.get(date_key) == "下抜け":
                         skip = True
-                    # reasonに「ゴールデンクロス」と書いているのに実際はGCでない日を除外
-                    if not skip and "ゴールデンクロス" in reason and mac_map.get(date_key) != "golden":
+                    # 「ゴールデンクロス」と書いているのに実際にGCが発生していない日を除外
+                    if not skip and "ゴールデンクロス" in reason and mac_map and mac_map.get(date_key) != "golden":
                         skip = True
-                    # reasonに買い禁止ワードが含まれている場合除外
-                    if not skip:
-                        for kw in buy_reason_forbidden:
-                            if kw in reason:
-                                skip = True
-                                break
 
                 if s['side'] == 'sell':
-                    # BB%<70%の日を除外
-                    bb_val = get_prev_val(bb_map, date_key)
-                    if bb_val is not None and bb_val < 70:
-                        skip = True
                     # IKクロスが「上抜け」（買いサイン）の日の売りシグナルを除外
-                    if not skip and ik_map.get(date_key) == "上抜け":
+                    if ik_map.get(date_key) == "上抜け":
                         skip = True
-                    # reasonに「デッドクロス」と書いているのに実際はデッドクロスでない日を除外
-                    if not skip and "デッドクロス" in reason and mac_map.get(date_key) != "dead":
+                    # 「デッドクロス」と書いているのに実際にDCが発生していない日を除外
+                    if not skip and "デッドクロス" in reason and mac_map and mac_map.get(date_key) != "dead":
                         skip = True
-                    # reasonにゴールデンクロスと書いているのに実際はゴールデンクロスでない買いシグナルも除外（後段で対応）
                     # reasonに売り禁止ワードが含まれている場合除外
                     if not skip:
                         for kw in sell_reason_forbidden:
