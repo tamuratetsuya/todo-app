@@ -632,8 +632,6 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             sell_tags = []
             if ma5_c and ma25_c and ma5_p and ma25_p and ma5_p >= ma25_p and ma5_c < ma25_c:
                 sell_tags.append("DC")
-            if bb_c is not None and bb_c >= 70 and (bb_p is None or bb_p < 70):
-                sell_tags.append("BB↑")
             if ik == "下抜け":
                 sell_tags.append("IK↓")
 
