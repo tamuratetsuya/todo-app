@@ -3465,7 +3465,11 @@ function renderHolders(d) {
   </div>`;
 
   // 個別リストテーブル（画像の下部テーブル相当）
-  const sorted = [...all].sort((a, b) => (b.shares || 0) - (a.shares || 0));
+  const sorted = [...all].sort((a, b) => {
+    const da = a.date ? new Date(a.date) : new Date(0);
+    const db = b.date ? new Date(b.date) : new Date(0);
+    return db - da;
+  });
 
   html += `<table class="holders-table" style="margin:0">
     <thead><tr>
