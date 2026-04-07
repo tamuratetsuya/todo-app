@@ -844,30 +844,51 @@ def analyze_trades(body: dict = None):
                 for idx, row in vix_df.iterrows():
                     vix_map[str(idx)[:10]] = float(row['Close'])
 
-            # BB%マップをcandle summaryから構築
+            # BB%・IKクロスマップをcandle dataから構築
             bb_map = {}
+            ik_map = {}  # date -> "上抜け" | "下抜け" | ""
             if signal_symbol and signal_interval:
                 try:
                     conn2 = get_conn()
                     candles2 = load_candles_from_db(conn2, signal_symbol, signal_interval)
                     conn2.close()
                     closes2 = [c['close'] for c in candles2]
+                    highs2  = [c.get('high', c['close']) for c in candles2]
+                    lows2   = [c.get('low',  c['close']) for c in candles2]
+
+                    def _tk2(i):
+                        if i < 8: return None
+                        return (max(highs2[i-8:i+1]) + min(lows2[i-8:i+1])) / 2
+                    def _kj2(i):
+                        if i < 25: return None
+                        return (max(highs2[i-25:i+1]) + min(lows2[i-25:i+1])) / 2
+
                     for i, c in enumerate(candles2):
-                        if i < 19: continue
-                        c20 = closes2[i-19:i+1]
-                        mean = sum(c20) / 20
-                        std = (sum((x - mean)**2 for x in c20) / 20) ** 0.5
-                        upper = mean + 2 * std
-                        lower = mean - 2 * std
-                        if upper != lower:
-                            bp = (c['close'] - lower) / (upper - lower) * 100
-                        else:
-                            bp = 50
                         t = c['time'] if isinstance(c['time'], str) else None
                         if t is None:
                             from datetime import timezone
                             t = dt3.fromtimestamp(int(c['time']), tz=timezone.utc).strftime('%Y-%m-%d')
-                        bb_map[str(t)[:10]] = round(bp, 1)
+                        dk = str(t)[:10]
+
+                        # BB%
+                        if i >= 19:
+                            c20 = closes2[i-19:i+1]
+                            mean = sum(c20) / 20
+                            std = (sum((x - mean)**2 for x in c20) / 20) ** 0.5
+                            upper = mean + 2 * std
+                            lower = mean - 2 * std
+                            bp = (c['close'] - lower) / (upper - lower) * 100 if upper != lower else 50
+                            bb_map[dk] = round(bp, 1)
+
+                        # IKクロス
+                        ik = ""
+                        if i > 0:
+                            tk_c, kj_c = _tk2(i), _kj2(i)
+                            tk_p, kj_p = _tk2(i-1), _kj2(i-1)
+                            if tk_c and kj_c and tk_p and kj_p:
+                                if tk_p <= kj_p and tk_c > kj_c: ik = "上抜け"
+                                elif tk_p >= kj_p and tk_c < kj_c: ik = "下抜け"
+                        ik_map[dk] = ik
                 except Exception:
                     pass
 
@@ -879,23 +900,48 @@ def analyze_trades(body: dict = None):
                             val = v
                 return val
 
+            # reason文言チェック用禁止キーワード
+            sell_reason_forbidden = ["上抜け", "MA25下抜け", "MA5下抜け", "下抜け"]
+            buy_reason_forbidden  = ["下抜け", "BB上限", "高値圏"]
+
             filtered = []
             for s in signals:
                 date_key = str(s['time'])[:10]
+                reason   = s.get('reason', '')
+                skip = False
 
                 if s['side'] == 'buy':
-                    # VIX>=22の日の買いシグナルを除外
+                    # VIX>=22の日を除外
                     vix_val = get_prev_val(vix_map, date_key)
                     if vix_val is not None and vix_val >= 22:
-                        continue
+                        skip = True
+                    # IKクロスが「下抜け」の日の買いシグナルを除外
+                    if not skip and ik_map.get(date_key) == "下抜け":
+                        skip = True
+                    # reasonに買い禁止ワードが含まれている場合除外
+                    if not skip:
+                        for kw in buy_reason_forbidden:
+                            if kw in reason:
+                                skip = True
+                                break
 
                 if s['side'] == 'sell':
-                    # BB%<70%の日の売りシグナルを除外
+                    # BB%<70%の日を除外
                     bb_val = get_prev_val(bb_map, date_key)
                     if bb_val is not None and bb_val < 70:
-                        continue
+                        skip = True
+                    # IKクロスが「上抜け」（買いサイン）の日の売りシグナルを除外
+                    if not skip and ik_map.get(date_key) == "上抜け":
+                        skip = True
+                    # reasonに売り禁止ワードが含まれている場合除外
+                    if not skip:
+                        for kw in sell_reason_forbidden:
+                            if kw in reason:
+                                skip = True
+                                break
 
-                filtered.append(s)
+                if not skip:
+                    filtered.append(s)
             signals = filtered
     except Exception:
         pass
