@@ -826,6 +826,38 @@ def analyze_trades(body: dict = None):
     analysis_text = re.sub(r'\s*---SIGNALS_START---.*?---SIGNALS_END---', '', full_text, flags=re.DOTALL).strip()
     signals = parse_signals(full_text)
 
+    # サーバーサイドVIX検証：買いシグナルの日付のVIXが22以上なら除外
+    try:
+        import yfinance as yf
+        from datetime import datetime as dt3, timedelta
+        buy_dates = [s['time'] for s in signals if s['side'] == 'buy']
+        if buy_dates:
+            min_date = min(buy_dates)
+            max_date = max(buy_dates)
+            end_dt = (dt3.strptime(max_date[:10], '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
+            vix_df = yf.Ticker("^VIX").history(start=min_date[:10], end=end_dt)
+            vix_map = {}
+            if not vix_df.empty:
+                for idx, row in vix_df.iterrows():
+                    vix_map[str(idx)[:10]] = float(row['Close'])
+            # VIXが22以上の日の買いシグナルを除外
+            filtered = []
+            for s in signals:
+                if s['side'] == 'buy':
+                    date_key = str(s['time'])[:10]
+                    vix_val = vix_map.get(date_key)
+                    if vix_val is None:
+                        # 前後の値で補間
+                        for d, v in sorted(vix_map.items()):
+                            if d <= date_key:
+                                vix_val = v
+                    if vix_val is not None and vix_val >= 22:
+                        continue  # 除外
+                filtered.append(s)
+            signals = filtered
+    except Exception:
+        pass
+
     return {"analysis": analysis_text, "signals": signals}
 
 
