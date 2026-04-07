@@ -3882,7 +3882,10 @@ async function runAnalysis() {
           ? { time: t, side: s.side, price: s.price || 0, reason: s.reason || '', stop_loss: s.stop_loss || null }
           : null;
       }).filter(Boolean));
-      if (showSignals) applySignalMarkers();
+      showSignals = true;
+      signalToggleBtn.classList.add('active');
+      signalToggleBtn.style.display = 'flex';
+      applySignalMarkers();
     }
   } catch (e) {
     analysisBody.innerHTML = `<p style="color:var(--red)">分析に失敗しました: ${e.message}</p>`;
