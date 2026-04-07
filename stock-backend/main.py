@@ -580,6 +580,25 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if i < n - 1 + 19: return False
             return all((_bb(j) or 0) >= 80 for j in range(i-n+1, i+1))
 
+        def _macd(i):
+            """MACD(12,26,9) と シグナル線を返す (macd, signal) or (None, None)"""
+            if i < 33: return None, None  # 26+9-1
+            def ema(vals, period):
+                k = 2 / (period + 1)
+                e = vals[0]
+                for v in vals[1:]:
+                    e = v * k + e * (1 - k)
+                return e
+            # MACD線 = EMA12 - EMA26
+            macd_vals = []
+            for j in range(i - 8, i + 1):  # 9本分のMACD値を計算
+                if j < 25: return None, None
+                e12 = ema(closes[j-11:j+1], 12)
+                e26 = ema(closes[j-25:j+1], 26)
+                macd_vals.append(e12 - e26)
+            sig = ema(macd_vals, 9)
+            return macd_vals[-1], sig
+
         def _kumo(i):
             """現在足iの雲上限・下限を返す (None, None) if insufficient data"""
             if i < 52: return None, None
@@ -645,6 +664,12 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 buy_tags.append("支持反転")
             if ik == "上抜け":
                 buy_tags.append("IK↑")
+            # MACDの上昇交差
+            if i >= 1:
+                mc, ms = _macd(i)
+                mcp, msp = _macd(i - 1)
+                if mc and ms and mcp and msp and mcp <= msp and mc > ms:
+                    buy_tags.append("MACD↑")
             # VIX≤17: 安定水準
             if vix is not None and vix <= 17:
                 buy_tags.append("VIX低")
@@ -671,6 +696,12 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     add_sell("支持下抜け")
             if vix is not None and vix >= 20:
                 add_sell("VIX高")
+            # MACDの下降交差
+            if i >= 1:
+                mc, ms = _macd(i)
+                mcp, msp = _macd(i - 1)
+                if mc and ms and mcp and msp and mcp >= msp and mc < ms:
+                    add_sell("MACD↓")
 
             # 一目雲: 雲に下向きに入った(-1pt) / 雲を下抜け(-2pt)
             if i >= 1:
