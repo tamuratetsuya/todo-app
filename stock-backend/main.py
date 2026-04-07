@@ -740,6 +740,15 @@ def analyze_trades(body: dict = None):
 - BB%（ボリンジャーバンドの位置）が0〜30%（下限付近）のときは買いシグナルの根拠として使うこと。売りシグナルに「BB下限付近」「BB%が低い」を根拠として使うことは禁止
 - BB%が70〜100%（上限付近）のときは売りシグナルの根拠として使うこと。買いシグナルに「BB上限付近」を根拠として使うことは禁止
 - 「MA25からの乖離過熱(X%)」を売り根拠にする場合、必ずその日のBB%も確認し、BB%が高い（50%超）ことと整合している場合のみ使うこと。BB%が低い日（30%未満）に乖離過熱を売り根拠にしてはいけない（矛盾するため）
+
+【最重要：ルール遵守の確認（シグナル出力前に必ず自己チェックすること）】
+上記のすべてのルールに違反するシグナルは出力してはならない。出力前に以下を自問すること：
+1. 売りシグナルのreasonに「上抜け」という表現が含まれていないか？→含まれていれば修正または除外
+2. BB%が30%未満の日に「乖離過熱」「高値圏警戒」を売り根拠にしていないか？→そうであれば除外
+3. 下落トレンド中・価格がMA25より下にある局面で「高値圏警戒」を根拠にしていないか？→矛盾するため除外
+4. 買いシグナルのstop_lossがエントリー価格より高くなっていないか？→そうであれば再設定
+5. VIXルールに従っているか？
+これらのチェックを通過したシグナルのみ出力すること。
 {trend_section}
 ## 利益トレード（{len(winners)}件）
 {fmt(winners)}
@@ -760,7 +769,7 @@ def analyze_trades(body: dict = None):
         "messages": [{"role": "user", "content": prompt}]
     })
     response = bedrock.invoke_model(
-        modelId="anthropic.claude-3-haiku-20240307-v1:0",
+        modelId="anthropic.claude-3-5-sonnet-20241022-v2:0",
         body=bedrock_body,
         contentType="application/json",
         accept="application/json"
@@ -1425,7 +1434,7 @@ def get_news(symbol: str = Query(...)):
                     "messages": [{"role": "user", "content": f"以下の英語ニュースタイトルを日本語に翻訳してください。番号付きで返してください。\n{titles}"}]
                 })
                 resp = boto3.client("bedrock-runtime", region_name="us-east-1").invoke_model(
-                    modelId="anthropic.claude-3-haiku-20240307-v1:0", body=body,
+                    modelId="anthropic.claude-3-5-sonnet-20241022-v2:0", body=body,
                     contentType="application/json", accept="application/json"
                 )
                 text = json.loads(resp["body"].read())["content"][0]["text"]
