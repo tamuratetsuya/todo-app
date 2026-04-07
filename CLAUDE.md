@@ -20,7 +20,7 @@
 | 項目 | 値 |
 |------|-----|
 | EC2 IP | 57.183.7.38 |
-| SSHキー | /Users/tamura/claude_code/tododb.pem |
+| SSHキー | /Users/tamura/.ssh/todo-ec2-key.pem（SSH認証不可→SSM経由でデプロイ） |
 | 本番HTML | /usr/share/nginx/html/ |
 | stg HTML | /usr/share/nginx/html/stg/ |
 | calendar本番バックエンド | ~/calendar-backend/ ポート8002 |

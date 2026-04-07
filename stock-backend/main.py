@@ -441,28 +441,226 @@ def build_candle_summary(symbol: str, interval: str) -> str:
         return ""
 
 
-def parse_signals(text: str) -> list:
-    """レスポンステキストから ---SIGNALS_START--- ブロックを抽出してパース"""
-    import re
-    m = re.search(r'---SIGNALS_START---\s*(.*?)\s*---SIGNALS_END---', text, re.DOTALL)
-    if not m:
-        return []
+def generate_rule_signals(symbol: str, interval: str) -> list:
+    """ポイントスコアリング式ルールベースシグナル生成
+    買い観点（各1pt）:
+      TL=トレンドライン近傍, GC=ゴールデンクロス, IK3=一目三役好転,
+      BB反転=BB下限から反転上昇, BBウォーク=BBバンドウォーク,
+      抵抗ブレイク=直近高値ブレイク, 支持反転=直近安値で反転
+    売り観点: DC=デッドクロス, BB↑=BB上限到達, IK↓=一目下抜け
+    """
     try:
-        raw = json.loads(m.group(1))
+        from datetime import datetime as _dt, timezone, timedelta
+        conn = get_conn()
+        candles = load_candles_from_db(conn, symbol, interval)
+        conn.close()
+        if len(candles) < 30:
+            return []
+
+        closes = [c['close'] for c in candles]
+        highs  = [c.get('high', c['close']) for c in candles]
+        lows   = [c.get('low',  c['close']) for c in candles]
+
+        def get_date(c):
+            t = c['time']
+            if isinstance(t, str): return t[:10]
+            return _dt.fromtimestamp(int(t), tz=timezone.utc).strftime('%Y-%m-%d')
+
+        # VIXデータ取得
+        vix_by_date = {}
+        try:
+            first_date = get_date(candles[0])
+            last_date  = get_date(candles[-1])
+            end_dt = (_dt.strptime(last_date, '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
+            vix_df = yf.Ticker("^VIX").history(start=first_date, end=end_dt)
+            if not vix_df.empty:
+                for idx, row in vix_df.iterrows():
+                    vix_by_date[str(idx)[:10]] = round(float(row['Close']), 1)
+        except Exception:
+            pass
+
+        def _ma(i, n):
+            if i < n - 1: return None
+            return sum(closes[i-n+1:i+1]) / n
+
+        def _bb(i):
+            if i < 19: return None
+            c20 = closes[i-19:i+1]
+            mean = sum(c20) / 20
+            std  = (sum((x - mean)**2 for x in c20) / 20) ** 0.5
+            upper = mean + 2 * std
+            lower = mean - 2 * std
+            if upper == lower: return 50.0
+            return (closes[i] - lower) / (upper - lower) * 100
+
+        def _ik_cross(i):
+            """転換線・基準線クロス判定"""
+            if i < 1: return ""
+            def tk(j):
+                if j < 8: return None
+                return (max(highs[j-8:j+1]) + min(lows[j-8:j+1])) / 2
+            def kj(j):
+                if j < 25: return None
+                return (max(highs[j-25:j+1]) + min(lows[j-25:j+1])) / 2
+            tc, kc = tk(i), kj(i)
+            tp, kp = tk(i-1), kj(i-1)
+            if tc and kc and tp and kp:
+                if tp <= kp and tc > kc: return "上抜け"
+                if tp >= kp and tc < kc: return "下抜け"
+            return ""
+
+        def _ik3_buy(i):
+            """一目三役好転: 転換>基準 かつ 終値>雲上限 かつ 遅行>26本前終値"""
+            def tk(j):
+                if j < 8: return None
+                return (max(highs[j-8:j+1]) + min(lows[j-8:j+1])) / 2
+            def kj(j):
+                if j < 25: return None
+                return (max(highs[j-25:j+1]) + min(lows[j-25:j+1])) / 2
+            def sa(j):
+                t, k = tk(j), kj(j)
+                if t and k: return max(t, k)
+                return None
+            def sb(j):
+                if j < 51: return None
+                return (max(highs[j-51:j+1]) + min(lows[j-51:j+1])) / 2
+
+            if i < 52: return False
+            tc, kc = tk(i), kj(i)
+            # 雲上限 = max(先行スパン1[26本前], 先行スパン2[26本前])
+            sa26 = sa(i - 26)
+            sb26 = sb(i - 26)
+            if not (tc and kc and sa26 and sb26): return False
+            kumo_top = max(sa26, sb26)
+            lagging_price = closes[i - 26] if i >= 26 else None
+            if not lagging_price: return False
+            return tc > kc and closes[i] > kumo_top and closes[i] > lagging_price
+
+        def _trendline_near(i, window=20, thresh=0.02):
+            """直近安値のトレンドライン近傍（価格がトレンドライン±thresh%以内）"""
+            if i < window: return False
+            lw = lows[i-window:i]
+            # 単純線形回帰でトレンドライン
+            n = len(lw)
+            xs = list(range(n))
+            mx = sum(xs) / n
+            my = sum(lw) / n
+            denom = sum((x - mx)**2 for x in xs)
+            if denom == 0: return False
+            slope = sum((xs[j] - mx) * (lw[j] - my) for j in range(n)) / denom
+            intercept = my - slope * mx
+            tl_val = slope * n + intercept  # 現在位置のトレンドライン値
+            return abs(closes[i] - tl_val) / tl_val <= thresh
+
+        def _resistance_break(i, window=20):
+            """直近window本の高値を上抜け"""
+            if i < window: return False
+            prev_high = max(highs[i-window:i])
+            return closes[i] > prev_high
+
+        def _support_bounce(i, window=20, thresh=0.015):
+            """直近window本の安値±thresh%で反転上昇"""
+            if i < window + 1: return False
+            prev_low = min(lows[i-window:i])
+            near = abs(lows[i] - prev_low) / prev_low <= thresh
+            bounce = closes[i] > closes[i-1]
+            return near and bounce
+
+        def _bb_walk(i, n=3):
+            """直近n本連続BB%≥80"""
+            if i < n - 1 + 19: return False
+            return all((_bb(j) or 0) >= 80 for j in range(i-n+1, i+1))
+
+        def get_vix(date_key):
+            v = vix_by_date.get(date_key)
+            if v is None:
+                for d, val in sorted(vix_by_date.items(), reverse=True):
+                    if d <= date_key:
+                        return val
+            return v
+
+        def stop_loss(i, price):
+            start = max(0, i - 19)
+            recent_low = min(lows[start:i+1])
+            sl = round(recent_low * 0.98, 1)
+            sl = max(sl, round(price * 0.85, 1))
+            sl = min(sl, round(price * 0.95, 1))
+            return sl
+
+        # 最低スコア閾値: 2pt以上で買いシグナル
+        BUY_THRESHOLD = 2
+        COOLDOWN = 10
+        last_buy_i  = -COOLDOWN
+        last_sell_i = -COOLDOWN
         signals = []
-        for s in raw:
-            if isinstance(s, dict) and 'date' in s and 'side' in s:
-                sl = s.get('stop_loss', None)
-                price = s.get('price', 0) or 0
-                if sl is not None and price > 0 and float(sl) >= float(price):
-                    sl = None
+
+        for i in range(1, len(candles)):
+            date_key = get_date(candles[i])
+            price    = closes[i]
+            bb_c     = _bb(i)
+            bb_p     = _bb(i - 1)
+            ik       = _ik_cross(i)
+            ma5_c    = _ma(i, 5);   ma5_p  = _ma(i-1, 5)
+            ma25_c   = _ma(i, 25);  ma25_p = _ma(i-1, 25)
+            vix      = get_vix(date_key)
+
+            # ---- 買いポイント集計 ----
+            buy_tags = []
+
+            if _trendline_near(i):
+                buy_tags.append("TL")
+            if ma5_c and ma25_c and ma5_p and ma25_p and ma5_p <= ma25_p and ma5_c > ma25_c:
+                buy_tags.append("GC")
+            if _ik3_buy(i):
+                buy_tags.append("IK3")
+            if bb_c is not None and bb_c <= 30 and closes[i] > closes[i-1]:
+                buy_tags.append("BB反転")
+            if _bb_walk(i):
+                buy_tags.append("BBウォーク")
+            if _resistance_break(i):
+                buy_tags.append("抵抗ブレイク")
+            if _support_bounce(i):
+                buy_tags.append("支持反転")
+            if ik == "上抜け":
+                buy_tags.append("IK↑")
+
+            # VIXフィルター
+            if vix is not None and vix >= 30:
+                buy_tags = []
+
+            # ---- 売り条件 ----
+            sell_tags = []
+            if ma5_c and ma25_c and ma5_p and ma25_p and ma5_p >= ma25_p and ma5_c < ma25_c:
+                sell_tags.append("DC")
+            if bb_c is not None and bb_c >= 70 and (bb_p is None or bb_p < 70):
+                sell_tags.append("BB↑")
+            if ik == "下抜け":
+                sell_tags.append("IK↓")
+
+            # 買いシグナル（閾値以上）
+            if len(buy_tags) >= BUY_THRESHOLD and (i - last_buy_i) >= COOLDOWN:
+                vix_note = f"(VIX{vix})" if vix else ""
+                score_str = f"[{len(buy_tags)}pt]"
                 signals.append({
-                    "time":      s['date'],
-                    "side":      s['side'],
-                    "price":     price,
-                    "reason":    s.get('reason', ''),
-                    "stop_loss": sl,
+                    "time":      date_key,
+                    "side":      "buy",
+                    "price":     round(price, 1),
+                    "reason":    score_str + "・".join(buy_tags) + vix_note,
+                    "stop_loss": stop_loss(i, price),
                 })
+                last_buy_i = i
+
+            # 売りシグナル
+            if sell_tags and (i - last_sell_i) >= COOLDOWN:
+                signals.append({
+                    "time":      date_key,
+                    "side":      "sell",
+                    "price":     round(price, 1),
+                    "reason":    "・".join(sell_tags),
+                    "stop_loss": None,
+                })
+                last_sell_i = i
+
         return signals
     except Exception:
         return []
@@ -483,11 +681,8 @@ def analyze_trades(body: dict = None):
         return {"analysis": "トレードデータがありません。CSVをインポートしてください。"}
 
     req = body or {}
-    auto_viewpoints   = req.get("auto_viewpoints", [])
-    trend_viewpoints  = req.get("trend_viewpoints", [])
-    custom_viewpoints = req.get("custom_viewpoints", [])
-    signal_symbol     = req.get("symbol", "")
-    signal_interval   = req.get("interval", "1d")
+    signal_symbol   = req.get("symbol", "")
+    signal_interval = req.get("interval", "1d")
 
     # 分析前に全トレード銘柄の日足ローソク足をyfinanceから取得してDBに保存
     # ただし直近2営業日以内のデータがすでにDBにあればスキップ
@@ -584,22 +779,40 @@ def analyze_trades(body: dict = None):
         winners.sort(key=lambda x: x['pnl'], reverse=True)
         losers.sort(key=lambda x: x['pnl'])
 
-        def fmt(entries):
-            lines = []
-            for e in entries:
-                hold = f"保有{e['hold_days']}日" if e['hold_days'] is not None else ""
-                buy_info  = f" [買い時: {e['buy_desc']}]"  if e['buy_desc']  else ""
-                sell_info = f" [売り時: {e['sell_desc']}]" if e['sell_desc'] else ""
-                lines.append(
-                    f"- {e['name']}({e['code']}): 損益{e['pnl']:+,}円({e['pnl_pct']:+.1f}%) "
-                    f"買均{e['avg_buy_price']:,.0f}円→売均{e['avg_sell_price']:,.0f}円 "
-                    f"買{e['buy_count']}回/売{e['sell_count']}回 {hold}"
-                    f"{buy_info}{sell_info}"
-                )
-            return "\n".join(lines) if lines else "なし"
+        # ---- ルールベース分析テキスト生成 ----
+        total_pnl   = sum(e['pnl'] for e in winners) + sum(e['pnl'] for e in losers)
+        win_rate    = len(winners) / (len(winners) + len(losers)) * 100 if (winners or losers) else 0
+        avg_win_pnl = sum(e['pnl'] for e in winners) / len(winners) if winners else 0
+        avg_los_pnl = sum(e['pnl'] for e in losers)  / len(losers)  if losers  else 0
 
-        # シグナル生成用のローソク足サマリー（直近データがなければyfinanceから取得）
-        candle_summary = ""
+        def fmt_entry(e):
+            hold = f"保有{e['hold_days']}日" if e['hold_days'] is not None else ""
+            buy_info  = f" [買い時: {e['buy_desc']}]"  if e['buy_desc']  else ""
+            sell_info = f" [売り時: {e['sell_desc']}]" if e['sell_desc'] else ""
+            return (
+                f"- {e['name']}({e['code']}): 損益{e['pnl']:+,}円({e['pnl_pct']:+.1f}%) "
+                f"買均{e['avg_buy_price']:,.0f}円→売均{e['avg_sell_price']:,.0f}円 {hold}"
+                f"{buy_info}{sell_info}"
+            )
+
+        win_lines = "\n".join(fmt_entry(e) for e in winners) if winners else "なし"
+        los_lines = "\n".join(fmt_entry(e) for e in losers)  if losers  else "なし"
+        holding_lines = ("**保有中（未決済）**\n" + "\n".join(f"- {n}" for n in holding) + "\n\n") if holding else ""
+        legend = "**シグナル凡例:** GC=ゴールデンクロス(MA5↑MA25) / DC=デッドクロス(MA5↓MA25) / BB↓=BB下限(BB%≤30) / BB↑=BB上限(BB%≥70) / IK↑=一目転換線上抜け / IK↓=一目転換線下抜け"
+
+        analysis_text = (
+            f"### 1. サマリー\n"
+            f"- 総損益: {total_pnl:+,}円\u3000勝率: {win_rate:.0f}%（{len(winners)}勝{len(losers)}敗）\n"
+            f"- 平均利益: {avg_win_pnl:+,.0f}円 / 平均損失: {avg_los_pnl:+,.0f}円\n\n"
+            f"### 2. 利益トレード（{len(winners)}件）\n"
+            f"{win_lines}\n\n"
+            f"### 3. 損失トレード（{len(losers)}件）\n"
+            f"{los_lines}\n\n"
+            f"{holding_lines}"
+            f"{legend}"
+        )
+
+        # シグナル用ローソク足データ取得（最新でなければ更新）
         if signal_symbol and signal_interval in INTERVALS:
             try:
                 c2 = get_conn()
@@ -613,11 +826,10 @@ def analyze_trades(body: dict = None):
                         latest2 = row2['latest'] if row2 else None
                 finally:
                     c2.close()
-
                 needs_fetch = not latest2 or str(latest2) < recent_threshold
                 if needs_fetch:
-                    sym = f"{signal_symbol}.T" if (signal_symbol.isdigit() or (len(signal_symbol) == 4 and signal_symbol.isalnum())) else signal_symbol
-                    fresh = fetch_from_yfinance(sym, signal_interval)
+                    sym2 = f"{signal_symbol}.T" if (signal_symbol.isdigit() or (len(signal_symbol) == 4 and signal_symbol.isalnum())) else signal_symbol
+                    fresh = fetch_from_yfinance(sym2, signal_interval)
                     if fresh:
                         c2 = get_conn()
                         try:
@@ -626,315 +838,15 @@ def analyze_trades(body: dict = None):
                             c2.close()
             except Exception:
                 pass
-            candle_summary = build_candle_summary(signal_symbol, signal_interval)
-
-        # 最終トレード日と最新ローソク足の日付を取得
-        all_trade_dates = []
-        for ts_list in by_code.values():
-            for t in ts_list:
-                all_trade_dates.append(str(t['trade_date'])[:10])
-        last_trade_date = max(all_trade_dates) if all_trade_dates else ""
-
-        signal_section = ""
-        if candle_summary:
-            rows = candle_summary.strip().split('\n')
-            first_candle_date = rows[1].split(',')[0] if len(rows) > 1 else ""
-            last_candle_date  = rows[-1].split(',')[0]
-            signal_section = f"""
-
-## {signal_symbol} のローソク足データ（{signal_interval} / {first_candle_date}〜{last_candle_date}）
-{candle_summary}
-
----
-
-上記のトレード分析と{signal_symbol}のローソク足データを踏まえ、分析結果と整合した推奨売買シグナルを10〜15個生成してください。
-
-【重要ルール】
-- 「日時」列に記載されている実際の日付のみ使用すること（存在しない日付は絶対に使わない）
-- **シグナルをデータ全期間（{first_candle_date}〜{last_candle_date}）に均等に分散させること**（直近に集中させないこと）
-- 期間を前半・中盤・後半の3つに分け、各期間に3〜5個ずつ配置すること
-- 最終トレード日（{last_trade_date}）以降にも必ず3個以上含めること
-- 勝ちトレードで判明したエントリー条件（MA・BB）および上記の重点分析観点が揃っているタイミングを買いシグナルとする
-- 利確・損切りルールに基づくタイミングを売りシグナルとする
-- reasonは具体的な指標の状態を日本語で記述すること（例:「MA25上抜け・BB下限(BB%=18)から反発」）
-- 買いシグナルには必ず stop_loss（損切り価格）を設定すること。スイングトレードを前提に、直近の明確な安値・サポートラインの少し下（その水準を明確に下回ったら損切り）を根拠とし、エントリー価格の5〜15%下を目安とする。2〜3%など狭い損切りは設定しないこと
-
-必ず以下のブロックを分析テキストの末尾に出力すること（ブロック内はJSON配列のみ、他の文字を含めないこと）：
----SIGNALS_START---
-[{{"date":"YYYY-MM-DD","side":"buy","reason":"理由","stop_loss":数値}},{{"date":"YYYY-MM-DD","side":"sell","reason":"理由"}}]
----SIGNALS_END---"""
-
-        # トレンド観点（チャート由来）
-        trend_section = ""
-        if trend_viewpoints:
-            items = '\n'.join(f'- {v}' for v in trend_viewpoints)
-            trend_section = f"\n\n## 現在のチャートトレンド\n{items}"
-
-        # カスタム観点（ユーザー追加）を個別セクションとして構築
-        extra_section = ""
-        if custom_viewpoints:
-            items = '\n'.join(f'- {v}' for v in custom_viewpoints)
-            extra_section = f"""
-
-### 4. 追加観点の分析（必須）
-以下の観点について、このトレード履歴の結果・勝ち負けのパターンを踏まえて**それぞれ個別に**具体的に言及してください：
-{items}"""
-
-        # シグナル生成での観点反映指示を signal_section に追記
-        if signal_section and custom_viewpoints:
-            vp_list = '・'.join(custom_viewpoints)
-            signal_section = signal_section.replace(
-                '- 勝ちトレードで判明したエントリー条件（MA・BB）および上記の重点分析観点が揃っているタイミングを買いシグナルとする',
-                '- 上記の分析（勝ちトレードのエントリー条件・チャートトレンド・追加観点）が揃っているタイミングを買いシグナルとする'
-                f'\n- 特に追加観点（{vp_list}）が確認できるタイミングを優先すること'
-            )
-        elif signal_section:
-            signal_section = signal_section.replace(
-                '- 勝ちトレードで判明したエントリー条件（MA・BB）および上記の重点分析観点が揃っているタイミングを買いシグナルとする',
-                '- 上記の分析（勝ちトレードのエントリー条件・チャートトレンド）が揃っているタイミングを買いシグナルとする'
-            )
-
-        holding_section = ("## 保有中（未決済）\n" + "\n".join(f"- {n}" for n in holding)) if holding else ""
-
-        # 出力フォーマット指示（カスタム観点がある場合はセクション4を必須化）
-        if custom_viewpoints:
-            vp_items = '\n'.join(f'  - {v}' for v in custom_viewpoints)
-            output_format = f"""
-あなたの回答は必ず以下のセクション構成で出力してください：
-
-### 1. 勝ちトレードの傾向
-### 2. 負けトレードの傾向
-### 3. 具体的な改善アドバイス
-### 4. 追加観点の分析
-（以下の観点それぞれについて、このトレード履歴の結果を踏まえて具体的に記述すること）
-{vp_items}"""
-        else:
-            output_format = """
-あなたの回答は必ず以下のセクション構成で出力してください：
-
-### 1. 勝ちトレードの傾向
-### 2. 負けトレードの傾向
-### 3. 具体的な改善アドバイス"""
-
-        # VIX現在値を取得（プロンプト参考用）
-        vix_current = None
-        try:
-            import yfinance as yf
-            vix_hist = yf.Ticker("^VIX").history(period="3d")
-            if not vix_hist.empty:
-                vix_current = round(float(vix_hist["Close"].iloc[-1]), 2)
-        except Exception:
-            pass
-        vix_line = f"最新VIX指数（参考）: {vix_current}" if vix_current else "最新VIX指数: 取得不可"
-        vix_level = ""
-        if vix_current:
-            if vix_current >= 30:
-                vix_level = "（極度の恐怖水準）"
-            elif vix_current >= 22:
-                vix_level = "（高ボラティリティ）"
-            elif vix_current >= 15:
-                vix_level = "（やや不安定）"
-            else:
-                vix_level = "（安定水準）"
-
-        prompt = f"""あなたはスイングトレード（数日〜数週間の中期保有）の専門アナリストです。
-以下のトレード履歴と、各トレード時点での技術指標の状況（MA5/MA25乖離、ボリンジャーバンド位置、一目均衡表の転換線/基準線の関係、出来高動向）を基に、詳細な分析をしてください。
-
-【VIX指数ルール（必ず遵守）】
-{vix_line}{vix_level}
-- ローソク足データの「VIX」列に各日付の実際のVIX値が記載されている。シグナルを生成する際は必ずその日付のVIX列の値を参照すること（現在値ではなくその日の実際の値）
-- VIX列が空の日付は直前の値を引き継いで判断すること
-- その日のVIX 30以上：買いシグナルは原則生成しないこと
-- その日のVIX 22以上30未満：よほど強いシグナル（複数の指標が強く一致）でない限り買いシグナルを生成しないこと
-- その日のVIX 22未満：通常ルールで判断してよい
-- シグナルのreasonにその日の実際のVIX値を必ず記載すること（例:「VIX18・安定水準」「VIX45・高VIXのため見送り」）。VIX列にない値を推測で書いてはいけない
-
-【一目均衡表のシグナル判断ルール（必ず遵守）】
-- CSVに「IKクロス」列があり、その日の実際のクロス発生を示す（空欄=クロスなし、「上抜け」=転換線が基準線を上抜け、「下抜け」=転換線が基準線を下抜け）
-- 買いシグナルで一目クロスを根拠にできるのは、その日の「IKクロス」列が「上抜け」の日のみ（それ以外の日に「転換線が基準線を上抜け」と書くことは禁止）
-- 売りシグナルで一目クロスを根拠にできるのは、その日の「IKクロス」列が「下抜け」の日のみ
-- 「IKクロス」が空欄の日は、一目均衡表のクロスを根拠にしないこと
-
-【MAシグナルの記述ルール（必ず遵守）】
-- 「MAxx上抜け」は買いシグナルの根拠にのみ使うこと。売りシグナルに「上抜け」という表現は禁止
-- 「MA25下抜け」「MA5下抜け」は、それ単体を売りシグナルの根拠にしてはいけない。下抜けは下落中の通過点に過ぎず、売り根拠にならない
-- 売りシグナルでMAを根拠にできるのは「価格がMAより上にある状態での上方乖離過熱（X%）」のみ。価格がMA25より下にある状態で「MA25からの乖離」を売り根拠にしてはいけない
-- 「MA5がMA25をゴールデンクロス」→買い根拠、「MA5がMA25をデッドクロス」→売り根拠として使うこと（ただしデッドクロス発生時点で価格がすでにMA25より大きく下にある場合は遅すぎるため使わないこと）
-- BB中間線（25日MA）付近での利確根拠には「BB中心線付近で利確」と記述し、「MA25上抜け」「BB中間」とは書かないこと
-- reasonに「BB中間」「BB中心」という表現を使うことは禁止。BB%の数値を明記する場合は「BB%=XX%・バンド上限付近」のように正確に記述すること
-
-【BB%と売買シグナルの整合性ルール（必ず遵守）】
-- BB%が0〜49%のときは売りシグナルを出してはいけない。BB%が中間以下の局面は下落・底値圏であり、売り増しは不適切
-- BB%が70〜100%（上限付近）のときのみ売りシグナルの根拠にできる
-- BB%が0〜30%（下限付近）のときのみ買いシグナルの根拠にできる
-- 「BB中間への移行」「BB%=34%」などのBB%中間帯の表現を売り根拠にしてはいけない
-
-【売りシグナルを出してよい条件（以下のいずれかが必須）】
-売りシグナルはかならず以下のいずれかの条件を満たすときのみ出力すること：
-1. BB%が70%以上（上限付近の過熱）
-2. MA5がMA25をデッドクロス
-3. 一目均衡表の「IKクロス」列が「下抜け」
-4. 明確な利確ライン（直近高値・レジスタンス）への到達
-上記条件を満たさない日に売りシグナルを出力してはいけない。
-
-【売りシグナルのreason記述ルール（必ず遵守）】
-売りシグナルのreasonには以下の表現を一切含めてはいけない：
-- 「MA5が下抜け」「MA25下抜け」「MAxx下抜け」（下抜けは売り根拠にならない）
-- 「上抜け」（売りシグナルに上抜けは矛盾）
-- 「BB中間」「BB%=3X%」「BB%=4X%」「BB%=5X%」「BB%=6X%」（BB%70%未満は売り根拠にならない）
-- 「高値圏警戒」「乖離過熱」（価格がMAより下にある局面での使用禁止）
-売りシグナルのreasonは「BB%=XX%・バンド上限過熱」「MA5がMA25をデッドクロス」「IKクロス下抜け」「直近高値レジスタンス到達」のいずれかを中心に簡潔に記述すること。
-
-【最重要：ルール遵守の確認（シグナル出力前に必ず自己チェックすること）】
-出力前に各シグナルについて以下を確認し、1つでも違反があればそのシグナルを除外すること：
-1. 売りシグナルのreasonに「下抜け」「上抜け」「BB中間」「BB%=3〜6X%」が含まれていないか
-2. 売りシグナルのBB%が70%未満になっていないか（70%未満なら除外）
-3. 価格がMA25より下にある局面で乖離過熱・高値圏警戒を売り根拠にしていないか
-4. 買いシグナルのstop_lossがエントリー価格以上になっていないか
-5. VIXルールに従っているか（ローソク足データのVIX列のその日の値を使うこと）
-これらを全て通過したシグナルのみ出力すること。違反シグナルは出力せずに省略すること。
-{trend_section}
-## 利益トレード（{len(winners)}件）
-{fmt(winners)}
-
-## 損失トレード（{len(losers)}件）
-{fmt(losers)}
-
-{holding_section}
-{output_format}{signal_section}"""
 
     finally:
         conn.close()
 
-    bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
-    bedrock_body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 3000,
-        "messages": [{"role": "user", "content": prompt}]
-    })
-    response = bedrock.invoke_model(
-        modelId="us.anthropic.claude-3-haiku-20240307-v1:0",
-        body=bedrock_body,
-        contentType="application/json",
-        accept="application/json"
-    )
-    result = json.loads(response["body"].read())
-    full_text = result["content"][0]["text"]
-
-    # シグナルブロックを分析テキストから除去し、パース
-    import re
-    analysis_text = re.sub(r'\s*---SIGNALS_START---.*?---SIGNALS_END---', '', full_text, flags=re.DOTALL).strip()
-    signals = parse_signals(full_text)
-
-    # サーバーサイド検証
-    try:
-        import yfinance as yf
-        from datetime import datetime as dt3, timedelta
-
-        all_dates = [s['time'] for s in signals]
-        if all_dates:
-            min_date = min(all_dates)
-            max_date = max(all_dates)
-            end_dt = (dt3.strptime(max_date[:10], '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
-
-            # VIXデータ取得
-            vix_df = yf.Ticker("^VIX").history(start=min_date[:10], end=end_dt)
-            vix_map = {}
-            if not vix_df.empty:
-                for idx, row in vix_df.iterrows():
-                    vix_map[str(idx)[:10]] = float(row['Close'])
-
-            # BB%・IKクロス・MAクロスマップをcandle dataから構築
-            bb_map  = {}
-            ik_map  = {}  # date -> "上抜け" | "下抜け" | ""
-            mac_map = {}  # date -> "golden" | "dead" | ""  (MA5/MA25クロス)
-            if signal_symbol and signal_interval:
-                try:
-                    conn2 = get_conn()
-                    candles2 = load_candles_from_db(conn2, signal_symbol, signal_interval)
-                    conn2.close()
-                    closes2 = [c['close'] for c in candles2]
-                    highs2  = [c.get('high', c['close']) for c in candles2]
-                    lows2   = [c.get('low',  c['close']) for c in candles2]
-
-                    def _tk2(i):
-                        if i < 8: return None
-                        return (max(highs2[i-8:i+1]) + min(lows2[i-8:i+1])) / 2
-                    def _kj2(i):
-                        if i < 25: return None
-                        return (max(highs2[i-25:i+1]) + min(lows2[i-25:i+1])) / 2
-                    def _ma(i, n):
-                        if i < n - 1: return None
-                        return sum(closes2[i-n+1:i+1]) / n
-
-                    for i, c in enumerate(candles2):
-                        t = c['time'] if isinstance(c['time'], str) else None
-                        if t is None:
-                            from datetime import timezone
-                            t = dt3.fromtimestamp(int(c['time']), tz=timezone.utc).strftime('%Y-%m-%d')
-                        dk = str(t)[:10]
-
-                        # BB%
-                        if i >= 19:
-                            c20 = closes2[i-19:i+1]
-                            mean = sum(c20) / 20
-                            std = (sum((x - mean)**2 for x in c20) / 20) ** 0.5
-                            upper = mean + 2 * std
-                            lower = mean - 2 * std
-                            bp = (c['close'] - lower) / (upper - lower) * 100 if upper != lower else 50
-                            bb_map[dk] = round(bp, 1)
-
-                        # IKクロス
-                        ik = ""
-                        if i > 0:
-                            tk_c, kj_c = _tk2(i), _kj2(i)
-                            tk_p, kj_p = _tk2(i-1), _kj2(i-1)
-                            if tk_c and kj_c and tk_p and kj_p:
-                                if tk_p <= kj_p and tk_c > kj_c: ik = "上抜け"
-                                elif tk_p >= kj_p and tk_c < kj_c: ik = "下抜け"
-                        ik_map[dk] = ik
-
-                        # MA5/MA25クロス
-                        mac = ""
-                        if i > 0:
-                            ma5_c, ma25_c = _ma(i, 5), _ma(i, 25)
-                            ma5_p, ma25_p = _ma(i-1, 5), _ma(i-1, 25)
-                            if ma5_c and ma25_c and ma5_p and ma25_p:
-                                if ma5_p <= ma25_p and ma5_c > ma25_c: mac = "golden"
-                                elif ma5_p >= ma25_p and ma5_c < ma25_c: mac = "dead"
-                        mac_map[dk] = mac
-                except Exception:
-                    pass
-
-            def get_prev_val(m, date_key):
-                val = m.get(date_key)
-                if val is None:
-                    for d, v in sorted(m.items()):
-                        if d <= date_key:
-                            val = v
-                return val
-
-            # reason文言チェック用禁止キーワード
-            filtered = []
-            for s in signals:
-                date_key = str(s['time'])[:10]
-                skip = False
-
-                if s['side'] == 'buy':
-                    # VIX>=30の極高値の日のみ除外
-                    vix_val = get_prev_val(vix_map, date_key)
-                    if vix_val is not None and vix_val >= 30:
-                        skip = True
-
-                # IKクロスフィルターは誤検知が多いため無効化
-
-                if not skip:
-                    filtered.append(s)
-            signals = filtered
-    except Exception:
-        pass
+    # ルールベースシグナル生成
+    signals = generate_rule_signals(signal_symbol, signal_interval) if signal_symbol else []
 
     return {"analysis": analysis_text, "signals": signals}
+
 
 
 @app.post("/history/analysis")
