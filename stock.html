@@ -1420,6 +1420,11 @@ function initChart() {
       horzLines:  { color: '#21262d' },
     },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    leftPriceScale: {
+      visible: true,
+      borderColor: '#30363d',
+      scaleMargins: { top: 0.85, bottom: 0 },
+    },
     rightPriceScale: {
       borderColor: '#30363d',
       scaleMargins: { top: 0.05, bottom: 0.20 },
@@ -1441,12 +1446,11 @@ function initChart() {
 
   volumeSeries = chart.addHistogramSeries({
     priceFormat:    { type: 'volume' },
-    priceScaleId:   'volume',
+    priceScaleId:   'left',
     color:          '#58a6ff',
-    scaleMargins:   { top: 0.85, bottom: 0 },
   });
 
-  chart.priceScale('volume').applyOptions({
+  chart.priceScale('left').applyOptions({
     scaleMargins: { top: 0.85, bottom: 0 },
   });
 
@@ -1530,23 +1534,18 @@ function applySubChart(type, candleData) {
 
   if (type === 'volume') {
     // 出来高は volumeSeries で常時管理 → 表示/非表示で対応
-    chart.priceScale('volume').applyOptions({ visible: true, scaleMargins: { top: 0.85, bottom: 0 } });
-    if (volumeSeries) {
-      volumeSeries.applyOptions({ visible: true });
-      chart.priceScale('sub').applyOptions({ visible: false });
-    }
+    if (volumeSeries) volumeSeries.applyOptions({ visible: true });
+    chart.priceScale('left').applyOptions({ visible: true, scaleMargins: { top: 0.85, bottom: 0 } });
   } else {
     // 出来高を隠す
     if (volumeSeries) volumeSeries.applyOptions({ visible: false });
-    chart.priceScale('volume').applyOptions({ visible: false });
 
     if (type === 'macd') {
       const { macdLine, signalLine, hist } = calcMACD(closes);
 
       const histSeries = chart.addHistogramSeries({
-        priceScaleId: 'sub',
+        priceScaleId: 'left',
         color: '#58a6ff',
-        scaleMargins: { top: 0.82, bottom: 0 },
         priceLineVisible: false, lastValueVisible: false,
       });
       histSeries.setData(times.map((t, i) => hist[i] !== null ? {
@@ -1556,35 +1555,32 @@ function applySubChart(type, candleData) {
       subSeries.push(histSeries);
 
       const macdS = chart.addLineSeries({
-        priceScaleId: 'sub', color: '#58a6ff', lineWidth: 1,
-        scaleMargins: { top: 0.82, bottom: 0 },
+        priceScaleId: 'left', color: '#58a6ff', lineWidth: 1,
         priceLineVisible: false, lastValueVisible: false,
       });
       macdS.setData(times.map((t, i) => macdLine[i] !== null ? { time: t, value: macdLine[i] } : null).filter(Boolean));
       subSeries.push(macdS);
 
       const sigS = chart.addLineSeries({
-        priceScaleId: 'sub', color: '#f97316', lineWidth: 1,
-        scaleMargins: { top: 0.82, bottom: 0 },
+        priceScaleId: 'left', color: '#f97316', lineWidth: 1,
         priceLineVisible: false, lastValueVisible: false,
       });
       sigS.setData(times.map((t, i) => signalLine[i] !== null ? { time: t, value: signalLine[i] } : null).filter(Boolean));
       subSeries.push(sigS);
 
-      chart.priceScale('sub').applyOptions({ visible: true, scaleMargins: { top: 0.82, bottom: 0 } });
+      chart.priceScale('left').applyOptions({ visible: true, scaleMargins: { top: 0.82, bottom: 0 } });
 
     } else if (type === 'hv') {
       const hv = calcHV(closes);
 
       const hvS = chart.addLineSeries({
-        priceScaleId: 'sub', color: '#a78bfa', lineWidth: 1,
-        scaleMargins: { top: 0.82, bottom: 0 },
+        priceScaleId: 'left', color: '#a78bfa', lineWidth: 1,
         priceLineVisible: false, lastValueVisible: false,
       });
       hvS.setData(times.map((t, i) => hv[i] !== null ? { time: t, value: hv[i] } : null).filter(Boolean));
       subSeries.push(hvS);
 
-      chart.priceScale('sub').applyOptions({ visible: true, scaleMargins: { top: 0.82, bottom: 0 } });
+      chart.priceScale('left').applyOptions({ visible: true, scaleMargins: { top: 0.82, bottom: 0 } });
     }
   }
 }
