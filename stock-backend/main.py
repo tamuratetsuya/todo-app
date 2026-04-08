@@ -589,46 +589,65 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if not lagging_price: return False
             return tc > kc and closes[i] > kumo_top and closes[i] > lagging_price
 
-        def _trendline_val(i, window=100):
-            """直近のピボットロー2点を結ぶ上昇トレンドラインの現在値"""
-            if i < 10: return None
-            base = max(0, i - window)
-            scan = lows[base:i]
-            pivot_lows = []
-            for j in range(1, len(scan) - 1):
-                if scan[j] < scan[j-1] and scan[j] < scan[j+1]:
-                    pivot_lows.append((base + j, scan[j]))
-            if len(pivot_lows) < 2:
-                return None
-            p1, p2 = pivot_lows[-2], pivot_lows[-1]
-            if p2[0] == p1[0]: return None
-            slope = (p2[1] - p1[1]) / (p2[0] - p1[0])
-            tl_val = p2[1] + slope * (i - p2[0])
-            return tl_val if tl_val > 0 else None
+        def _get_pivot_lows(i, lookback=5):
+            """ピボットロー一覧（前後lookback本で最安値の点）"""
+            result = []
+            for j in range(lookback, i - lookback + 1):
+                l = lows[j]
+                is_low = all(lows[k] > l for k in range(j - lookback, j + lookback + 1) if k != j and 0 <= k < len(lows))
+                if is_low:
+                    result.append({'idx': j, 'price': l})
+            return result
 
-        def _trendline_near(i, window=20, thresh=0.02):
+        def _trendline_val(i, lookback=5):
+            """グラフと同一ロジック: 直近の上昇ピボットロー2点を結ぶ線の現在値"""
+            if i < lookback * 2 + 1: return None
+            price = closes[i]
+            pivot_lows = _get_pivot_lows(i, lookback)
+            for ii in range(len(pivot_lows) - 1, 0, -1):
+                p2 = pivot_lows[ii]
+                for jj in range(ii - 1, max(-1, ii - 7), -1):
+                    p1 = pivot_lows[jj]
+                    if p2['price'] <= p1['price']: continue
+                    slope = (p2['price'] - p1['price']) / (p2['idx'] - p1['idx'])
+                    # 中間ピボットが線を下回っていないか検証
+                    valid = all(
+                        pivot_lows[kk]['price'] >= (p1['price'] + slope * (pivot_lows[kk]['idx'] - p1['idx'])) * 0.997
+                        for kk in range(jj + 1, ii)
+                    )
+                    if not valid: continue
+                    end_price = p2['price'] + slope * (i - p2['idx'])
+                    if price >= end_price * 0.96:
+                        return end_price
+            return None
+
+        def _trendline_near(i, thresh=0.02):
             """直近安値のトレンドライン近傍（価格がトレンドライン±thresh%以内）"""
-            tl_val = _trendline_val(i, window)
+            tl_val = _trendline_val(i)
             if tl_val is None: return False
             return abs(closes[i] - tl_val) / tl_val <= thresh
 
-        def _support_val(i, window=200, cluster_pct=0.015):
-            """複数回タッチされた支持線（価格クラスタリング）の最近傍値"""
-            if i < 20: return None
+        def _support_val(i, lookback=5):
+            """グラフと同一ロジック: ピボットローをクラスタリングした支持線の最近傍値"""
+            if i < lookback * 2 + 1: return None
             price = closes[i]
-            scan = lows[max(0, i - window):i]
-            checked = [False] * len(scan)
-            support_levels = []
-            for j in range(len(scan)):
-                if checked[j]: continue
-                cluster = [scan[j]]
-                for k in range(j + 1, len(scan)):
-                    if not checked[k] and abs(scan[k] - scan[j]) / scan[j] <= cluster_pct:
-                        cluster.append(scan[k])
-                        checked[k] = True
-                if len(cluster) >= 2:
-                    support_levels.append(sum(cluster) / len(cluster))
-            below = [s for s in support_levels if s < price]
+            range_limit = price * 0.20
+            raw = [p['price'] for p in _get_pivot_lows(i, lookback)
+                   if p['price'] <= price and p['price'] >= price - range_limit]
+            if not raw: return None
+            sorted_lows = sorted(raw, reverse=True)
+            groups = []
+            idx = 0
+            while idx < len(sorted_lows):
+                group = [sorted_lows[idx]]
+                while idx + 1 < len(sorted_lows) and abs(sorted_lows[idx+1] - sorted_lows[idx]) / sorted_lows[idx] < 0.012:
+                    idx += 1
+                    group.append(sorted_lows[idx])
+                groups.append({'level': sum(group) / len(group), 'strength': len(group)})
+                idx += 1
+            groups.sort(key=lambda x: -x['strength'])
+            levels = [g['level'] for g in groups[:3]]
+            below = [l for l in levels if l < price]
             return max(below) if below else None
 
         def _resistance_break(i, window=20):
