@@ -761,6 +761,31 @@
     overflow: hidden;
   }
 
+  #subChartToggle {
+    position: absolute;
+    bottom: 6px;
+    left: 8px;
+    z-index: 1000;
+    display: flex;
+    gap: 3px;
+    pointer-events: auto;
+  }
+
+  .sub-chart-btn {
+    background: rgba(30,35,45,0.85);
+    color: #8b949e;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-family: 'SF Mono', monospace;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .sub-chart-btn:hover { color: #e6edf3; border-color: #58a6ff; }
+  .sub-chart-btn.active { background: #1f6feb; color: white; border-color: #1f6feb; }
+
   #candleLegend {
     position: absolute;
     top: 10px;
@@ -1117,6 +1142,11 @@
     <div id="chartContainer">
       <div id="candleLegend"></div>
       <div id="signalLegend"></div>
+      <div id="subChartToggle">
+        <button class="sub-chart-btn active" data-sub="volume">出来高</button>
+        <button class="sub-chart-btn" data-sub="macd">MACD</button>
+        <button class="sub-chart-btn" data-sub="hv">HV</button>
+      </div>
       <div id="signalTooltip"></div>
       <div id="indTooltip"></div>
       <div id="eventMarkerLayer"></div>
@@ -1348,6 +1378,8 @@ let candleData = [];    // raw candle array from API
 let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
+let subSeries = [];      // サブチャート系列（MACD/HV）
+let currentSubChart = 'volume';
 let indicatorSeries = []; // [{series, label}]
 
 // ===== DOM REFS =====
@@ -1372,6 +1404,7 @@ function initChart() {
     chart = null;
     candleSeries = null;
     volumeSeries = null;
+    subSeries = [];
     indicatorSeries = [];
   }
 
@@ -1430,6 +1463,130 @@ function initChart() {
   setupSignalTooltip();
   setupCandleLegend();
   initEventMarkerSubscription();
+}
+
+// ========== サブチャート（出来高 / MACD / HV）==========
+
+document.querySelectorAll('.sub-chart-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sub-chart-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentSubChart = btn.dataset.sub;
+    if (window._lastCandleData) applySubChart(currentSubChart, window._lastCandleData);
+  });
+});
+
+function calcEMA(data, period) {
+  const k = 2 / (period + 1);
+  const result = new Array(data.length).fill(null);
+  let started = false;
+  let prev = 0;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] === null) continue;
+    if (!started) {
+      if (i >= period - 1) {
+        const slice = data.slice(Math.max(0, i - period + 1), i + 1).filter(v => v !== null);
+        if (slice.length === period) { prev = slice.reduce((a, b) => a + b) / period; result[i] = prev; started = true; }
+      }
+    } else {
+      prev = data[i] * k + prev * (1 - k);
+      result[i] = prev;
+    }
+  }
+  return result;
+}
+
+function calcMACD(closes) {
+  const ema12 = calcEMA(closes, 12);
+  const ema26 = calcEMA(closes, 26);
+  const macdLine = closes.map((_, i) => ema12[i] !== null && ema26[i] !== null ? ema12[i] - ema26[i] : null);
+  const signalLine = calcEMA(macdLine, 9);
+  const hist = macdLine.map((v, i) => v !== null && signalLine[i] !== null ? v - signalLine[i] : null);
+  return { macdLine, signalLine, hist };
+}
+
+function calcHV(closes, period = 20) {
+  const logR = closes.map((c, i) => i === 0 || closes[i-1] <= 0 ? null : Math.log(c / closes[i-1]));
+  return logR.map((_, i) => {
+    if (i < period) return null;
+    const w = logR.slice(i - period + 1, i + 1).filter(v => v !== null);
+    if (w.length < period) return null;
+    const mean = w.reduce((a, b) => a + b) / w.length;
+    const variance = w.reduce((a, b) => a + (b - mean) ** 2, 0) / (w.length - 1);
+    return Math.sqrt(variance * 252) * 100;
+  });
+}
+
+function applySubChart(type, candleData) {
+  if (!chart) return;
+  window._lastCandleData = candleData;
+
+  // 既存サブ系列を削除
+  subSeries.forEach(s => { try { chart.removeSeries(s); } catch(e) {} });
+  subSeries = [];
+
+  const times = candleData.map(d => d.time);
+  const closes = candleData.map(d => d.close);
+
+  if (type === 'volume') {
+    // 出来高は volumeSeries で常時管理 → 表示/非表示で対応
+    chart.priceScale('volume').applyOptions({ visible: true, scaleMargins: { top: 0.85, bottom: 0 } });
+    if (volumeSeries) {
+      volumeSeries.applyOptions({ visible: true });
+      chart.priceScale('sub').applyOptions({ visible: false });
+    }
+  } else {
+    // 出来高を隠す
+    if (volumeSeries) volumeSeries.applyOptions({ visible: false });
+    chart.priceScale('volume').applyOptions({ visible: false });
+
+    if (type === 'macd') {
+      const { macdLine, signalLine, hist } = calcMACD(closes);
+
+      const histSeries = chart.addHistogramSeries({
+        priceScaleId: 'sub',
+        color: '#58a6ff',
+        scaleMargins: { top: 0.82, bottom: 0 },
+        priceLineVisible: false, lastValueVisible: false,
+      });
+      histSeries.setData(times.map((t, i) => hist[i] !== null ? {
+        time: t, value: hist[i],
+        color: hist[i] >= 0 ? 'rgba(63,185,80,0.6)' : 'rgba(248,81,73,0.6)'
+      } : null).filter(Boolean));
+      subSeries.push(histSeries);
+
+      const macdS = chart.addLineSeries({
+        priceScaleId: 'sub', color: '#58a6ff', lineWidth: 1,
+        scaleMargins: { top: 0.82, bottom: 0 },
+        priceLineVisible: false, lastValueVisible: false,
+      });
+      macdS.setData(times.map((t, i) => macdLine[i] !== null ? { time: t, value: macdLine[i] } : null).filter(Boolean));
+      subSeries.push(macdS);
+
+      const sigS = chart.addLineSeries({
+        priceScaleId: 'sub', color: '#f97316', lineWidth: 1,
+        scaleMargins: { top: 0.82, bottom: 0 },
+        priceLineVisible: false, lastValueVisible: false,
+      });
+      sigS.setData(times.map((t, i) => signalLine[i] !== null ? { time: t, value: signalLine[i] } : null).filter(Boolean));
+      subSeries.push(sigS);
+
+      chart.priceScale('sub').applyOptions({ visible: true, scaleMargins: { top: 0.82, bottom: 0 } });
+
+    } else if (type === 'hv') {
+      const hv = calcHV(closes);
+
+      const hvS = chart.addLineSeries({
+        priceScaleId: 'sub', color: '#a78bfa', lineWidth: 1,
+        scaleMargins: { top: 0.82, bottom: 0 },
+        priceLineVisible: false, lastValueVisible: false,
+      });
+      hvS.setData(times.map((t, i) => hv[i] !== null ? { time: t, value: hv[i] } : null).filter(Boolean));
+      subSeries.push(hvS);
+
+      chart.priceScale('sub').applyOptions({ visible: true, scaleMargins: { top: 0.82, bottom: 0 } });
+    }
+  }
 }
 
 function setupCandleLegend() {
@@ -2158,6 +2315,8 @@ async function loadChart() {
       value: d.volume,
       color: d.close >= d.open ? 'rgba(63,185,80,0.4)' : 'rgba(248,81,73,0.4)',
     })));
+
+    applySubChart(currentSubChart, candleData);
 
     // 銘柄ごとの価格帯に合わせてスケールをリセット
     candleSeries.priceScale().applyOptions({ autoScale: true });
