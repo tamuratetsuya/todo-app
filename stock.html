@@ -2325,26 +2325,28 @@ function renderPnl() {
   // ウォッチリスト銘柄（トレード履歴なし）を追加
   const watchRows = watchStocks
     .filter(w => !codes.includes(w.code))
-    .map(w => ({ code: w.code, name: w.name }));
+    .map(w => ({ code: w.code, name: w.name, type: 'watch' }));
 
-  // お気に入りを先頭に
-  const favSort = (a, b) => (isFavorite(b.code) ? 1 : 0) - (isFavorite(a.code) ? 1 : 0);
-  rows.sort(favSort);
-  holdingRows.sort(favSort);
-  watchRows.sort(favSort);
+  // 全行を統合してお気に入りを先頭に
+  const allRows = [
+    ...rows.map(r => ({ ...r, type: 'pnl' })),
+    ...holdingRows.map(r => ({ ...r, type: 'holding' })),
+    ...watchRows,
+  ];
+  allRows.sort((a, b) => (isFavorite(b.code) ? 1 : 0) - (isFavorite(a.code) ? 1 : 0));
 
   pnlBody.innerHTML = '';
   const table = document.createElement('table');
   table.className = 'pnl-table';
 
-  const addRow = (code, name, pnlCell, isPartial) => {
+  for (const r of allRows) {
     const tr = document.createElement('tr');
-    if (code === currentSymbol) tr.classList.add('selected');
+    if (r.code === currentSymbol) tr.classList.add('selected');
     const favBtn = document.createElement('button');
-    favBtn.className = 'fav-btn' + (isFavorite(code) ? ' active' : '');
-    favBtn.textContent = isFavorite(code) ? '★' : '☆';
+    favBtn.className = 'fav-btn' + (isFavorite(r.code) ? ' active' : '');
+    favBtn.textContent = isFavorite(r.code) ? '★' : '☆';
     favBtn.title = 'お気に入り';
-    favBtn.addEventListener('click', e => { e.stopPropagation(); toggleFavorite(code); });
+    favBtn.addEventListener('click', e => { e.stopPropagation(); toggleFavorite(r.code); });
 
     const tdName = document.createElement('td');
     const nameDiv = document.createElement('div');
@@ -2353,40 +2355,28 @@ function renderPnl() {
     nameDiv.style.alignItems = 'center';
     nameDiv.appendChild(favBtn);
     const nameText = document.createElement('span');
-    nameText.innerHTML = esc(name) + (isPartial ? ' <span style="font-size:10px;color:var(--text2)">(一部保有中)</span>' : '');
+    nameText.innerHTML = esc(r.name) + (r.isPartial ? ' <span style="font-size:10px;color:var(--text2)">(一部保有中)</span>' : '');
     nameDiv.appendChild(nameText);
     tdName.appendChild(nameDiv);
     const codeDiv = document.createElement('div');
     codeDiv.className = 'td-code';
     codeDiv.style.paddingLeft = '20px';
-    codeDiv.textContent = code;
+    codeDiv.textContent = r.code;
     tdName.appendChild(codeDiv);
     tr.appendChild(tdName);
-    tr.appendChild(pnlCell);
-    tr.addEventListener('click', () => selectSymbol(code));
+
+    const td = document.createElement('td');
+    if (r.type === 'pnl') {
+      td.className = `td-pnl ${r.pnl >= 0 ? 'green' : 'red'}`;
+      td.textContent = fmtPnl(r.pnl);
+    } else {
+      td.className = 'td-pnl';
+      td.style.cssText = 'color:var(--text2);font-size:11px;';
+      td.textContent = r.type === 'watch' ? 'ウォッチ' : '保有中';
+    }
+    tr.appendChild(td);
+    tr.addEventListener('click', () => selectSymbol(r.code));
     table.appendChild(tr);
-  };
-
-  for (const { code, name, pnl, isPartial } of rows) {
-    const td = document.createElement('td');
-    td.className = `td-pnl ${pnl >= 0 ? 'green' : 'red'}`;
-    td.textContent = fmtPnl(pnl);
-    addRow(code, name, td, isPartial);
-  }
-
-  for (const { code, name } of holdingRows) {
-    const td = document.createElement('td');
-    td.className = 'td-pnl';
-    td.style.cssText = 'color:var(--text2);font-size:11px;';
-    addRow(code, name, td, false);
-  }
-
-  for (const { code, name } of watchRows) {
-    const td = document.createElement('td');
-    td.className = 'td-pnl';
-    td.style.cssText = 'color:var(--text2);font-size:11px;';
-    td.textContent = 'ウォッチ';
-    addRow(code, name, td, false);
   }
 
   pnlBody.appendChild(table);
