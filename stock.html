@@ -1441,7 +1441,11 @@ function setupCandleLegend() {
     const d = param.seriesData.get(candleSeries);
     if (!d) { legend.style.display = 'none'; sigLegend.style.display = 'none'; return; }
     const fmt = v => Number(v).toLocaleString('ja-JP', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-    const pct = ((d.close - d.open) / d.open * 100);
+    // 前日終値→当日終値の変化率（前日がない場合は始値→終値）
+    const timeKey = param.time;
+    const idx = candleData.findIndex(c => c.time === timeKey);
+    const prevClose = idx > 0 ? candleData[idx - 1].close : d.open;
+    const pct = prevClose ? ((d.close - prevClose) / prevClose * 100) : 0;
     const pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
     legend.className = d.close >= d.open ? 'up' : 'down';
     legend.innerHTML =
