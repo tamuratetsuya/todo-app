@@ -589,19 +589,22 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if not lagging_price: return False
             return tc > kc and closes[i] > kumo_top and closes[i] > lagging_price
 
-        def _trendline_val(i, window=20):
-            """直近安値の線形回帰トレンドライン値を返す（現在位置）"""
-            if i < window: return None
-            lw = lows[i-window:i]
-            n = len(lw)
-            xs = list(range(n))
-            mx = sum(xs) / n
-            my = sum(lw) / n
-            denom = sum((x - mx)**2 for x in xs)
-            if denom == 0: return None
-            slope = sum((xs[j] - mx) * (lw[j] - my) for j in range(n)) / denom
-            intercept = my - slope * mx
-            return slope * n + intercept
+        def _trendline_val(i, window=100):
+            """直近のピボットロー2点を結ぶ上昇トレンドラインの現在値"""
+            if i < 10: return None
+            base = max(0, i - window)
+            scan = lows[base:i]
+            pivot_lows = []
+            for j in range(1, len(scan) - 1):
+                if scan[j] < scan[j-1] and scan[j] < scan[j+1]:
+                    pivot_lows.append((base + j, scan[j]))
+            if len(pivot_lows) < 2:
+                return None
+            p1, p2 = pivot_lows[-2], pivot_lows[-1]
+            if p2[0] == p1[0]: return None
+            slope = (p2[1] - p1[1]) / (p2[0] - p1[0])
+            tl_val = p2[1] + slope * (i - p2[0])
+            return tl_val if tl_val > 0 else None
 
         def _trendline_near(i, window=20, thresh=0.02):
             """直近安値のトレンドライン近傍（価格がトレンドライン±thresh%以内）"""
@@ -609,10 +612,24 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if tl_val is None: return False
             return abs(closes[i] - tl_val) / tl_val <= thresh
 
-        def _support_val(i, window=20):
-            """直近window本の安値（支持線の価格）を返す"""
-            if i < window + 1: return None
-            return min(lows[i-window:i])
+        def _support_val(i, window=200, cluster_pct=0.015):
+            """複数回タッチされた支持線（価格クラスタリング）の最近傍値"""
+            if i < 20: return None
+            price = closes[i]
+            scan = lows[max(0, i - window):i]
+            checked = [False] * len(scan)
+            support_levels = []
+            for j in range(len(scan)):
+                if checked[j]: continue
+                cluster = [scan[j]]
+                for k in range(j + 1, len(scan)):
+                    if not checked[k] and abs(scan[k] - scan[j]) / scan[j] <= cluster_pct:
+                        cluster.append(scan[k])
+                        checked[k] = True
+                if len(cluster) >= 2:
+                    support_levels.append(sum(cluster) / len(cluster))
+            below = [s for s in support_levels if s < price]
+            return max(below) if below else None
 
         def _resistance_break(i, window=20):
             """直近window本の高値を上抜け"""
