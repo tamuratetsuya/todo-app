@@ -1447,13 +1447,14 @@ function setupCandleLegend() {
     const prevClose = idx > 0 ? candleData[idx - 1].close : d.open;
     const pct = prevClose ? ((d.close - prevClose) / prevClose * 100) : 0;
     const pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+    const pctColor = pct >= 0 ? '#3fb950' : '#f85149';
     legend.className = d.close >= d.open ? 'up' : 'down';
     legend.innerHTML =
       `<span><span class="leg-label">O</span><span class="leg-o">${fmt(d.open)}</span></span>` +
       `<span><span class="leg-label">H</span><span class="leg-h">${fmt(d.high)}</span></span>` +
       `<span><span class="leg-label">L</span><span class="leg-l">${fmt(d.low)}</span></span>` +
       `<span><span class="leg-label">C</span><span class="leg-c">${fmt(d.close)}</span></span>` +
-      `<span class="leg-pct">${pctStr}</span>`;
+      `<span class="leg-pct" style="color:${pctColor}">${pctStr}</span>`;
     legend.style.display = 'flex';
 
     // シグナルポイント表示（全日付）
