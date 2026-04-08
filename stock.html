@@ -761,6 +761,20 @@
     overflow: hidden;
   }
 
+  #subValueLabel {
+    position: absolute;
+    bottom: 22px;
+    left: 8px;
+    z-index: 21;
+    font-size: 11px;
+    color: #e6edf3;
+    background: rgba(13,17,23,0.75);
+    padding: 1px 6px;
+    border-radius: 3px;
+    pointer-events: none;
+    display: none;
+  }
+
   #subChartToggle {
     position: absolute;
     bottom: 6px;
@@ -1142,6 +1156,7 @@
     <div id="chartContainer">
       <div id="candleLegend"></div>
       <div id="signalLegend"></div>
+      <div id="subValueLabel"></div>
       <div id="subChartToggle">
         <button class="sub-chart-btn active" data-sub="volume">出来高</button>
         <button class="sub-chart-btn" data-sub="macd">MACD</button>
@@ -1583,11 +1598,43 @@ function setupCandleLegend() {
   if (!chart) return;
   const legend = document.getElementById('candleLegend');
   const sigLegend = document.getElementById('signalLegend');
+  const subLabel = document.getElementById('subValueLabel');
   chart.subscribeCrosshairMove(param => {
     if (!param.time || !param.seriesData) {
       legend.style.display = 'none';
       sigLegend.style.display = 'none';
+      if (subLabel) subLabel.style.display = 'none';
       return;
+    }
+
+    // サブチャート値表示
+    if (subLabel) {
+      let subText = '';
+      if (currentSubChart === 'volume' && volumeSeries) {
+        const v = param.seriesData.get(volumeSeries);
+        if (v != null) {
+          const val = v.value != null ? v.value : v;
+          subText = '出来高: ' + Number(val).toLocaleString('ja-JP');
+        }
+      } else if (currentSubChart === 'macd' && subSeries.length >= 3) {
+        const macdVal = param.seriesData.get(subSeries[1]);
+        const sigVal  = param.seriesData.get(subSeries[2]);
+        const histVal = param.seriesData.get(subSeries[0]);
+        const fmt2 = v => (v >= 0 ? '+' : '') + v.toFixed(2);
+        if (macdVal != null && sigVal != null) {
+          subText = `MACD: ${fmt2(macdVal.value)}  Sig: ${fmt2(sigVal.value)}` +
+            (histVal != null ? `  Hist: ${fmt2(histVal.value)}` : '');
+        }
+      } else if (currentSubChart === 'hv' && subSeries.length >= 1) {
+        const hv = param.seriesData.get(subSeries[0]);
+        if (hv != null) subText = 'HV: ' + hv.value.toFixed(1) + '%';
+      }
+      if (subText) {
+        subLabel.textContent = subText;
+        subLabel.style.display = 'block';
+      } else {
+        subLabel.style.display = 'none';
+      }
     }
     const d = param.seriesData.get(candleSeries);
     if (!d) { legend.style.display = 'none'; sigLegend.style.display = 'none'; return; }
