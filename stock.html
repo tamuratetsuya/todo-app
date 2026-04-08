@@ -1423,7 +1423,7 @@ function initChart() {
     leftPriceScale: {
       visible: true,
       borderColor: '#30363d',
-      scaleMargins: { top: 0.95, bottom: 0 },
+      scaleMargins: { top: 0.85, bottom: 0 },
     },
     rightPriceScale: {
       borderColor: '#30363d',
@@ -1451,7 +1451,7 @@ function initChart() {
   });
 
   chart.priceScale('left').applyOptions({
-    scaleMargins: { top: 0.95, bottom: 0 },
+    scaleMargins: { top: 0.85, bottom: 0 },
   });
 
   const ro = new ResizeObserver(() => {
@@ -1535,7 +1535,7 @@ function applySubChart(type, candleData) {
   if (type === 'volume') {
     // 出来高は volumeSeries で常時管理 → 表示/非表示で対応
     if (volumeSeries) volumeSeries.applyOptions({ visible: true });
-    chart.priceScale('left').applyOptions({ visible: true, scaleMargins: { top: 0.95, bottom: 0 } });
+    chart.priceScale('left').applyOptions({ visible: true, scaleMargins: { top: 0.82, bottom: 0 } });
   } else {
     // 出来高を隠す
     if (volumeSeries) volumeSeries.applyOptions({ visible: false });
@@ -1568,7 +1568,7 @@ function applySubChart(type, candleData) {
       sigS.setData(times.map((t, i) => signalLine[i] !== null ? { time: t, value: signalLine[i] } : null).filter(Boolean));
       subSeries.push(sigS);
 
-      chart.priceScale('left').applyOptions({ visible: true, scaleMargins: { top: 0.95, bottom: 0 } });
+      chart.priceScale('left').applyOptions({ visible: true, scaleMargins: { top: 0.82, bottom: 0 } });
 
     } else if (type === 'hv') {
       const hv = calcHV(closes);
@@ -1580,7 +1580,7 @@ function applySubChart(type, candleData) {
       hvS.setData(times.map((t, i) => hv[i] !== null ? { time: t, value: hv[i] } : null).filter(Boolean));
       subSeries.push(hvS);
 
-      chart.priceScale('left').applyOptions({ visible: true, scaleMargins: { top: 0.95, bottom: 0 } });
+      chart.priceScale('left').applyOptions({ visible: true, scaleMargins: { top: 0.82, bottom: 0 } });
     }
   }
 }
