@@ -457,9 +457,10 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
         if len(candles) < 30:
             return []
 
-        closes = [c['close'] for c in candles]
-        highs  = [c.get('high', c['close']) for c in candles]
-        lows   = [c.get('low',  c['close']) for c in candles]
+        closes  = [c['close'] for c in candles]
+        highs   = [c.get('high', c['close']) for c in candles]
+        lows    = [c.get('low',  c['close']) for c in candles]
+        volumes = [c.get('volume', 0) or 0 for c in candles]
 
         def get_date(c):
             t = c['time']
@@ -664,6 +665,12 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 buy_tags.append("支持反転")
             if ik == "上抜け":
                 buy_tags.append("IK↑")
+            # 出来高を伴う急騰（前日比+2%以上 かつ 出来高が直近5日平均の1.5倍以上）
+            if i >= 5 and closes[i-1] > 0:
+                chg = (closes[i] - closes[i-1]) / closes[i-1]
+                vol_avg5 = sum(volumes[i-5:i]) / 5
+                if chg >= 0.02 and vol_avg5 > 0 and volumes[i] >= vol_avg5 * 1.5:
+                    buy_tags.append("急騰")
             # MACDの上昇交差
             if i >= 1:
                 mc, ms = _macd(i)
@@ -696,6 +703,12 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     add_sell("支持下抜け")
             if vix is not None and vix >= 20:
                 add_sell("VIX高")
+            # 出来高を伴う急落（前日比-2%以下 かつ 出来高が直近5日平均の1.5倍以上）
+            if i >= 5 and closes[i-1] > 0:
+                chg = (closes[i] - closes[i-1]) / closes[i-1]
+                vol_avg5 = sum(volumes[i-5:i]) / 5
+                if chg <= -0.02 and vol_avg5 > 0 and volumes[i] >= vol_avg5 * 1.5:
+                    add_sell("急落")
             # MACDの下降交差
             if i >= 1:
                 mc, ms = _macd(i)
