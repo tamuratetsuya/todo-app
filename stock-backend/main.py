@@ -665,12 +665,52 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             return kumo_top, kumo_bot
 
         def stop_loss(i, price):
+            """支持線・MA・BB下限・一目各線のうち価格直下で最も近い値を損切りラインとする"""
+            candidates = []
+
+            # 移動平均線 (5, 25, 75)
+            for n in [5, 25, 75]:
+                ma = _ma(i, n)
+                if ma is not None and ma < price:
+                    candidates.append(ma)
+
+            # BBバンド下限（実価格）
+            if i >= 19:
+                c20 = closes[i-19:i+1]
+                mean = sum(c20) / 20
+                std = (sum((x - mean)**2 for x in c20) / 20) ** 0.5
+                bb_lower = mean - 2 * std
+                if bb_lower < price:
+                    candidates.append(bb_lower)
+
+            # 一目均衡表: 転換線・基準線
+            def _tk(j):
+                if j < 8: return None
+                return (max(highs[j-8:j+1]) + min(lows[j-8:j+1])) / 2
+            def _kj(j):
+                if j < 25: return None
+                return (max(highs[j-25:j+1]) + min(lows[j-25:j+1])) / 2
+            tenkan = _tk(i)
+            kijun = _kj(i)
+            for v in [tenkan, kijun]:
+                if v is not None and v < price:
+                    candidates.append(v)
+
+            # 雲（上限・下限）
+            kumo_top, kumo_bot = _kumo(i)
+            for v in [kumo_top, kumo_bot]:
+                if v is not None and v < price:
+                    candidates.append(v)
+
+            if candidates:
+                sl = max(candidates)        # 価格直下で最も近い値
+                sl = max(sl, price * 0.85)  # 最大15%下まで
+                return round(sl, 1)
+
+            # フォールバック: 直近20本の安値-2%
             start = max(0, i - 19)
             recent_low = min(lows[start:i+1])
-            sl = round(recent_low * 0.98, 1)
-            sl = max(sl, round(price * 0.85, 1))  # 最大15%下までに制限
-            # 5%上限を撤廃 → 直近安値ベースで銘柄固有の損切りを算出
-            return sl
+            return round(max(recent_low * 0.98, price * 0.85), 1)
 
         # 最低スコア閾値: 3pt以上で買いシグナル表示
         BUY_THRESHOLD = 3
