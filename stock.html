@@ -1271,15 +1271,26 @@
 const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:8020' : '/api/stock';
 
 // ===== FAVORITES =====
-let favorites = JSON.parse(localStorage.getItem('stockFavorites') || '[]');
+let favorites = [];
 function isFavorite(code) { return favorites.includes(code); }
-function toggleFavorite(code) {
+async function loadFavorites() {
+  try {
+    const res = await fetch(`${API}/favorites`);
+    if (res.ok) {
+      const prev = JSON.stringify(favorites);
+      favorites = await res.json();
+      if (JSON.stringify(favorites) !== prev) renderPnl();
+    }
+  } catch(e) {}
+}
+async function toggleFavorite(code) {
   if (isFavorite(code)) {
     favorites = favorites.filter(c => c !== code);
+    fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method:'DELETE'}).catch(()=>{});
   } else {
-    favorites.push(code);
+    favorites.unshift(code);
+    fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method:'POST'}).catch(()=>{});
   }
-  localStorage.setItem('stockFavorites', JSON.stringify(favorites));
   renderPnl();
 }
 
@@ -2311,9 +2322,16 @@ function renderPnl() {
   totalPnlEl.textContent = fmtPnl(totalPnl);
   totalPnlEl.className = 'total-pnl ' + (totalPnl >= 0 ? 'green' : 'red');
 
+  // ウォッチリスト銘柄（トレード履歴なし）を追加
+  const watchRows = watchStocks
+    .filter(w => !codes.includes(w.code))
+    .map(w => ({ code: w.code, name: w.name }));
+
   // お気に入りを先頭に
-  rows.sort((a, b) => (isFavorite(b.code) ? 1 : 0) - (isFavorite(a.code) ? 1 : 0));
-  holdingRows.sort((a, b) => (isFavorite(b.code) ? 1 : 0) - (isFavorite(a.code) ? 1 : 0));
+  const favSort = (a, b) => (isFavorite(b.code) ? 1 : 0) - (isFavorite(a.code) ? 1 : 0);
+  rows.sort(favSort);
+  holdingRows.sort(favSort);
+  watchRows.sort(favSort);
 
   pnlBody.innerHTML = '';
   const table = document.createElement('table');
@@ -2360,6 +2378,14 @@ function renderPnl() {
     const td = document.createElement('td');
     td.className = 'td-pnl';
     td.style.cssText = 'color:var(--text2);font-size:11px;';
+    addRow(code, name, td, false);
+  }
+
+  for (const { code, name } of watchRows) {
+    const td = document.createElement('td');
+    td.className = 'td-pnl';
+    td.style.cssText = 'color:var(--text2);font-size:11px;';
+    td.textContent = 'ウォッチ';
     addRow(code, name, td, false);
   }
 
@@ -3958,6 +3984,19 @@ function markdownToHtml(text) {
     if (!trades[w.code]) trades[w.code] = [];
     if (!stockNames[w.code]) stockNames[w.code] = w.name;
   }
+
+  // お気に入りをDBから取得（localStorageのデータがあれば移行）
+  try {
+    const lsFavs = JSON.parse(localStorage.getItem('stockFavorites') || '[]');
+    if (lsFavs.length) {
+      // localStorageのデータをDBへ移行
+      for (const sym of lsFavs) {
+        fetch(`${API}/favorites/${encodeURIComponent(sym)}`, {method:'POST'}).catch(()=>{});
+      }
+      localStorage.removeItem('stockFavorites');
+    }
+    await loadFavorites();
+  } catch(e) {}
 
   try {
     const saved = await apiGetTrades();

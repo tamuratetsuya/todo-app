@@ -137,6 +137,14 @@ def init_db():
                 UNIQUE KEY uq_hld (symbol)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS favorites (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_fav (symbol)
+            )
+        """)
     conn.commit()
     conn.close()
 
@@ -144,6 +152,41 @@ def init_db():
 @app.on_event("startup")
 def startup():
     init_db()
+
+
+# ===== FAVORITES =====
+
+@app.get("/favorites")
+def get_favorites():
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT symbol FROM favorites ORDER BY created_at DESC")
+            return [r["symbol"] for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+@app.post("/favorites/{symbol}")
+def add_favorite(symbol: str):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("INSERT IGNORE INTO favorites (symbol) VALUES (%s)", (symbol,))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+@app.delete("/favorites/{symbol}")
+def remove_favorite(symbol: str):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM favorites WHERE symbol=%s", (symbol,))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
 
 
 # ===== TRADES =====
