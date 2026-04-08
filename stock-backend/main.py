@@ -712,7 +712,7 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if i >= 5 and closes[i-1] > 0:
                 chg = (closes[i] - closes[i-1]) / closes[i-1]
                 vol_avg5 = sum(volumes[i-5:i]) / 5
-                if chg >= 0.04:
+                if chg >= 0.02:
                     buy_tags.append("急騰")
             # MACDの上昇交差
             if i >= 1:
@@ -750,7 +750,7 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if i >= 5 and closes[i-1] > 0:
                 chg = (closes[i] - closes[i-1]) / closes[i-1]
                 vol_avg5 = sum(volumes[i-5:i]) / 5
-                if chg <= -0.04:
+                if chg <= -0.02:
                     add_sell("急落")
             # MACDの下降交差
             if i >= 1:
