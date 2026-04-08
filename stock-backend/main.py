@@ -589,21 +589,30 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if not lagging_price: return False
             return tc > kc and closes[i] > kumo_top and closes[i] > lagging_price
 
-        def _trendline_near(i, window=20, thresh=0.02):
-            """直近安値のトレンドライン近傍（価格がトレンドライン±thresh%以内）"""
-            if i < window: return False
+        def _trendline_val(i, window=20):
+            """直近安値の線形回帰トレンドライン値を返す（現在位置）"""
+            if i < window: return None
             lw = lows[i-window:i]
-            # 単純線形回帰でトレンドライン
             n = len(lw)
             xs = list(range(n))
             mx = sum(xs) / n
             my = sum(lw) / n
             denom = sum((x - mx)**2 for x in xs)
-            if denom == 0: return False
+            if denom == 0: return None
             slope = sum((xs[j] - mx) * (lw[j] - my) for j in range(n)) / denom
             intercept = my - slope * mx
-            tl_val = slope * n + intercept  # 現在位置のトレンドライン値
+            return slope * n + intercept
+
+        def _trendline_near(i, window=20, thresh=0.02):
+            """直近安値のトレンドライン近傍（価格がトレンドライン±thresh%以内）"""
+            tl_val = _trendline_val(i, window)
+            if tl_val is None: return False
             return abs(closes[i] - tl_val) / tl_val <= thresh
+
+        def _support_val(i, window=20):
+            """直近window本の安値（支持線の価格）を返す"""
+            if i < window + 1: return None
+            return min(lows[i-window:i])
 
         def _resistance_break(i, window=20):
             """直近window本の高値を上抜け"""
@@ -701,6 +710,16 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             for v in [kumo_top, kumo_bot]:
                 if v is not None and v < price:
                     candidates.append(v)
+
+            # トレンドライン
+            tl = _trendline_val(i)
+            if tl is not None and tl < price:
+                candidates.append(tl)
+
+            # 支持線（直近20本安値）
+            sup = _support_val(i)
+            if sup is not None and sup < price:
+                candidates.append(sup)
 
             if candidates:
                 sl = max(candidates)        # 価格直下で最も近い値
