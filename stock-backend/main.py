@@ -668,8 +668,8 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             start = max(0, i - 19)
             recent_low = min(lows[start:i+1])
             sl = round(recent_low * 0.98, 1)
-            sl = max(sl, round(price * 0.85, 1))
-            sl = min(sl, round(price * 0.95, 1))
+            sl = max(sl, round(price * 0.85, 1))  # 最大15%下までに制限
+            # 5%上限を撤廃 → 直近安値ベースで銘柄固有の損切りを算出
             return sl
 
         # 最低スコア閾値: 3pt以上で買いシグナル表示
@@ -786,12 +786,14 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 buy_reset = True
             if buy_pt >= BUY_THRESHOLD and buy_reset:
                 score_str = f"[+{buy_pt}pt]"
+                sl = stop_loss(i, price)
                 signals.append({
-                    "time":      date_key,
-                    "side":      "buy",
-                    "price":     round(price, 1),
-                    "reason":    score_str + "・".join(buy_tags),
-                    "stop_loss": stop_loss(i, price),
+                    "time":         date_key,
+                    "side":         "buy",
+                    "price":        round(price, 1),
+                    "reason":       score_str + "・".join(buy_tags),
+                    "stop_loss":    sl,
+                    "stop_loss_pct": round((price - sl) / price * 100, 1) if sl and price > 0 else None,
                 })
                 buy_reset = False
 
@@ -872,13 +874,13 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
 
                     if len(drawdown_pcts) >= 2:
                         avg_pct = sum(drawdown_pcts) / len(drawdown_pcts)
-                        # 5%〜20%の範囲にクリップ
-                        avg_pct = max(0.05, min(0.20, avg_pct))
+                        # 2%〜20%の範囲にクリップ（銘柄固有の値を反映するため下限を下げる）
+                        avg_pct = max(0.02, min(0.20, avg_pct))
                         # 全買いシグナルの損切りをこの%で再計算
                         for sig in signals:
                             if sig['side'] == 'buy':
                                 sig['stop_loss'] = round(sig['price'] * (1 - avg_pct), 1)
-                                sig['stop_loss_pct'] = round(avg_pct * 100, 1)
+                                sig['stop_loss_pct'] = round((sig['price'] - sig['stop_loss']) / sig['price'] * 100, 1)
         except Exception:
             pass
 
