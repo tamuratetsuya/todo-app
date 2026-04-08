@@ -1775,9 +1775,17 @@ function applyIndicators() {
     const { supports, resistances } = calcSupportResistance(candleData);
     const firstTime = candleData[0].time;
     const lastTime  = candleData[candleData.length - 1].time;
+    const currentPrice = candleData[candleData.length - 1].close;
+
+    // 現在値に最も近い支持線・抵抗線を特定
+    const nearestSupport    = supports.length    ? supports.reduce((a, b) => Math.abs(b - currentPrice) < Math.abs(a - currentPrice) ? b : a)    : null;
+    const nearestResistance = resistances.length ? resistances.reduce((a, b) => Math.abs(b - currentPrice) < Math.abs(a - currentPrice) ? b : a) : null;
+
     for (const level of supports) {
+      const isNearest = level === nearestSupport;
       const s = chart.addLineSeries({
-        color: 'rgba(63,185,80,0.7)', lineWidth: 1,
+        color: isNearest ? 'rgba(63,185,80,1.0)' : 'rgba(63,185,80,0.7)',
+        lineWidth: isNearest ? 3 : 1,
         lineStyle: LightweightCharts.LineStyle.Dashed,
         priceLineVisible: false, lastValueVisible: false,
       });
@@ -1785,8 +1793,10 @@ function applyIndicators() {
       indicatorSeries.push({ series: s, label: `支持線 ¥${Number(level).toLocaleString()}` });
     }
     for (const level of resistances) {
+      const isNearest = level === nearestResistance;
       const s = chart.addLineSeries({
-        color: 'rgba(248,81,73,0.7)', lineWidth: 1,
+        color: isNearest ? 'rgba(248,81,73,1.0)' : 'rgba(248,81,73,0.7)',
+        lineWidth: isNearest ? 3 : 1,
         lineStyle: LightweightCharts.LineStyle.Dashed,
         priceLineVisible: false, lastValueVisible: false,
       });
