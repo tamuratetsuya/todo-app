@@ -810,6 +810,78 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 sell_reset = False
                 buy_reset = True  # 売りシグナル後は買いシグナルを許可
 
+        # ========== 最適損切り% 後処理 ==========
+        # 過去3ヶ月の買いシグナルについて、利益最大化時の最大ドローダウン%を計算し
+        # その平均%を損切りラインに使用する
+        try:
+            from datetime import datetime, timedelta
+
+            # 時刻→インデックスのマップ
+            time_to_idx = {}
+            for ci, c in enumerate(candles):
+                time_to_idx[get_date(c)] = ci
+
+            sell_list = sorted(
+                [s for s in signals if s['side'] == 'sell'],
+                key=lambda x: x['time']
+            )
+            buy_list = [s for s in signals if s['side'] == 'buy']
+
+            # 全買いシグナルの最大ドローダウン%を計算
+            def calc_drawdown_pct(sig):
+                idx = time_to_idx.get(sig['time'])
+                if idx is None:
+                    return None
+                buy_price = sig['price']
+                if buy_price <= 0:
+                    return None
+                # 次の売りシグナルを探す
+                next_sell = next((s for s in sell_list if s['time'] > sig['time']), None)
+                if next_sell:
+                    end_idx = time_to_idx.get(next_sell['time'], idx + 90)
+                else:
+                    end_idx = min(idx + 90, len(closes) - 1)
+                window = closes[idx:end_idx + 1]
+                if len(window) < 2:
+                    return None
+                # ピーク（最大値）の位置を特定
+                peak_rel = max(range(len(window)), key=lambda x: window[x])
+                # ピークまでの最小値（最大ドローダウン）
+                pre_peak = window[:peak_rel + 1]
+                min_price = min(pre_peak)
+                pct = (buy_price - min_price) / buy_price
+                return max(0.0, pct)
+
+            # 最新の日付から3ヶ月前を基準に過去シグナルを絞り込む
+            if candles:
+                latest_date_str = get_date(candles[-1])
+                try:
+                    latest_dt = datetime.strptime(latest_date_str, '%Y-%m-%d')
+                except Exception:
+                    latest_dt = None
+
+                if latest_dt:
+                    cutoff_str = (latest_dt - timedelta(days=90)).strftime('%Y-%m-%d')
+                    recent_buys = [s for s in buy_list if s['time'] >= cutoff_str]
+
+                    drawdown_pcts = []
+                    for sig in recent_buys:
+                        pct = calc_drawdown_pct(sig)
+                        if pct is not None:
+                            drawdown_pcts.append(pct)
+
+                    if len(drawdown_pcts) >= 2:
+                        avg_pct = sum(drawdown_pcts) / len(drawdown_pcts)
+                        # 5%〜20%の範囲にクリップ
+                        avg_pct = max(0.05, min(0.20, avg_pct))
+                        # 全買いシグナルの損切りをこの%で再計算
+                        for sig in signals:
+                            if sig['side'] == 'buy':
+                                sig['stop_loss'] = round(sig['price'] * (1 - avg_pct), 1)
+                                sig['stop_loss_pct'] = round(avg_pct * 100, 1)
+        except Exception:
+            pass
+
         return {"signals": signals, "scores": scores}
     except Exception:
         return {"signals": [], "scores": {}}

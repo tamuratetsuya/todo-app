@@ -3188,7 +3188,7 @@ function setupSignalTooltip() {
     }
     const label = nearest.side === 'buy' ? '▲ 買いシグナル' : '▼ 売りシグナル';
     const slText = (nearest.side === 'buy' && nearest.stop_loss)
-      ? `\n損切り: ¥${Number(nearest.stop_loss).toLocaleString()}` : '';
+      ? `\n損切り: ¥${Number(nearest.stop_loss).toLocaleString()}${nearest.stop_loss_pct ? ` (${nearest.stop_loss_pct}%下)` : ''}` : '';
     signalTooltip.textContent = label + '\n' + (nearest.reason || '') + slText;
     signalTooltip.className   = nearest.side === 'buy' ? '' : 'sell';
     const rect = chartContainer.getBoundingClientRect();
@@ -3921,7 +3921,7 @@ async function runAnalysis() {
     pendingAnalysisSymbol = analysisSymbol;
     pendingAnalysisInterval = analysisInterval;
     pendingSignals        = (data.signals || []).map(s => ({
-      time: s.time, side: s.side, price: s.price || 0, reason: s.reason || '', stop_loss: s.stop_loss || null,
+      time: s.time, side: s.side, price: s.price || 0, reason: s.reason || '', stop_loss: s.stop_loss || null, stop_loss_pct: s.stop_loss_pct || null,
     }));
 
     const saveBtn = document.getElementById('saveAnalysisBtn');
@@ -3954,7 +3954,7 @@ async function runAnalysis() {
           t = findNearestCandleTime(s.time);
         }
         return t !== null && t !== undefined
-          ? { time: t, side: s.side, price: s.price || 0, reason: s.reason || '', stop_loss: s.stop_loss || null }
+          ? { time: t, side: s.side, price: s.price || 0, reason: s.reason || '', stop_loss: s.stop_loss || null, stop_loss_pct: s.stop_loss_pct || null }
           : null;
       }).filter(Boolean));
       showSignals = true;
