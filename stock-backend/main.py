@@ -708,12 +708,14 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 buy_tags.append("支持反転")
             if ik == "上抜け":
                 buy_tags.append("IK↑")
-            # 出来高を伴う急騰（前日比+4%以上 かつ 出来高が直近5日平均の1.5倍以上）
-            if i >= 5 and closes[i-1] > 0:
+            # 急騰: 前日比+2%以上で1pt、+4%以上で2pt
+            if i >= 1 and closes[i-1] > 0:
                 chg = (closes[i] - closes[i-1]) / closes[i-1]
-                vol_avg5 = sum(volumes[i-5:i]) / 5
-                if chg >= 0.02:
-                    buy_tags.append("急騰")
+                if chg >= 0.04:
+                    buy_tags.append("急騰+4%")
+                    buy_tags.append("急騰+4%_2pt")  # 2pt分
+                elif chg >= 0.02:
+                    buy_tags.append("急騰+2%")
             # MACDの上昇交差
             if i >= 1:
                 mc, ms = _macd(i)
@@ -746,12 +748,14 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     add_sell("支持下抜け")
             if vix is not None and vix >= 20:
                 add_sell("VIX高")
-            # 出来高を伴う急落（前日比-4%以下 かつ 出来高が直近5日平均の1.5倍以上）
-            if i >= 5 and closes[i-1] > 0:
+            # 急落: 前日比-2%以下で1pt、-4%以下で2pt
+            if i >= 1 and closes[i-1] > 0:
                 chg = (closes[i] - closes[i-1]) / closes[i-1]
-                vol_avg5 = sum(volumes[i-5:i]) / 5
-                if chg <= -0.02:
-                    add_sell("急落")
+                if chg <= -0.04:
+                    add_sell("急落-4%")
+                    add_sell("急落-4%_2pt")  # 2pt分
+                elif chg <= -0.02:
+                    add_sell("急落-2%")
             # MACDの下降交差
             if i >= 1:
                 mc, ms = _macd(i)
