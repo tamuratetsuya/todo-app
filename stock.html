@@ -4080,7 +4080,10 @@ function renderFinancials(d) {
   const metricLabels = {revenue:'売上高', op_inc:'営業利益', net_inc:'純利益', ordinary_inc:'経常利益'};
 
   const html = `<div style="padding:14px 16px 20px;font-size:12px;color:var(--text);">
-    <div style="font-size:15px;font-weight:700;margin-bottom:4px;">${stockName}の決算情報</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <div style="font-size:15px;font-weight:700;">${stockName}の決算情報</div>
+      <a href="https://minkabu.jp/stock/${currentSymbol}/settlement" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;">みんかぶで見る →</a>
+    </div>
     <div style="border-top:1px solid var(--border);margin:8px 0 10px;"></div>
     <div style="font-size:13px;font-weight:600;margin-bottom:8px;">四半期ごとの業績推移と今期見通し</div>
     ${legend}
