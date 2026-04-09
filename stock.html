@@ -3389,12 +3389,14 @@ function setupSimulationClick() {
 function enterSimulation(idx) {
   simCutoffIdx = idx;
   const logicalRange = chart.timeScale().getVisibleLogicalRange();
+  const priceRange = candleSeries.priceScale().getVisiblePriceRange();
   const sliced = candleData.slice(0, idx + 1);
   candleSeries.setData(sliced);
   applyIndicatorsForData(sliced);
   applySubChart(currentSubChart, sliced);
   applySignalMarkersForTime(candleData[idx].time);
   if (logicalRange) chart.timeScale().setVisibleLogicalRange(logicalRange);
+  if (priceRange) candleSeries.priceScale().applyOptions({ autoScale: false, ...priceRange });
   const banner = document.getElementById('simBanner');
   document.getElementById('simBannerText').textContent =
     `シミュレーション中: ${candleData[idx].time} まで表示`;
@@ -3404,12 +3406,14 @@ function enterSimulation(idx) {
 function exitSimulation() {
   if (simCutoffIdx === null) return;
   const logicalRange = chart.timeScale().getVisibleLogicalRange();
+  const priceRange = candleSeries.priceScale().getVisiblePriceRange();
   simCutoffIdx = null;
   candleSeries.setData(candleData);
   applyIndicators();
   applySubChart(currentSubChart, candleData);
   applySignalMarkers();
   if (logicalRange) chart.timeScale().setVisibleLogicalRange(logicalRange);
+  if (priceRange) candleSeries.priceScale().applyOptions({ autoScale: false, ...priceRange });
   document.getElementById('simBanner').style.display = 'none';
 }
 
