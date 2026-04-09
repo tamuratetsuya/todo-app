@@ -3389,8 +3389,6 @@ function setupSimulationClick() {
 function enterSimulation(idx) {
   simCutoffIdx = idx;
   const logicalRange = chart.timeScale().getVisibleLogicalRange();
-  // setData前にautoScaleを無効化して縦軸を固定
-  candleSeries.priceScale().applyOptions({ autoScale: false });
   const sliced = candleData.slice(0, idx + 1);
   candleSeries.setData(sliced);
   applyIndicatorsForData(sliced);
@@ -3406,16 +3404,12 @@ function enterSimulation(idx) {
 function exitSimulation() {
   if (simCutoffIdx === null) return;
   const logicalRange = chart.timeScale().getVisibleLogicalRange();
-  // setData前にautoScaleを無効化して縦軸を固定
-  candleSeries.priceScale().applyOptions({ autoScale: false });
   simCutoffIdx = null;
   candleSeries.setData(candleData);
   applyIndicators();
   applySubChart(currentSubChart, candleData);
   applySignalMarkers();
   if (logicalRange) chart.timeScale().setVisibleLogicalRange(logicalRange);
-  // 解除後はautoScaleを戻す
-  candleSeries.priceScale().applyOptions({ autoScale: true });
   document.getElementById('simBanner').style.display = 'none';
 }
 
