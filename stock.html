@@ -3952,10 +3952,13 @@ function renderFinancials(d) {
   const annual    = d.annual    || [];
   const quarterly = d.quarterly || [];
   const estimates = d.estimates || [];
-  const cur = d.currency || '';
-  const stockName = stockNames[currentSymbol] || currentSymbol || '';
+  const cur = d.currency || 'JPY';
+  const stockName = d.stock_name || stockNames[currentSymbol] || currentSymbol || '';
+  const fyYear  = d.fy_year  || null;
+  const fyMonth = d.fy_month || 3;
+  const fyLabels = d.fy_labels || [];
 
-  if (!annual.length && !quarterly.length) {
+  if (!quarterly.length && !annual.length) {
     body.innerHTML = '<div class="news-loading">財務データなし</div>';
     return;
   }
@@ -3980,79 +3983,61 @@ function renderFinancials(d) {
     return `<span style="color:${c};font-size:10px">${v>=0?'+':''}${v}%</span>`;
   }
 
-  // 年度末月を検出
-  let fyEndMonth = 3;
-  if (annual.length) {
-    const m = parseInt((annual[0].period || '').slice(5, 7));
-    if (m >= 1 && m <= 12) fyEndMonth = m;
-  }
-
-  // 四半期をFY・Q番号に分類（nullデータは除外）
-  function getFYAndQ(periodStr) {
-    const parts = periodStr.split('-');
-    const y = parseInt(parts[0]), m = parseInt(parts[1]);
-    const fyYear = m <= fyEndMonth ? y : y + 1;
-    const monthOffset = ((m - fyEndMonth - 1 + 12) % 12);
-    const qNum = Math.floor(monthOffset / 3) + 1;
-    return { fyYear, qNum };
-  }
-
-  const validQuarterly = quarterly.filter(q =>
-    q.revenue != null || q.op_inc != null || q.net_inc != null
-  );
-
-  const fyMap = {};
-  for (const q of validQuarterly) {
-    const { fyYear, qNum } = getFYAndQ(q.period);
-    if (!fyMap[fyYear]) fyMap[fyYear] = {};
-    fyMap[fyYear][`q${qNum}`] = q;
-  }
-  const fyYears = Object.keys(fyMap).map(Number).sort();
-  const recentFYs = fyYears.slice(-3);
+  // みんかぶデータ: quarterly は {period:"2024年1Q", revenue, op_inc, net_inc}
+  // fyLabels = ["2023","2024","2025"], Q_LABELS = ["1Q","2Q","3Q","通期"]
+  const Q_LABELS = ['1Q','2Q','3Q','通期'];
   const BAR_COLORS = ['#6e7681', '#8b949e', '#4f9cf9'];
   const FY_LABELS  = ['前々期実績', '前期実績', '当期実績'];
-  const Q_KEYS   = ['q1','q2','q3','q4'];
-  const Q_LABELS = ['1Q','2Q','3Q','通期'];
 
-  // グループ棒グラフSVG
+  // quarterly を fyLabel x qLabel の2Dマップに変換
+  const qMap = {}; // {"2024": {"1Q": row, ...}, ...}
+  for (const q of quarterly) {
+    const m = q.period.match(/^(\d{4})年(.+)$/);
+    if (!m) continue;
+    const [, fy, ql] = m;
+    if (!qMap[fy]) qMap[fy] = {};
+    qMap[fy][ql] = q;
+  }
+
+  // SVGグループ棒グラフ
   function buildGroupedChart(metricKey, large) {
     const W = large ? 460 : 220, H = large ? 160 : 100;
     const padL = large ? 56 : 44, padR = 8, padT = 12, padB = large ? 28 : 22;
     const innerW = W - padL - padR, innerH = H - padT - padB;
+    const nFY = fyLabels.length, nQ = 4;
 
     const allVals = [];
-    for (const fy of recentFYs)
-      for (const qk of Q_KEYS) { const v = fyMap[fy]?.[qk]?.[metricKey]; if (v != null) allVals.push(Math.abs(v)); }
-    if (!allVals.length) return '';
+    for (const fy of fyLabels)
+      for (const ql of Q_LABELS) { const v = qMap[fy]?.[ql]?.[metricKey]; if (v != null) allVals.push(Math.abs(v)); }
+    // 予測値も候補に
+    for (const e of estimates) { const v = e[metricKey]; if (v != null) allVals.push(Math.abs(v)); }
+    if (!allVals.length) return '<div style="color:var(--text2);font-size:11px;padding:8px 0">データなし</div>';
 
     const maxVal = Math.max(...allVals) * 1.15 || 1;
     const yUnit = maxVal >= 1e12 ? 1e12 : maxVal >= 1e10 ? 1e10 : maxVal >= 1e9 ? 1e9 : 1e8;
     const yLabel = yUnit >= 1e12 ? '兆' : yUnit >= 1e10 ? '1000億' : yUnit >= 1e9 ? '10億' : '億';
-    const ySteps = 3;
 
-    const groupW = innerW / 4;
-    const totalBarW = groupW * 0.72;
-    const barW = Math.max(4, totalBarW / recentFYs.length);
-    const barGap = recentFYs.length > 1 ? (totalBarW - barW * recentFYs.length) / (recentFYs.length - 1) : 0;
+    const groupW = innerW / nQ;
+    const totalBarW = groupW * 0.75;
+    const barW = Math.max(4, totalBarW / nFY);
+    const barGap = nFY > 1 ? (totalBarW - barW * nFY) / (nFY - 1) : 0;
     const groupPad = (groupW - totalBarW) / 2;
 
     let svg = `<svg width="${W}" height="${H}" style="overflow:visible;display:block">`;
-
     // グリッド・Y軸
-    for (let s = 0; s <= ySteps; s++) {
-      const val = maxVal * s / ySteps;
+    for (let s = 0; s <= 3; s++) {
+      const val = maxVal * s / 3;
       const y = padT + innerH - val / maxVal * innerH;
       svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#21262d" stroke-width="1"/>`;
       const lv = (val / yUnit).toFixed(val === 0 ? 0 : 1);
       svg += `<text x="${padL-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" fill="#8b949e" font-size="${large?9:8}">${lv}${yLabel}</text>`;
     }
-
     // バー
-    for (let qi = 0; qi < 4; qi++) {
-      const qk = Q_KEYS[qi];
+    for (let qi = 0; qi < nQ; qi++) {
+      const ql = Q_LABELS[qi];
       const groupX = padL + qi * groupW + groupPad;
-      for (let fi = 0; fi < recentFYs.length; fi++) {
-        const val = fyMap[recentFYs[fi]]?.[qk]?.[metricKey];
+      for (let fi = 0; fi < nFY; fi++) {
+        const val = qMap[fyLabels[fi]]?.[ql]?.[metricKey];
         if (val == null) continue;
         const bh = Math.max(2, Math.abs(val) / maxVal * innerH);
         const bx = groupX + fi * (barW + barGap);
@@ -4060,141 +4045,57 @@ function renderFinancials(d) {
         svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${BAR_COLORS[fi]}" rx="2"/>`;
       }
       const lx = padL + qi * groupW + groupW / 2;
-      svg += `<text x="${lx.toFixed(1)}" y="${(H-4).toFixed(1)}" text-anchor="middle" fill="#8b949e" font-size="${large?11:9}">${Q_LABELS[qi]}</text>`;
+      svg += `<text x="${lx.toFixed(1)}" y="${(H-4).toFixed(1)}" text-anchor="middle" fill="#8b949e" font-size="${large?11:9}">${ql}</text>`;
     }
-
-    // アナリスト予想（通期位置にオレンジ丸）
-    if (estimates.length) {
-      const estVal = estimates[0]?.[metricKey];
-      if (estVal != null) {
-        const cx = padL + 3 * groupW + groupW / 2;
-        const cy = padT + innerH - Math.abs(estVal) / maxVal * innerH;
-        svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="#f0883e"/>`;
+    // 予測マーカー（通期位置）
+    const estColors = {'最新会社予想':'#fff','当初会社予想':'#00defa','アナリスト予想':'#f0883e'};
+    for (const [label, color] of Object.entries(estColors)) {
+      const e = estimates.find(e => e.period === label);
+      if (!e) continue;
+      const val = e[metricKey];
+      if (val == null) continue;
+      const cx = padL + 3 * groupW + groupW / 2;
+      const cy = padT + innerH - Math.abs(val) / maxVal * innerH;
+      if (label === '最新会社予想') {
+        svg += `<rect x="${(cx-6).toFixed(1)}" y="${(cy-6).toFixed(1)}" width="12" height="12" fill="none" stroke="#aaa" stroke-dasharray="3,2" rx="1"/>`;
+      } else {
+        svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${color}"/>`;
       }
     }
-
     svg += '</svg>';
     return svg;
   }
 
-  // レジェンド
-  const legend = `<div style="display:flex;gap:14px;font-size:11px;color:var(--text2);margin-bottom:14px;flex-wrap:wrap;align-items:center;">
-    <span style="color:var(--text);font-size:11px;">会社予想：${recentFYs[recentFYs.length-1]}年${fyEndMonth}月期時点</span>
-    ${recentFYs.map((fy,i)=>`<span><span style="display:inline-block;width:12px;height:10px;background:${BAR_COLORS[i]};border-radius:2px;margin-right:4px;vertical-align:middle"></span>${FY_LABELS[i]}</span>`).join('')}
-    ${estimates.length?'<span><span style="display:inline-block;width:10px;height:10px;background:#f0883e;border-radius:50%;margin-right:4px;vertical-align:middle"></span>アナリスト予想</span>':''}
+  const hasEst = estimates.length > 0;
+  const legend = `<div style="display:flex;gap:10px;font-size:11px;color:var(--text2);margin-bottom:10px;flex-wrap:wrap;align-items:center;">
+    ${fyYear ? `<span style="color:var(--text2);font-size:10px;margin-right:4px;">会社予想：${fyYear}年${fyMonth}月期時点</span>` : ''}
+    ${fyLabels.map((fy,i)=>`<span><span style="display:inline-block;width:12px;height:10px;background:${BAR_COLORS[i]};border-radius:2px;margin-right:3px;vertical-align:middle"></span>${FY_LABELS[i]}</span>`).join('')}
+    ${hasEst ? `
+      <span><span style="display:inline-block;width:10px;height:10px;background:#00defa;border-radius:50%;margin-right:3px;vertical-align:middle"></span>当初会社予想</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border:2px dashed #aaa;border-radius:2px;margin-right:3px;vertical-align:middle"></span>最新会社予想</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#f0883e;border-radius:50%;margin-right:3px;vertical-align:middle"></span>アナリスト予想</span>
+    ` : ''}
   </div>`;
 
-  // 年次テーブル
-  function buildAnnualTable() {
-    const rows = [...annual].concat(
-      [...estimates].sort((a,b)=>a.period.localeCompare(b.period))
-    );
-    let t = `<table class="holders-table" style="margin-top:6px;font-size:11px;">
-      <thead><tr><th>期間</th><th>売上高</th><th>前年比</th><th>粗利益</th><th>営業利益</th><th>純利益</th><th>前年比</th></tr></thead><tbody>`;
-    for (const r of rows) {
-      const nc = (r.net_inc||0)<0?'color:#f85149':'';
-      const est = r.is_estimate?'opacity:0.7;font-style:italic':'';
-      const el  = r.is_estimate?'<span style="font-size:9px;color:#f0883e"> [予測]</span>':'';
-      t += `<tr style="${est}"><td>${r.period.slice(0,7)}${el}</td>
-        <td>${fmtV(r.revenue)}</td><td>${yoySpan(r.rev_yoy)}</td>
-        <td>${fmtV(r.gross)}</td><td>${fmtV(r.op_inc)}</td>
-        <td style="${nc}">${fmtV(r.net_inc)}</td><td>${yoySpan(r.net_yoy)}</td></tr>`;
-    }
-    t += '</tbody></table>';
-    return t;
-  }
-
-  const hasQuarterData = recentFYs.length > 0;
-
-  // 年次データを使ったシンプルな棒グラフ（四半期がない場合用）
-  function buildAnnualChart(metricKey, large) {
-    const rows = [...annual].sort((a,b) => a.period.localeCompare(b.period));
-    if (!rows.length) return '';
-    const W = large ? 460 : 220, H = large ? 160 : 100;
-    const padL = large ? 56 : 44, padR = 8, padT = 12, padB = large ? 28 : 22;
-    const innerW = W - padL - padR, innerH = H - padT - padB;
-    const allVals = rows.map(r => Math.abs(r[metricKey] || 0)).filter(v => v > 0);
-    if (!allVals.length) return '';
-    const maxVal = Math.max(...allVals) * 1.15;
-    const yUnit = maxVal >= 1e12 ? 1e12 : maxVal >= 1e10 ? 1e10 : maxVal >= 1e9 ? 1e9 : 1e8;
-    const yLabel = yUnit >= 1e12 ? '兆' : yUnit >= 1e10 ? '1000億' : yUnit >= 1e9 ? '10億' : '億';
-    const ySteps = 3;
-    const barW = Math.max(12, innerW / rows.length * 0.6);
-    const groupW = innerW / rows.length;
-    let svg = `<svg width="${W}" height="${H}" style="overflow:visible;display:block">`;
-    for (let s = 0; s <= ySteps; s++) {
-      const val = maxVal * s / ySteps;
-      const y = padT + innerH - val / maxVal * innerH;
-      svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#21262d" stroke-width="1"/>`;
-      const lv = (val / yUnit).toFixed(val === 0 ? 0 : 1);
-      svg += `<text x="${padL-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" fill="#8b949e" font-size="${large?9:8}">${lv}${yLabel}</text>`;
-    }
-    rows.forEach((r, i) => {
-      const val = r[metricKey];
-      if (val == null) return;
-      const bh = Math.max(2, Math.abs(val) / maxVal * innerH);
-      const bx = padL + i * groupW + (groupW - barW) / 2;
-      const by = padT + innerH - bh;
-      svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="#4f9cf9" rx="2"/>`;
-      const label = r.period.slice(0, 7);
-      svg += `<text x="${(bx+barW/2).toFixed(1)}" y="${(H-4).toFixed(1)}" text-anchor="middle" fill="#8b949e" font-size="${large?10:8}">${label}</text>`;
-    });
-    // アナリスト予想
-    const estRow = estimates.find(e => e.period === '0y' || e.period === '+1y');
-    if (estRow?.[metricKey] != null) {
-      const cx = padL + rows.length * groupW - groupW / 2;
-      const cy = padT + innerH - Math.abs(estRow[metricKey]) / maxVal * innerH;
-      if (cx < W) svg += `<circle cx="${cx.toFixed(1)}" cy="${Math.max(padT, cy).toFixed(1)}" r="5" fill="#f0883e"/>`;
-    }
-    svg += '</svg>';
-    return svg;
-  }
-
-  const annualLegend = `<div style="display:flex;gap:14px;font-size:11px;color:var(--text2);margin-bottom:14px;flex-wrap:wrap;align-items:center;">
-    <span><span style="display:inline-block;width:12px;height:10px;background:#4f9cf9;border-radius:2px;margin-right:4px;vertical-align:middle"></span>実績</span>
-    ${estimates.length?'<span><span style="display:inline-block;width:10px;height:10px;background:#f0883e;border-radius:50%;margin-right:4px;vertical-align:middle"></span>アナリスト予想</span>':''}
-  </div>`;
-
-  const metricLabels = {revenue:'売上高', op_inc:'営業利益', net_inc:'純利益'};
+  const metricLabels = {revenue:'売上高', op_inc:'営業利益', net_inc:'純利益', ordinary_inc:'経常利益'};
 
   const html = `<div style="padding:14px 16px 20px;font-size:12px;color:var(--text);">
     <div style="font-size:15px;font-weight:700;margin-bottom:4px;">${stockName}の決算情報</div>
-    <div style="border-top:1px solid var(--border);margin:8px 0 14px;"></div>
-    ${hasQuarterData ? `
-    <div style="font-size:13px;font-weight:600;margin-bottom:10px;">四半期ごとの業績推移と今期見通し</div>
+    <div style="border-top:1px solid var(--border);margin:8px 0 10px;"></div>
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px;">四半期ごとの業績推移と今期見通し</div>
     ${legend}
     <div style="margin-bottom:20px;">
-      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="color:var(--accent)">▶</span> 営業利益</div>
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="color:var(--accent)">▶</span> 営業利益</div>
       ${buildGroupedChart('op_inc', true)}
     </div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
       ${['revenue','op_inc','net_inc'].map(mk=>`
         <div style="flex:1;min-width:180px;">
-          <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="color:var(--accent)">▶</span> ${metricLabels[mk]}</div>
+          <div style="font-size:11px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="color:var(--accent)">▶</span> ${metricLabels[mk]}</div>
           ${buildGroupedChart(mk, false)}
         </div>`).join('')}
     </div>
-    <div style="font-size:10px;color:var(--text2);text-align:right;margin-bottom:12px;">※チャートは${recentFYs[recentFYs.length-1]}年${fyEndMonth}月期時点</div>
-    ` : `
-    <div style="font-size:13px;font-weight:600;margin-bottom:10px;">年次業績推移と今期見通し</div>
-    ${annualLegend}
-    <div style="margin-bottom:20px;">
-      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="color:var(--accent)">▶</span> 営業利益</div>
-      ${buildAnnualChart('op_inc', true)}
-    </div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
-      ${['revenue','op_inc','net_inc'].map(mk=>`
-        <div style="flex:1;min-width:180px;">
-          <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="color:var(--accent)">▶</span> ${metricLabels[mk]}</div>
-          ${buildAnnualChart(mk, false)}
-        </div>`).join('')}
-    </div>
-    `}
-    ${annual.length ? `
-    <div style="border-top:1px solid var(--border);padding-top:12px;">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">年次実績</div>
-      <div style="overflow-x:auto;">${buildAnnualTable()}</div>
-    </div>` : ''}
+    ${fyYear ? `<div style="font-size:10px;color:var(--text2);text-align:right;margin-bottom:8px;">※チャートは${fyYear}年${fyMonth}月期時点</div>` : ''}
   </div>`;
 
   body.innerHTML = html;

@@ -2072,51 +2072,7 @@ def get_holders(symbol: str = Query(...)):
 
 @app.get("/financials")
 def get_financials(symbol: str = Query(...)):
-    """年次・四半期財務データ（売上・利益・前年比・将来予測）"""
-    sym = f"{symbol}.T" if (symbol.isdigit() or (len(symbol) == 4 and symbol.isalnum())) else symbol
-
-    EXACT_KEYS = {
-        "revenue": ["Total Revenue", "Operating Revenue"],
-        "gross":   ["Gross Profit"],
-        "op_inc":  ["Operating Income", "Total Operating Income As Reported", "EBIT"],
-        "net_inc": ["Net Income", "Net Income Common Stockholders",
-                    "Net Income From Continuing Operation Net Minority Interest"],
-    }
-
-    def safe_exact(df, field, col):
-        for key in EXACT_KEYS[field]:
-            if key in df.index:
-                try:
-                    v = df.loc[key, col]
-                    if pd.notna(v): return float(v)
-                except Exception:
-                    pass
-        return None
-
-    def build_rows(df, max_cols):
-        cols = list(df.columns)[:max_cols]
-        rows = []
-        for i, col in enumerate(cols):
-            revenue = safe_exact(df, "revenue", col)
-            gross   = safe_exact(df, "gross",   col)
-            op_inc  = safe_exact(df, "op_inc",  col)
-            net_inc = safe_exact(df, "net_inc", col)
-            rev_yoy = net_yoy = None
-            if i + 1 < len(cols):
-                prev  = cols[i + 1]
-                rev_p = safe_exact(df, "revenue", prev)
-                net_p = safe_exact(df, "net_inc", prev)
-                if rev_p and rev_p != 0 and revenue is not None:
-                    rev_yoy = round((revenue - rev_p) / abs(rev_p) * 100, 1)
-                if net_p and net_p != 0 and net_inc is not None:
-                    net_yoy = round((net_inc - net_p) / abs(net_p) * 100, 1)
-            rows.append({
-                "period": str(col)[:10], "revenue": revenue, "gross": gross,
-                "op_inc": op_inc, "net_inc": net_inc,
-                "rev_yoy": rev_yoy, "net_yoy": net_yoy, "is_estimate": False,
-            })
-        return rows
-
+    """みんかぶから四半期・年次財務データを取得"""
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -2125,55 +2081,7 @@ def get_financials(symbol: str = Query(...)):
             if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 21600:
                 return json.loads(row["data"])
 
-        t = yf.Ticker(sym)
-        result = {"annual": [], "quarterly": [], "estimates": [], "currency": ""}
-        try:
-            result["currency"] = (t.info or {}).get("currency", "")
-        except Exception:
-            pass
-
-        try:
-            af = t.income_stmt
-            if af is None or af.empty: af = t.financials
-            if af is not None and not af.empty:
-                result["annual"] = build_rows(af, 5)
-        except Exception:
-            pass
-
-        try:
-            qf = t.quarterly_income_stmt
-            if qf is None or qf.empty: qf = t.quarterly_financials
-            if qf is not None and not qf.empty:
-                result["quarterly"] = build_rows(qf, 12)
-        except Exception:
-            pass
-
-        try:
-            re_df = t.revenue_estimate
-            ee_df = t.earnings_estimate
-            if re_df is not None and not re_df.empty:
-                for idx, erow in re_df.iterrows():
-                    rev_avg = None
-                    net_avg = None
-                    try:
-                        v = erow.get("avg") if hasattr(erow, "get") else erow.iloc[0]
-                        if pd.notna(v): rev_avg = float(v)
-                    except Exception:
-                        pass
-                    try:
-                        if ee_df is not None and not ee_df.empty and idx in ee_df.index:
-                            er = ee_df.loc[idx]
-                            v2 = er.get("avg") if hasattr(er, "get") else er.iloc[0]
-                            if pd.notna(v2): net_avg = float(v2)
-                    except Exception:
-                        pass
-                    result["estimates"].append({
-                        "period": str(idx), "revenue": rev_avg, "net_inc": net_avg,
-                        "gross": None, "op_inc": None, "rev_yoy": None, "net_yoy": None,
-                        "is_estimate": True,
-                    })
-        except Exception:
-            pass
+        result = _scrape_minkabu_financials(symbol)
 
         with conn.cursor() as cur:
             cur.execute(
@@ -2186,6 +2094,158 @@ def get_financials(symbol: str = Query(...)):
         raise HTTPException(500, str(e))
     finally:
         conn.close()
+
+
+def _scrape_minkabu_financials(symbol: str) -> dict:
+    """みんかぶ決算ページをスクレイピングして四半期・年次データを返す"""
+    url = f"https://minkabu.jp/stock/{symbol}/settlement"
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    resp = _requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    html = resp.text
+
+    # 銘柄名・通貨
+    title_m = _re.search(r'<title>([^(]+)\s*\(', html)
+    stock_name = title_m.group(1).strip() if title_m else ""
+    currency = "JPY"
+
+    # 「会社予想：XXXX年X月期時点」を抽出（当期=fy_year期）
+    fy_m = _re.search(r'会社予想：(\d{4})年(\d{1,2})月期時点', html)
+    fy_year   = int(fy_m.group(1)) if fy_m else None
+    fy_month  = int(fy_m.group(2)) if fy_m else 3
+
+    # chart-elements の JSON を全て抽出
+    ce_pattern = _re.compile(r':chart-elements="\{([^"]+)\}"')
+    raw_matches = ce_pattern.findall(html)
+
+    def parse_ce(raw: str) -> dict:
+        s = raw.replace("&quot;", '"')
+        try:
+            return json.loads("{" + s + "}")
+        except Exception:
+            return {}
+
+    parsed = [parse_ce(m) for m in raw_matches]
+
+    # 出現順: 経常利益(大), 売上高, 営業利益, 純利益
+    metric_order = ["ordinary_inc", "revenue", "op_inc", "net_inc"]
+    fy_keys = ["two_years", "a_year_ago", "current"]
+    key_map = {
+        "two_years":  "two_years_ago_results",
+        "a_year_ago": "a_year_ago_results",
+        "current":    "current_results",
+    }
+
+    def to_oku(v):
+        """百万円→円"""
+        if v is None: return None
+        return float(v) * 1_000_000
+
+    # FY年度ラベル: current=fy_year期, a_year_ago=fy_year-1期, two_years=fy_year-2期
+    if fy_year:
+        fy_label_map = {
+            "two_years":  str(fy_year - 2),
+            "a_year_ago": str(fy_year - 1),
+            "current":    str(fy_year),
+        }
+        fy_labels = [fy_label_map[k] for k in fy_keys]
+    else:
+        fy_label_map = {"two_years": "前々期", "a_year_ago": "前期", "current": "当期"}
+        fy_labels = ["前々期", "前期", "当期"]
+
+    q_labels = ["1Q", "2Q", "3Q", "通期"]
+
+    # chart-elementsから各指標データを取得
+    metric_data = {}  # metric -> {fy_key: [v0,v1,v2,v3]}
+    for mi, metric in enumerate(metric_order):
+        if mi >= len(parsed): break
+        ce = parsed[mi]
+        metric_data[metric] = {fk: ce.get(key_map[fk], [None]*4) for fk in fy_keys}
+        metric_data[metric]["latest_proj"]  = ce.get("latest_projections",  [None]*4)
+        metric_data[metric]["initial_proj"] = ce.get("initial_projections", [None]*4)
+        metric_data[metric]["analyst_proj"] = ce.get("analyst_projections", [None]*4)
+
+    # 四半期単期変換（累計→差分、通期はそのまま）
+    def cumul_to_single(arr):
+        if not arr or len(arr) < 4: return arr
+        res = [arr[0]]
+        for i in range(1, 3):
+            if arr[i] is not None and arr[i-1] is not None:
+                res.append(arr[i] - arr[i-1])
+            else:
+                res.append(arr[i])
+        res.append(arr[3])  # 通期はそのまま
+        return res
+
+    # quarterly リスト生成
+    quarterly = []
+    for fk in fy_keys:
+        fy_label = fy_label_map[fk]
+        for qi, ql in enumerate(q_labels):
+            row = {"period": f"{fy_label}年{ql}", "is_estimate": False}
+            has_data = False
+            for metric in ["revenue", "op_inc", "net_inc", "ordinary_inc"]:
+                arr = metric_data.get(metric, {}).get(fk, [None]*4)
+                singles = cumul_to_single(arr)
+                v = singles[qi] if qi < len(singles) else None
+                row[metric] = to_oku(v)
+                if row[metric] is not None: has_data = True
+            if has_data:
+                quarterly.append(row)
+
+    # 予測（通期のみ）
+    estimates = []
+    for proj_key, label in [("latest_proj","最新会社予想"),("initial_proj","当初会社予想"),("analyst_proj","アナリスト予想")]:
+        row = {"period": label, "is_estimate": True}
+        has_data = False
+        for metric in ["revenue", "op_inc", "net_inc", "ordinary_inc"]:
+            arr = metric_data.get(metric, {}).get(proj_key, [None]*4)
+            v = arr[3] if len(arr) > 3 else None
+            row[metric] = to_oku(v)
+            if row[metric] is not None: has_data = True
+        if has_data:
+            estimates.append(row)
+
+    # 年次テーブルデータをスクレイピング
+    annual = _scrape_minkabu_annual(html)
+
+    return {
+        "stock_name": stock_name,
+        "currency": currency,
+        "fy_year": fy_year,
+        "fy_month": fy_month,
+        "fy_labels": fy_labels,
+        "quarterly": quarterly,
+        "estimates": estimates,
+        "annual": annual,
+    }
+
+
+def _scrape_minkabu_annual(html: str) -> list:
+    """みんかぶ決算ページの年次テーブルを抽出"""
+    annual = []
+    try:
+        # 年次テーブルを探す（業績推移テーブル）
+        tbl_m = _re.search(r'(決算期.*?</table>)', html, _re.DOTALL)
+        if not tbl_m:
+            return annual
+        tbl = tbl_m.group(1)
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbl, _re.DOTALL)
+        headers = []
+        for row in rows:
+            cells = _re.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', row, _re.DOTALL)
+            cells = [_re.sub(r'<[^>]+>', '', c).strip() for c in cells]
+            if not headers:
+                headers = cells
+                continue
+            if len(cells) < 2: continue
+            row_dict = {}
+            for i, h in enumerate(headers):
+                row_dict[h] = cells[i] if i < len(cells) else ""
+            annual.append(row_dict)
+    except Exception:
+        pass
+    return annual
 
 
 @app.get("/candles")
