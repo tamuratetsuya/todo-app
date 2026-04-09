@@ -1420,6 +1420,19 @@ function setLoading(v) {
   loadingLabel.classList.toggle('visible', v);
 }
 
+// ===== DATE FORMATTER =====
+function jaDateTickFormatter(time, tickMarkType) {
+  const d = typeof time === 'number'
+    ? new Date(time * 1000)
+    : new Date(time + 'T00:00:00Z');
+  const m = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  const yr = d.getUTCFullYear();
+  if (tickMarkType === 0) return `${yr}年`;
+  if (tickMarkType === 1) return `${m}月`;
+  return `${m}月${day}日`;
+}
+
 // ===== CHART INIT =====
 function initChart() {
   if (chart) {
@@ -1452,18 +1465,7 @@ function initChart() {
       borderColor: '#30363d',
       timeVisible: currentInterval === '1h',
       secondsVisible: false,
-      tickMarkFormatter: (time, tickMarkType, locale) => {
-        const d = typeof time === 'number'
-          ? new Date(time * 1000)
-          : new Date(time + 'T00:00:00Z');
-        const m = d.getUTCMonth() + 1;
-        const day = d.getUTCDate();
-        const yr = d.getUTCFullYear();
-        // 年が変わる境目のみ年を表示
-        if (tickMarkType === 0) return `${yr}年`;
-        if (tickMarkType === 1) return `${m}月`;
-        return `${m}月${day}日`;
-      },
+      tickMarkFormatter: jaDateTickFormatter,
     },
   });
 
@@ -2355,6 +2357,7 @@ async function loadChart() {
       timeScale: {
         timeVisible: interval === '1h',
         secondsVisible: false,
+        tickMarkFormatter: jaDateTickFormatter,
       },
     });
 
