@@ -787,6 +787,11 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             # ---- 買いポイント集計（各+1pt）----
             buy_tags = []
 
+            # 雲の下かつ下降トレンド中の判定（MA5 < MA25）
+            kumo_top_i, kumo_bot_i = _kumo(i)
+            below_kumo = kumo_bot_i is not None and closes[i] < kumo_bot_i
+            downtrend = ma5_c is not None and ma25_c is not None and ma5_c < ma25_c
+
             if _trendline_near(i):
                 buy_tags.append("TL")
             if ma5_c and ma25_c and ma5_p and ma25_p and ma5_p <= ma25_p and ma5_c > ma25_c:
@@ -794,13 +799,15 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if _ik3_buy(i):
                 buy_tags.append("IK3")
             if bb_c is not None and bb_c <= 30 and closes[i] > closes[i-1]:
-                buy_tags.append("BB反転")
+                if not (below_kumo and downtrend):
+                    buy_tags.append("BB反転")
             if _bb_walk(i):
                 buy_tags.append("BBウォーク")
             if _resistance_break(i):
                 buy_tags.append("抵抗ブレイク")
             if _support_bounce(i):
-                buy_tags.append("支持反転")
+                if not (below_kumo and downtrend):
+                    buy_tags.append("支持反転")
             if ik == "上抜け":
                 buy_tags.append("IK↑")
             # 急騰: 前日比+2%以上で1pt、+4%以上で2pt
