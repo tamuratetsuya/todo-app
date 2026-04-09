@@ -3352,6 +3352,7 @@ function setupSimulationClick() {
 
 function enterSimulation(idx) {
   simCutoffIdx = idx;
+  const visibleRange = chart.timeScale().getVisibleRange();
   const sliced = candleData.slice(0, idx + 1);
   // ローソク足
   candleSeries.setData(sliced);
@@ -3361,6 +3362,8 @@ function enterSimulation(idx) {
   applySubChart(currentSubChart, sliced);
   // シグナルマーカー（cutoff以前のみ）
   applySignalMarkersForTime(candleData[idx].time);
+  // 表示範囲を復元
+  if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
   // バナー表示
   const banner = document.getElementById('simBanner');
   document.getElementById('simBannerText').textContent =
@@ -3370,12 +3373,14 @@ function enterSimulation(idx) {
 
 function exitSimulation() {
   if (simCutoffIdx === null) return;
+  const visibleRange = chart.timeScale().getVisibleRange();
   simCutoffIdx = null;
   // 全データに戻す
   candleSeries.setData(candleData);
   applyIndicators();
   applySubChart(currentSubChart, candleData);
   applySignalMarkers();
+  if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
   document.getElementById('simBanner').style.display = 'none';
 }
 
