@@ -4084,17 +4084,11 @@ function renderFinancials(d) {
     <div style="border-top:1px solid var(--border);margin:8px 0 10px;"></div>
     <div style="font-size:13px;font-weight:600;margin-bottom:8px;">四半期ごとの業績推移と今期見通し</div>
     ${legend}
-    <div style="margin-bottom:20px;">
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="color:var(--accent)">▶</span> 営業利益</div>
-      ${buildGroupedChart('op_inc', true)}
-    </div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-      ${['revenue','op_inc','net_inc'].map(mk=>`
-        <div style="flex:1;min-width:180px;">
-          <div style="font-size:11px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="color:var(--accent)">▶</span> ${metricLabels[mk]}</div>
-          ${buildGroupedChart(mk, false)}
-        </div>`).join('')}
-    </div>
+    ${['op_inc','revenue','net_inc'].map(mk=>`
+      <div style="margin-bottom:18px;">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="color:var(--accent)">▶</span> ${metricLabels[mk]}</div>
+        ${buildGroupedChart(mk, true)}
+      </div>`).join('')}
     ${fyYear ? `<div style="font-size:10px;color:var(--text2);text-align:right;margin-bottom:8px;">※チャートは${fyYear}年${fyMonth}月期時点</div>` : ''}
   </div>`;
 
