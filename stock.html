@@ -4057,7 +4057,10 @@ function renderFinancials(d) {
       const cx = padL + 3 * groupW + groupW / 2;
       const cy = padT + innerH - Math.abs(val) / maxVal * innerH;
       if (label === '最新会社予想') {
-        svg += `<rect x="${(cx-6).toFixed(1)}" y="${(cy-6).toFixed(1)}" width="12" height="12" fill="none" stroke="#aaa" stroke-dasharray="3,2" rx="1"/>`;
+        // 縦の点線で通期位置に表示（目立つ）
+        svg += `<line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(1)}" y2="${(padT+innerH).toFixed(1)}" stroke="#e3a345" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+        svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="6" fill="#e3a345"/>`;
+        svg += `<text x="${(cx+9).toFixed(1)}" y="${(cy+4).toFixed(1)}" fill="#e3a345" font-size="8" font-weight="bold">最新予想</text>`;
       } else {
         svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${color}"/>`;
       }
@@ -4072,7 +4075,7 @@ function renderFinancials(d) {
     ${fyLabels.map((fy,i)=>`<span><span style="display:inline-block;width:12px;height:10px;background:${BAR_COLORS[i]};border-radius:2px;margin-right:3px;vertical-align:middle"></span>${FY_LABELS[i]}</span>`).join('')}
     ${hasEst ? `
       <span><span style="display:inline-block;width:10px;height:10px;background:#00defa;border-radius:50%;margin-right:3px;vertical-align:middle"></span>当初会社予想</span>
-      <span><span style="display:inline-block;width:10px;height:10px;border:2px dashed #aaa;border-radius:2px;margin-right:3px;vertical-align:middle"></span>最新会社予想</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#e3a345;border-radius:50%;margin-right:3px;vertical-align:middle"></span><b style="color:#e3a345">最新会社予想</b></span>
       <span><span style="display:inline-block;width:10px;height:10px;background:#f0883e;border-radius:50%;margin-right:3px;vertical-align:middle"></span>アナリスト予想</span>
     ` : ''}
   </div>`;
