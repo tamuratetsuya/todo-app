@@ -1462,6 +1462,21 @@ function initChart() {
       horzLines:  { color: '#21262d' },
     },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    localization: {
+      timeFormatter: time => {
+        let yr, m, day;
+        if (typeof time === 'object' && time !== null) {
+          yr = time.year; m = time.month; day = time.day;
+        } else if (typeof time === 'string') {
+          const p = time.split('-');
+          yr = Number(p[0]); m = Number(p[1]); day = Number(p[2]);
+        } else {
+          const d = new Date(time * 1000);
+          yr = d.getUTCFullYear(); m = d.getUTCMonth() + 1; day = d.getUTCDate();
+        }
+        return `${yr}年${m}月${day}日`;
+      },
+    },
     leftPriceScale: { visible: false },
     rightPriceScale: {
       borderColor: '#30363d',
