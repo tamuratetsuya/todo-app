@@ -3987,7 +3987,7 @@ function renderFinancials(d) {
     if (m >= 1 && m <= 12) fyEndMonth = m;
   }
 
-  // 四半期をFY・Q番号に分類
+  // 四半期をFY・Q番号に分類（nullデータは除外）
   function getFYAndQ(periodStr) {
     const parts = periodStr.split('-');
     const y = parseInt(parts[0]), m = parseInt(parts[1]);
@@ -3997,8 +3997,12 @@ function renderFinancials(d) {
     return { fyYear, qNum };
   }
 
+  const validQuarterly = quarterly.filter(q =>
+    q.revenue != null || q.op_inc != null || q.net_inc != null
+  );
+
   const fyMap = {};
-  for (const q of quarterly) {
+  for (const q of validQuarterly) {
     const { fyYear, qNum } = getFYAndQ(q.period);
     if (!fyMap[fyYear]) fyMap[fyYear] = {};
     fyMap[fyYear][`q${qNum}`] = q;
@@ -4100,7 +4104,58 @@ function renderFinancials(d) {
     return t;
   }
 
-  const hasQuarterData = recentFYs.length > 0 && Object.keys(fyMap).length > 0;
+  const hasQuarterData = recentFYs.length > 0;
+
+  // 年次データを使ったシンプルな棒グラフ（四半期がない場合用）
+  function buildAnnualChart(metricKey, large) {
+    const rows = [...annual].sort((a,b) => a.period.localeCompare(b.period));
+    if (!rows.length) return '';
+    const W = large ? 460 : 220, H = large ? 160 : 100;
+    const padL = large ? 56 : 44, padR = 8, padT = 12, padB = large ? 28 : 22;
+    const innerW = W - padL - padR, innerH = H - padT - padB;
+    const allVals = rows.map(r => Math.abs(r[metricKey] || 0)).filter(v => v > 0);
+    if (!allVals.length) return '';
+    const maxVal = Math.max(...allVals) * 1.15;
+    const yUnit = maxVal >= 1e12 ? 1e12 : maxVal >= 1e10 ? 1e10 : maxVal >= 1e9 ? 1e9 : 1e8;
+    const yLabel = yUnit >= 1e12 ? '兆' : yUnit >= 1e10 ? '1000億' : yUnit >= 1e9 ? '10億' : '億';
+    const ySteps = 3;
+    const barW = Math.max(12, innerW / rows.length * 0.6);
+    const groupW = innerW / rows.length;
+    let svg = `<svg width="${W}" height="${H}" style="overflow:visible;display:block">`;
+    for (let s = 0; s <= ySteps; s++) {
+      const val = maxVal * s / ySteps;
+      const y = padT + innerH - val / maxVal * innerH;
+      svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#21262d" stroke-width="1"/>`;
+      const lv = (val / yUnit).toFixed(val === 0 ? 0 : 1);
+      svg += `<text x="${padL-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" fill="#8b949e" font-size="${large?9:8}">${lv}${yLabel}</text>`;
+    }
+    rows.forEach((r, i) => {
+      const val = r[metricKey];
+      if (val == null) return;
+      const bh = Math.max(2, Math.abs(val) / maxVal * innerH);
+      const bx = padL + i * groupW + (groupW - barW) / 2;
+      const by = padT + innerH - bh;
+      svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="#4f9cf9" rx="2"/>`;
+      const label = r.period.slice(0, 7);
+      svg += `<text x="${(bx+barW/2).toFixed(1)}" y="${(H-4).toFixed(1)}" text-anchor="middle" fill="#8b949e" font-size="${large?10:8}">${label}</text>`;
+    });
+    // アナリスト予想
+    const estRow = estimates.find(e => e.period === '0y' || e.period === '+1y');
+    if (estRow?.[metricKey] != null) {
+      const cx = padL + rows.length * groupW - groupW / 2;
+      const cy = padT + innerH - Math.abs(estRow[metricKey]) / maxVal * innerH;
+      if (cx < W) svg += `<circle cx="${cx.toFixed(1)}" cy="${Math.max(padT, cy).toFixed(1)}" r="5" fill="#f0883e"/>`;
+    }
+    svg += '</svg>';
+    return svg;
+  }
+
+  const annualLegend = `<div style="display:flex;gap:14px;font-size:11px;color:var(--text2);margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+    <span><span style="display:inline-block;width:12px;height:10px;background:#4f9cf9;border-radius:2px;margin-right:4px;vertical-align:middle"></span>実績</span>
+    ${estimates.length?'<span><span style="display:inline-block;width:10px;height:10px;background:#f0883e;border-radius:50%;margin-right:4px;vertical-align:middle"></span>アナリスト予想</span>':''}
+  </div>`;
+
+  const metricLabels = {revenue:'売上高', op_inc:'営業利益', net_inc:'純利益'};
 
   const html = `<div style="padding:14px 16px 20px;font-size:12px;color:var(--text);">
     <div style="font-size:15px;font-weight:700;margin-bottom:4px;">${stockName}の決算情報</div>
@@ -4115,12 +4170,26 @@ function renderFinancials(d) {
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
       ${['revenue','op_inc','net_inc'].map(mk=>`
         <div style="flex:1;min-width:180px;">
-          <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="color:var(--accent)">▶</span> ${{revenue:'売上高',op_inc:'営業利益',net_inc:'純利益'}[mk]}</div>
+          <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="color:var(--accent)">▶</span> ${metricLabels[mk]}</div>
           ${buildGroupedChart(mk, false)}
         </div>`).join('')}
     </div>
     <div style="font-size:10px;color:var(--text2);text-align:right;margin-bottom:12px;">※チャートは${recentFYs[recentFYs.length-1]}年${fyEndMonth}月期時点</div>
-    ` : ''}
+    ` : `
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px;">年次業績推移と今期見通し</div>
+    ${annualLegend}
+    <div style="margin-bottom:20px;">
+      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="color:var(--accent)">▶</span> 営業利益</div>
+      ${buildAnnualChart('op_inc', true)}
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
+      ${['revenue','op_inc','net_inc'].map(mk=>`
+        <div style="flex:1;min-width:180px;">
+          <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="color:var(--accent)">▶</span> ${metricLabels[mk]}</div>
+          ${buildAnnualChart(mk, false)}
+        </div>`).join('')}
+    </div>
+    `}
     ${annual.length ? `
     <div style="border-top:1px solid var(--border);padding-top:12px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;">年次実績</div>
