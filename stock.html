@@ -1167,6 +1167,7 @@
         <span id="simBannerText"></span>
         <button onclick="exitSimulation()" style="background:#f59e0b;color:#0d1117;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;font-weight:600;">解除</button>
       </div>
+      <div id="refreshBadge" style="position:absolute;bottom:8px;right:8px;z-index:100;font-size:10px;color:var(--text2);background:rgba(13,17,23,0.7);padding:2px 7px;border-radius:4px;pointer-events:none;"></div>
       <div id="indTooltip"></div>
       <div id="eventMarkerLayer"></div>
       <div id="eventTooltip"></div>
@@ -2416,6 +2417,7 @@ async function loadChart() {
       chart.timeScale().scrollToPosition(10, false);
       loadEventMarkers();
     }, 50);
+    startAutoRefresh();
 
     // 銘柄表示時: ルールベースシグナルを自動取得
     {
@@ -2440,6 +2442,77 @@ async function loadChart() {
   } finally {
     setLoading(false);
   }
+}
+
+// ===== AUTO REFRESH =====
+let _autoRefreshTimer = null;
+
+function _isMarketOpen() {
+  const now = new Date();
+  const jst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+  const day = jst.getDay(); // 0=Sun, 6=Sat
+  if (day === 0 || day === 6) return false;
+  const h = jst.getHours(), m = jst.getMinutes();
+  const mins = h * 60 + m;
+  return (mins >= 9 * 60 && mins < 15 * 60 + 30);
+}
+
+async function _silentRefreshCandles() {
+  if (!currentSymbol || !candleSeries || simulationMode) return;
+  try {
+    const interval = TF_INTERVAL[currentInterval];
+    const resp = await fetch(`${API}/candles?symbol=${encodeURIComponent(currentSymbol)}&interval=${interval}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data || !data.length) return;
+
+    // 最新足だけ update（全データを setData すると画面がフラッシュするので update を使う）
+    const last = data[data.length - 1];
+    const prevLast = candleData.length ? candleData[candleData.length - 1] : null;
+
+    // 新しい足が追加されたか、最新足が更新された場合のみ反映
+    if (!prevLast || last.time !== prevLast.time || last.close !== prevLast.close) {
+      candleData = data;
+      candleSeries.update({ time: last.time, open: last.open, high: last.high, low: last.low, close: last.close });
+      volumeSeries.update({ time: last.time, value: last.volume, color: last.close >= last.open ? 'rgba(63,185,80,0.4)' : 'rgba(248,81,73,0.4)' });
+      // 新しい足が追加された場合はインジケータも更新
+      if (!prevLast || last.time !== prevLast.time) {
+        applySubChart(currentSubChart, candleData);
+        applyIndicators();
+        applyMarkers();
+      }
+      _updateRefreshBadge();
+    }
+  } catch(e) {}
+}
+
+function _updateRefreshBadge() {
+  const badge = document.getElementById('refreshBadge');
+  if (!badge) return;
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  const ss = String(now.getSeconds()).padStart(2,'0');
+  badge.textContent = `更新 ${hh}:${mm}:${ss}`;
+}
+
+function _scheduleAutoRefresh() {
+  clearTimeout(_autoRefreshTimer);
+  const interval = _isMarketOpen() ? 30000 : 300000; // 市場中30秒, 時間外5分
+  _autoRefreshTimer = setTimeout(async () => {
+    await _silentRefreshCandles();
+    _scheduleAutoRefresh();
+  }, interval);
+}
+
+function startAutoRefresh() {
+  clearTimeout(_autoRefreshTimer);
+  _scheduleAutoRefresh();
+}
+
+function stopAutoRefresh() {
+  clearTimeout(_autoRefreshTimer);
+  _autoRefreshTimer = null;
 }
 
 // ===== EVENT MARKERS =====
