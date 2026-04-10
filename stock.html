@@ -3716,11 +3716,8 @@ function setupSimulationClick() {
 function enterSimulation(idx) {
   simCutoffIdx = idx;
 
-  // 横軸を時刻ベースで保存（論理インデックスはデータ長が変わると無効になるため）
-  const timeRange = chart.timeScale().getVisibleRange();
-  // 縦軸の表示価格範囲を手動計算して保存
-  const visibleFrom = timeRange ? timeRange.from : null;
-  const visibleTo   = timeRange ? timeRange.to   : null;
+  // 論理インデックス（バー番号）ベースで保存 — タイムスタンプはスライス後に存在しない場合があるため
+  const logRange = chart.timeScale().getVisibleLogicalRange();
 
   const sliced = candleData.slice(0, idx + 1);
   candleSeries.setData(sliced.map(d => ({...d})));
@@ -3728,27 +3725,23 @@ function enterSimulation(idx) {
   applySubChart(currentSubChart, sliced);
   applySignalMarkersForTime(candleData[idx].time);
 
-  // setData 後に再描画を2フレーム待って時刻ベースで復元（chart内部のinvalidate rAFより後に実行するため）
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (visibleFrom !== null && visibleTo !== null) {
-        try {
-          chart.timeScale().setVisibleRange({ from: visibleFrom, to: visibleTo });
-        } catch(e) {}
-      }
-    });
-  });
+  if (logRange) {
+    const restore = () => {
+      try { chart.timeScale().setVisibleLogicalRange(logRange); } catch(e) {}
+    };
+    restore();
+    requestAnimationFrame(() => requestAnimationFrame(restore));
+  }
 
-  const banner = document.getElementById('simBanner');
   document.getElementById('simBannerText').textContent =
     `シミュレーション中: ${candleData[idx].time} まで表示`;
-  banner.style.display = 'flex';
+  document.getElementById('simBanner').style.display = 'flex';
 }
 
 function exitSimulation() {
   if (simCutoffIdx === null) return;
 
-  const timeRange = chart.timeScale().getVisibleRange();
+  const logRange = chart.timeScale().getVisibleLogicalRange();
   simCutoffIdx = null;
 
   candleSeries.setData(candleData.map(d => ({...d})));
@@ -3756,15 +3749,13 @@ function exitSimulation() {
   applySubChart(currentSubChart, candleData);
   applySignalMarkers();
 
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (timeRange) {
-        try {
-          chart.timeScale().setVisibleRange({ from: timeRange.from, to: timeRange.to });
-        } catch(e) {}
-      }
-    });
-  });
+  if (logRange) {
+    const restore = () => {
+      try { chart.timeScale().setVisibleLogicalRange(logRange); } catch(e) {}
+    };
+    restore();
+    requestAnimationFrame(() => requestAnimationFrame(restore));
+  }
 
   document.getElementById('simBanner').style.display = 'none';
 }
