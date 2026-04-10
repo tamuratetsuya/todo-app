@@ -2224,6 +2224,7 @@ def _scrape_ifis_analyst(code: str) -> dict:
         "date": None,
         "consensus_rating": None,
         "consensus_price": None,
+        "current_price": None,
         "analyst_count": None,
         "breakdown": {},
         "recent_changes": [],   # 最近のレーティング変更ニュース
@@ -2272,6 +2273,24 @@ def _scrape_ifis_analyst(code: str) -> dict:
                     result["breakdown"][c[0]] = cnt
                     total += cnt
         result["analyst_count"] = f"{total}人"
+
+    # JSONP から目標株価・現在株価・妥当株価レンジを取得
+    try:
+        json_url = f"https://img-kabu.ifis.co.jp/graph/stock_chart_tp/{code}.json"
+        jr = _requests.get(json_url, headers={**headers, "Referer": "https://kabuyoho.ifis.co.jp/"}, timeout=10)
+        if jr.status_code == 200:
+            import json as _json
+            json_raw = _re.sub(r'^tp\d+\(', '', jr.text).rstrip(')')
+            jdata = _json.loads(json_raw)
+            for item in jdata:
+                name = _re.sub(r'<[^>]+>', '', item.get('name', ''))
+                for pt in item.get('data', []):
+                    if '目標株価' in name and 'y' in pt:
+                        result["consensus_price"] = int(pt['y'])
+                    if '現在株価' in name and 'y' in pt:
+                        result["current_price"] = int(pt['y'])
+    except Exception:
+        pass
 
     # tbody[7]: 最近のレーティング変更（日付 + テキスト）
     if len(tbodies) > 7:
