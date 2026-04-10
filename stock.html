@@ -3728,9 +3728,12 @@ function enterSimulation(idx) {
   if (logRange) {
     const restore = () => {
       try { chart.timeScale().setVisibleLogicalRange(logRange); } catch(e) {}
+      // 時間軸復元後に価格スケールを強制再計算
+      try { candleSeries.priceScale().applyOptions({ autoScale: true }); } catch(e) {}
     };
     restore();
     requestAnimationFrame(() => requestAnimationFrame(restore));
+    setTimeout(restore, 100);
   }
 
   document.getElementById('simBannerText').textContent =
@@ -3752,9 +3755,11 @@ function exitSimulation() {
   if (logRange) {
     const restore = () => {
       try { chart.timeScale().setVisibleLogicalRange(logRange); } catch(e) {}
+      try { candleSeries.priceScale().applyOptions({ autoScale: true }); } catch(e) {}
     };
     restore();
     requestAnimationFrame(() => requestAnimationFrame(restore));
+    setTimeout(restore, 100);
   }
 
   document.getElementById('simBanner').style.display = 'none';
