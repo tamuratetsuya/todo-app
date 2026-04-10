@@ -2127,13 +2127,13 @@ def _scrape_all_analyst(symbol: str) -> dict:
     except Exception as e:
         sources.append({"source": "株予報Pro", "url": f"https://kabuyoho.jp/reportTarget?bcode={symbol}", "error": str(e), "entries": []})
 
-    # --- IFIS株予報 ---
+    # --- 目標株価まとめ (kabuka.jp.net) ---
     try:
-        ifis = _scrape_ifis_analyst(symbol)
-        if ifis:
-            sources.append(ifis)
+        kb = _scrape_kabuka_analyst(symbol)
+        if kb:
+            sources.append(kb)
     except Exception as e:
-        sources.append({"source": "IFIS株予報", "url": f"https://kabuyoho.ifis.co.jp/index.php?action=tp1&sa=report_pbr&bcode={symbol}", "error": str(e), "entries": []})
+        sources.append({"source": "目標株価まとめ", "url": f"https://www.kabuka.jp.net/rating/{symbol}.html", "error": str(e), "entries": []})
 
     return {"symbol": symbol, "sources": sources}
 
@@ -2207,105 +2207,143 @@ def _scrape_kabuyoho_analyst(code: str) -> dict:
     return result
 
 
-def _scrape_ifis_analyst(code: str) -> dict:
-    """IFIS株予報 アナリスト予想ページをスクレイピング"""
-    url = f"https://kabuyoho.ifis.co.jp/index.php?action=tp1&sa=report_pbr&bcode={code}"
+def _scrape_kabuka_analyst(code: str) -> dict:
+    """目標株価まとめ (kabuka.jp.net) をスクレイピング"""
+    url = f"https://www.kabuka.jp.net/rating/{code}.html"
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ja,en;q=0.9",
     }
     resp = _requests.get(url, headers=headers, timeout=15)
+    if resp.status_code == 404:
+        return None
     resp.raise_for_status()
     html = resp.text
 
     result = {
-        "source": "IFIS株予報",
+        "source": "目標株価まとめ",
         "url": url,
-        "date": None,
-        "consensus_rating": None,
-        "consensus_price": None,
         "current_price": None,
-        "analyst_count": None,
-        "breakdown": {},
-        "recent_changes": [],   # 最近のレーティング変更ニュース
-        "entries": [],
+        "consensus_price": None,     # 12ヵ月平均
+        "divergence": None,          # 乖離率
+        "entries": [],               # 個別アナリスト一覧
+        "summary": [],               # 平均・中央値サマリー
     }
 
-    def clean_cell(c):
-        return _re.sub(r'\s+', ' ', _re.sub(r'<[^>]+>', '', c)).strip().replace('\xa0', '')
+    def clean(s):
+        return _re.sub(r'\s+', ' ', _re.sub(r'<[^>]+>', '', s)).strip()
 
-    tbodies = _re.findall(r'<tbody[^>]*>(.*?)</tbody>', html, _re.DOTALL)
+    trs = _re.findall(r'<tr[^>]*>(.*?)</tr>', html, _re.DOTALL)
+    rows = [clean(tr) for tr in trs]
 
-    # tbody[0]: 株価/レーティング星/業種/更新日
-    if len(tbodies) > 0:
-        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[0], _re.DOTALL)
-        if rows:
-            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', rows[0], _re.DOTALL)
-            c = [clean_cell(x) for x in cells]
-            # 更新日
-            date_m = _re.search(r'更新日：(\d{4}/\d{2}/\d{2})', ' '.join(c))
-            if date_m:
-                result["date"] = date_m.group(1)
+    # tr[2]: 株価
+    if len(rows) > 2:
+        m = _re.search(r'([\d,]+)\s*\(', rows[2])
+        if m:
+            result["current_price"] = int(m.group(1).replace(',', ''))
 
-    # tbody[1]: レーティング（★表示＋テキスト）
-    if len(tbodies) > 1:
-        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[1], _re.DOTALL)
-        if rows:
-            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', rows[0], _re.DOTALL)
-            c = [clean_cell(x) for x in cells]
-            if c:
-                # 例: "★★★★☆ やや強気"
-                rating_m = _re.search(r'(やや強気|強気|やや弱気|弱気|中立)', c[0])
-                if rating_m:
-                    result["consensus_rating"] = rating_m.group(1)
+    # tr[4]: 目標株価12ヵ月平均・乖離率
+    if len(rows) > 4:
+        m = _re.search(r'([\d,]+)([\-+][\d,]+\s*\([^)]+\))', rows[4])
+        if m:
+            result["consensus_price"] = int(m.group(1).replace(',', ''))
+            result["divergence"] = m.group(2).strip()
 
-    # tbody[5]: 内訳（強気/やや強気/中立/やや弱気/弱気 N人）
-    if len(tbodies) > 5:
-        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[5], _re.DOTALL)
-        total = 0
-        for row in rows:
-            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, _re.DOTALL)
-            c = [clean_cell(x) for x in cells]
-            if len(c) >= 2 and c[0]:
-                cnt_m = _re.search(r'(\d+)', c[1])
-                if cnt_m:
-                    cnt = int(cnt_m.group(1))
-                    result["breakdown"][c[0]] = cnt
-                    total += cnt
-        result["analyst_count"] = f"{total}人"
-
-    # JSONP から目標株価・現在株価・妥当株価レンジを取得
-    try:
-        json_url = f"https://img-kabu.ifis.co.jp/graph/stock_chart_tp/{code}.json"
-        jr = _requests.get(json_url, headers={**headers, "Referer": "https://kabuyoho.ifis.co.jp/"}, timeout=10)
-        if jr.status_code == 200:
-            import json as _json
-            json_raw = _re.sub(r'^tp\d+\(', '', jr.text).rstrip(')')
-            jdata = _json.loads(json_raw)
-            for item in jdata:
-                name = _re.sub(r'<[^>]+>', '', item.get('name', ''))
-                for pt in item.get('data', []):
-                    if '目標株価' in name and 'y' in pt:
-                        result["consensus_price"] = int(pt['y'])
-                    if '現在株価' in name and 'y' in pt:
-                        result["current_price"] = int(pt['y'])
-    except Exception:
-        pass
-
-    # tbody[7]: 最近のレーティング変更（日付 + テキスト）
-    if len(tbodies) > 7:
-        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[7], _re.DOTALL)
-        for row in rows[:5]:
-            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, _re.DOTALL)
-            c = [clean_cell(x) for x in cells]
-            if len(c) >= 2 and c[0] and c[1]:
-                # 目標株価を本文から抽出
-                target_m = _re.search(r'目標株価.*?([\d,]+)円', c[1])
-                result["recent_changes"].append({
-                    "date": c[0],
-                    "text": c[1],
-                    "target": int(target_m.group(1).replace(',','')) if target_m else None,
+    # tr[8]: ヘッダー行「発表日 証券会社 レーティング 目標株価 乖離率」
+    # tr[9]〜: 個別アナリスト行
+    # 集計行（平均値・中央値）で終了
+    in_entries = False
+    for row in rows:
+        if '発表日' in row and '証券会社' in row:
+            in_entries = True
+            continue
+        if not in_entries:
+            continue
+        # 集計行
+        if '平均値' in row or '中央値' in row:
+            # サマリー行: "目標株価平均値（6ヵ月） 2,375-8.90%"
+            label_m = _re.search(r'(目標株価\S+)\s*([\d,]+)([\-+][\d.]+%)', row)
+            if label_m:
+                result["summary"].append({
+                    "label": label_m.group(1).strip(),
+                    "price": int(label_m.group(2).replace(',', '')),
+                    "divergence": label_m.group(3),
                 })
+            continue
+        # 個別エントリー行: "2026/03/24ジェフリーズHold → Buy格上げ1,500 → 2,800+7.40%"
+        # 日付
+        date_m = _re.search(r'^(\d{4}/\d{2}/\d{2})', row)
+        if not date_m:
+            continue
+        date = date_m.group(1)
+        rest = row[len(date):].strip()
+
+        # 目標株価: "1,500 → 2,800" or "2,800"
+        price_m = _re.search(r'([\d,]+)\s*→\s*([\d,]+)', rest)
+        if price_m:
+            prev_target = int(price_m.group(1).replace(',', ''))
+            new_target = int(price_m.group(2).replace(',', ''))
+        else:
+            single = _re.search(r'([\d,]{3,})', rest)
+            prev_target = None
+            new_target = int(single.group(1).replace(',', '')) if single else None
+
+        # 乖離率
+        div_m = _re.search(r'([+-][\d.]+%)\s*$', rest)
+        divergence = div_m.group(1) if div_m else None
+
+        # 証券会社名とレーティング: 日付・価格・乖離率を除いた部分
+        temp = rest
+        if price_m:
+            temp = temp[:temp.rfind(price_m.group(0))]
+        elif single:
+            temp = temp[:temp.rfind(single.group(0))]
+        if divergence:
+            temp = temp.replace(divergence, '')
+        temp = temp.strip()
+
+        # レーティング変化パターン: "ジェフリーズHold → Buy格上げ" or "JPMNeutral継続"
+        # アクション（格上げ/格下げ/継続/新規）を先に除去
+        action = ''
+        for act in ['格上げ', '格下げ', '継続', '新規']:
+            if act in temp:
+                action = act
+                temp = temp.replace(act, '').strip()
+
+        # レーティング変化: "Hold → Buy"
+        rating_change_m = _re.search(
+            r'((?:強気|買い|Hold|Buy|Neutral|中立|売り|Sell|OP|MP|NR|UP|OW|UW|Equal|[1-5])\S*)'
+            r'\s*→\s*'
+            r'((?:強気|買い|Hold|Buy|Neutral|中立|売り|Sell|OP|MP|NR|UP|OW|UW|Equal|[1-5])\S*)',
+            temp
+        )
+        if rating_change_m:
+            prev_rating = rating_change_m.group(1).strip()
+            new_rating = rating_change_m.group(2).strip()
+            company = temp[:temp.index(rating_change_m.group(0))].strip()
+        else:
+            # 単一レーティング: "ジェフリーズBuy" → 会社名+レーティング
+            single_m = _re.search(
+                r'^(.+?)((?:強気|買い|Hold|Buy|Neutral|中立|売り|Sell|OP|MP|NR|UP|OW|UW|Equal|[1-5])\S*)$',
+                temp
+            )
+            if single_m:
+                company = single_m.group(1).strip()
+                prev_rating = new_rating = single_m.group(2).strip()
+            else:
+                company = temp
+                prev_rating = new_rating = ''
+
+        result["entries"].append({
+            "date": date,
+            "company": company,
+            "prev_rating": prev_rating,
+            "rating": new_rating,
+            "action": action,
+            "prev_target": prev_target,
+            "target": new_target,
+            "divergence": divergence,
+        })
 
     return result
 
