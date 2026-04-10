@@ -3724,11 +3724,14 @@ function setupSimulationClick() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') exitSimulation(); });
 }
 
-let _simSavedLogRange = null;
-
 function enterSimulation(idx) {
   simCutoffIdx = idx;
-  _simSavedLogRange = chart.timeScale().getVisibleLogicalRange();
+
+  // 横軸を時刻ベースで保存（論理インデックスはデータ長が変わると無効になるため）
+  const timeRange = chart.timeScale().getVisibleRange();
+  // 縦軸の表示価格範囲を手動計算して保存
+  const visibleFrom = timeRange ? timeRange.from : null;
+  const visibleTo   = timeRange ? timeRange.to   : null;
 
   const sliced = candleData.slice(0, idx + 1);
   candleSeries.setData(sliced.map(d => ({...d})));
@@ -3736,30 +3739,30 @@ function enterSimulation(idx) {
   applySubChart(currentSubChart, sliced);
   applySignalMarkersForTime(candleData[idx].time);
 
+  // setData 後に再描画を2フレーム待って時刻ベースで復元（chart内部のinvalidate rAFより後に実行するため）
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      if (_simSavedLogRange) {
-        // toをスライス末尾以内にクランプし、同じズーム幅を維持
-        const width = _simSavedLogRange.to - _simSavedLogRange.from;
-        const newTo   = sliced.length - 1;
-        const newFrom = newTo - width;
+      if (visibleFrom !== null && visibleTo !== null) {
         try {
-          chart.timeScale().setVisibleLogicalRange({ from: newFrom, to: newTo });
+          // visibleToがスライス末尾より未来だと右側に空白が生じ縦軸がずれるためクランプ
+          const clampedTo = Math.min(visibleTo, candleData[idx].time);
+          chart.timeScale().setVisibleRange({ from: visibleFrom, to: clampedTo });
         } catch(e) {}
       }
     });
   });
 
+  const banner = document.getElementById('simBanner');
   document.getElementById('simBannerText').textContent =
     `シミュレーション中: ${candleData[idx].time} まで表示`;
-  document.getElementById('simBanner').style.display = 'flex';
+  banner.style.display = 'flex';
 }
 
 function exitSimulation() {
   if (simCutoffIdx === null) return;
-  const savedRange = _simSavedLogRange;
+
+  const timeRange = chart.timeScale().getVisibleRange();
   simCutoffIdx = null;
-  _simSavedLogRange = null;
 
   candleSeries.setData(candleData.map(d => ({...d})));
   applyIndicators();
@@ -3768,9 +3771,9 @@ function exitSimulation() {
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      if (savedRange) {
+      if (timeRange) {
         try {
-          chart.timeScale().setVisibleLogicalRange(savedRange);
+          chart.timeScale().setVisibleRange({ from: timeRange.from, to: timeRange.to });
         } catch(e) {}
       }
     });
