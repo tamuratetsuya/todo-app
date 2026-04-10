@@ -2466,23 +2466,26 @@ async function _silentRefreshCandles() {
     const data = await resp.json();
     if (!data || !data.length) return;
 
-    // 最新足だけ update（全データを setData すると画面がフラッシュするので update を使う）
     const last = data[data.length - 1];
     const prevLast = candleData.length ? candleData[candleData.length - 1] : null;
+    const newBar = !prevLast || last.time !== prevLast.time;
+    const changed = newBar || last.close !== prevLast.close || last.high !== prevLast.high || last.low !== prevLast.low;
 
-    // 新しい足が追加されたか、最新足が更新された場合のみ反映
-    if (!prevLast || last.time !== prevLast.time || last.close !== prevLast.close) {
-      candleData = data;
-      candleSeries.update({ time: last.time, open: last.open, high: last.high, low: last.low, close: last.close });
-      volumeSeries.update({ time: last.time, value: last.volume, color: last.close >= last.open ? 'rgba(63,185,80,0.4)' : 'rgba(248,81,73,0.4)' });
-      // 新しい足が追加された場合はインジケータも更新
-      if (!prevLast || last.time !== prevLast.time) {
-        applySubChart(currentSubChart, candleData);
-        applyIndicators();
-        applyMarkers();
-      }
-      _updateRefreshBadge();
+    if (!changed) { _updateRefreshBadge(); return; }
+
+    candleData = data;
+
+    // 最新足を update（setData より軽量でフラッシュなし）
+    candleSeries.update({ time: last.time, open: last.open, high: last.high, low: last.low, close: last.close });
+    volumeSeries.update({ time: last.time, value: last.volume, color: last.close >= last.open ? 'rgba(63,185,80,0.4)' : 'rgba(248,81,73,0.4)' });
+
+    // 新しい足が追加されたらインジケータも再計算
+    if (newBar) {
+      applySubChart(currentSubChart, candleData);
+      applyIndicators();
+      applyMarkers();
     }
+    _updateRefreshBadge();
   } catch(e) {}
 }
 

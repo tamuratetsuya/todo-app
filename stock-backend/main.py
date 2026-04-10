@@ -297,10 +297,13 @@ def save_candles_to_db(conn, symbol: str, interval: str, candles: list):
         for c in candles:
             try:
                 cur.execute(
-                    """INSERT IGNORE INTO candles
+                    """INSERT INTO candles
                        (symbol, interval_type, candle_time, open, high, low, close, volume)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                       ON DUPLICATE KEY UPDATE
+                         open=%s, high=%s, low=%s, close=%s, volume=%s""",
                     (symbol, interval, str(c["time"]),
+                     c["open"], c["high"], c["low"], c["close"], c["volume"],
                      c["open"], c["high"], c["low"], c["close"], c["volume"])
                 )
             except Exception:
