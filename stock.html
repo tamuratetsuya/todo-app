@@ -3716,8 +3716,8 @@ function setupSimulationClick() {
 function enterSimulation(idx) {
   simCutoffIdx = idx;
 
-  // 論理インデックス（バー番号）ベースで保存 — タイムスタンプはスライス後に存在しない場合があるため
-  const logRange = chart.timeScale().getVisibleLogicalRange();
+  // 終了時の復元用に現在の論理範囲を保存
+  _simSavedLogRange = chart.timeScale().getVisibleLogicalRange();
 
   const sliced = candleData.slice(0, idx + 1);
   candleSeries.setData(sliced.map(d => ({...d})));
@@ -3725,42 +3725,38 @@ function enterSimulation(idx) {
   applySubChart(currentSubChart, sliced);
   applySignalMarkersForTime(candleData[idx].time);
 
-  if (logRange) {
-    const restore = () => {
-      try { chart.timeScale().setVisibleLogicalRange(logRange); } catch(e) {}
-      // 時間軸復元後に価格スケールを強制再計算
-      try { candleSeries.priceScale().applyOptions({ autoScale: true }); } catch(e) {}
-    };
-    restore();
-    requestAnimationFrame(() => requestAnimationFrame(restore));
-    setTimeout(restore, 100);
-  }
+  // スライスデータ全体をフィット（縦軸・横軸ともに正確に合わせる）
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    try { chart.timeScale().fitContent(); } catch(e) {}
+  }));
 
   document.getElementById('simBannerText').textContent =
     `シミュレーション中: ${candleData[idx].time} まで表示`;
   document.getElementById('simBanner').style.display = 'flex';
 }
 
+let _simSavedLogRange = null;
+
 function exitSimulation() {
   if (simCutoffIdx === null) return;
 
-  const logRange = chart.timeScale().getVisibleLogicalRange();
+  const savedRange = _simSavedLogRange;
   simCutoffIdx = null;
+  _simSavedLogRange = null;
 
   candleSeries.setData(candleData.map(d => ({...d})));
   applyIndicators();
   applySubChart(currentSubChart, candleData);
   applySignalMarkers();
 
-  if (logRange) {
-    const restore = () => {
-      try { chart.timeScale().setVisibleLogicalRange(logRange); } catch(e) {}
-      try { candleSeries.priceScale().applyOptions({ autoScale: true }); } catch(e) {}
-    };
-    restore();
-    requestAnimationFrame(() => requestAnimationFrame(restore));
-    setTimeout(restore, 100);
-  }
+  // 元の表示位置を復元
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (savedRange) {
+      try { chart.timeScale().setVisibleLogicalRange(savedRange); } catch(e) {}
+    } else {
+      try { chart.timeScale().fitContent(); } catch(e) {}
+    }
+  }));
 
   document.getElementById('simBanner').style.display = 'none';
 }
