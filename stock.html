@@ -1478,7 +1478,8 @@ function initChart() {
   }
 
   chart = LightweightCharts.createChart(chartContainer, {
-    autoSize: true,
+    width:  chartContainer.clientWidth,
+    height: chartContainer.clientHeight,
     layout: {
       background: { color: '#0d1117' },
       textColor:  '#8b949e',
@@ -1533,6 +1534,16 @@ function initChart() {
   chart.priceScale('volume').applyOptions({
     scaleMargins: { top: 0.85, bottom: 0 },
   });
+
+  const ro = new ResizeObserver(() => {
+    if (chart) {
+      chart.applyOptions({
+        width:  chartContainer.clientWidth,
+        height: chartContainer.clientHeight,
+      });
+    }
+  });
+  ro.observe(chartContainer);
 
   setupSignalTooltip();
   setupCandleLegend();
@@ -3725,15 +3736,19 @@ function enterSimulation(idx) {
   applySubChart(currentSubChart, sliced);
   applySignalMarkersForTime(candleData[idx].time);
 
-  // setData後にLWCが内部でリセットするのをrAF×2で上書き
-  if (_simSavedLogRange) {
-    const width = _simSavedLogRange.to - _simSavedLogRange.from;
-    const to   = sliced.length - 1;
-    const from = to - width;
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      try { chart.timeScale().setVisibleLogicalRange({ from, to }); } catch(e) {}
-    }));
-  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (_simSavedLogRange) {
+        // toをスライス末尾以内にクランプし、同じズーム幅を維持
+        const width = _simSavedLogRange.to - _simSavedLogRange.from;
+        const newTo   = sliced.length - 1;
+        const newFrom = newTo - width;
+        try {
+          chart.timeScale().setVisibleLogicalRange({ from: newFrom, to: newTo });
+        } catch(e) {}
+      }
+    });
+  });
 
   document.getElementById('simBannerText').textContent =
     `シミュレーション中: ${candleData[idx].time} まで表示`;
@@ -3751,11 +3766,15 @@ function exitSimulation() {
   applySubChart(currentSubChart, candleData);
   applySignalMarkers();
 
-  if (savedRange) {
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      try { chart.timeScale().setVisibleLogicalRange(savedRange); } catch(e) {}
-    }));
-  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (savedRange) {
+        try {
+          chart.timeScale().setVisibleLogicalRange(savedRange);
+        } catch(e) {}
+      }
+    });
+  });
 
   document.getElementById('simBanner').style.display = 'none';
 }
