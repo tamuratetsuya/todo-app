@@ -1478,8 +1478,7 @@ function initChart() {
   }
 
   chart = LightweightCharts.createChart(chartContainer, {
-    width:  chartContainer.clientWidth,
-    height: chartContainer.clientHeight,
+    autoSize: true,
     layout: {
       background: { color: '#0d1117' },
       textColor:  '#8b949e',
@@ -1534,16 +1533,6 @@ function initChart() {
   chart.priceScale('volume').applyOptions({
     scaleMargins: { top: 0.85, bottom: 0 },
   });
-
-  const ro = new ResizeObserver(() => {
-    if (chart) {
-      chart.applyOptions({
-        width:  chartContainer.clientWidth,
-        height: chartContainer.clientHeight,
-      });
-    }
-  });
-  ro.observe(chartContainer);
 
   setupSignalTooltip();
   setupCandleLegend();
