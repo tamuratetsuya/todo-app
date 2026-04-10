@@ -3727,39 +3727,27 @@ function setupSimulationClick() {
 function enterSimulation(idx) {
   simCutoffIdx = idx;
 
-  // 現在の横軸・縦軸範囲を保存
-  const logicalRange = chart.timeScale().getVisibleLogicalRange();
-  const priceRange = candleSeries.priceScale().getVisiblePriceRange
-    ? candleSeries.priceScale().getVisiblePriceRange()
-    : null;
+  // 横軸を時刻ベースで保存（論理インデックスはデータ長が変わると無効になるため）
+  const timeRange = chart.timeScale().getVisibleRange();
+  // 縦軸の表示価格範囲を手動計算して保存
+  const visibleFrom = timeRange ? timeRange.from : null;
+  const visibleTo   = timeRange ? timeRange.to   : null;
 
-  // クリック位置がどのデータ全体の何番目かを記録（復元用）
-  const fullLen = candleData.length;
-  const sliceLen = idx + 1;
-
-  const sliced = candleData.slice(0, sliceLen);
+  const sliced = candleData.slice(0, idx + 1);
   candleSeries.setData(sliced.map(d => ({...d})));
   applyIndicatorsForData(sliced);
   applySubChart(currentSubChart, sliced);
   applySignalMarkersForTime(candleData[idx].time);
 
-  // setData 後にチャートが再描画されるのを待ってから範囲復元
+  // setData 後に再描画を2フレーム待って時刻ベースで復元（chart内部のinvalidate rAFより後に実行するため）
   requestAnimationFrame(() => {
-    if (logicalRange) {
-      // 論理範囲をデータ長の差分で補正
-      const shift = sliceLen - fullLen; // 負の値（削られた分）
-      chart.timeScale().setVisibleLogicalRange({
-        from: logicalRange.from + shift,
-        to:   logicalRange.to   + shift,
-      });
-    }
-    // 縦軸はautoScaleを一度切って範囲固定してから戻す
-    if (priceRange) {
-      try {
-        candleSeries.priceScale().applyOptions({ autoScale: false });
-        candleSeries.priceScale().applyOptions({ autoScale: true });
-      } catch(e) {}
-    }
+    requestAnimationFrame(() => {
+      if (visibleFrom !== null && visibleTo !== null) {
+        try {
+          chart.timeScale().setVisibleRange({ from: visibleFrom, to: visibleTo });
+        } catch(e) {}
+      }
+    });
   });
 
   const banner = document.getElementById('simBanner');
@@ -3771,24 +3759,22 @@ function enterSimulation(idx) {
 function exitSimulation() {
   if (simCutoffIdx === null) return;
 
-  const logicalRange = chart.timeScale().getVisibleLogicalRange();
-  const sliceLen = simCutoffIdx + 1;
-  const fullLen = candleData.length;
-
+  const timeRange = chart.timeScale().getVisibleRange();
   simCutoffIdx = null;
+
   candleSeries.setData(candleData.map(d => ({...d})));
   applyIndicators();
   applySubChart(currentSubChart, candleData);
   applySignalMarkers();
 
   requestAnimationFrame(() => {
-    if (logicalRange) {
-      const shift = fullLen - sliceLen; // 正の値（戻った分）
-      chart.timeScale().setVisibleLogicalRange({
-        from: logicalRange.from + shift,
-        to:   logicalRange.to   + shift,
-      });
-    }
+    requestAnimationFrame(() => {
+      if (timeRange) {
+        try {
+          chart.timeScale().setVisibleRange({ from: timeRange.from, to: timeRange.to });
+        } catch(e) {}
+      }
+    });
   });
 
   document.getElementById('simBanner').style.display = 'none';
