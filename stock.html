@@ -939,6 +939,25 @@
   }
   #signalTooltip.sell { border-left-color: #c084fc; }
 
+  #patternTooltip {
+    display: none;
+    position: fixed;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid #2dd4bf;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text);
+    max-width: 220px;
+    white-space: pre-wrap;
+    pointer-events: none;
+    z-index: 201;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    line-height: 1.5;
+  }
+  #patternTooltip.sell { border-left-color: #fb923c; }
+
   #indTooltip {
     display: none;
     position: fixed;
@@ -1163,6 +1182,7 @@
         <button class="sub-chart-btn" data-sub="hv">HV</button>
       </div>
       <div id="signalTooltip"></div>
+      <div id="patternTooltip"></div>
       <div id="simBanner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:200;background:rgba(30,40,60,0.92);border:1px solid #f59e0b;border-radius:8px;padding:6px 14px;font-size:12px;color:#f59e0b;display:none;align-items:center;gap:10px;white-space:nowrap;pointer-events:auto;">
         <span id="simBannerText"></span>
         <button onclick="exitSimulation()" style="background:#f59e0b;color:#0d1117;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;font-weight:600;">解除</button>
@@ -3791,6 +3811,7 @@ function applySignalMarkersForTime(cutoffTime) {
 
 const signalToggleBtn = document.getElementById('signalToggleBtn');
 const signalTooltip   = document.getElementById('signalTooltip');
+const patternTooltip  = document.getElementById('patternTooltip');
 
 const indTooltip = document.getElementById('indTooltip');
 
@@ -3826,6 +3847,30 @@ function setupSignalTooltip() {
       }
     } else {
       indTooltip.style.display = 'none';
+    }
+
+    // パターンツールチップ
+    if (param.time && patternSignals.length) {
+      const matched = patternSignals.filter(p => String(p.time) === String(param.time));
+      if (matched.length) {
+        const lines = matched.map(p =>
+          (p.side === 'buy' ? '▲ ' : '▼ ') + p.pattern
+        ).join('\n');
+        patternTooltip.textContent = lines;
+        patternTooltip.className = matched[0].side === 'sell' ? 'sell' : '';
+        const rect = chartContainer.getBoundingClientRect();
+        let x = rect.left + param.point.x + 14;
+        let y = rect.top  + param.point.y - 36;
+        if (x + 230 > window.innerWidth) x = rect.left + param.point.x - 234;
+        if (y < 0) y = rect.top + param.point.y + 10;
+        patternTooltip.style.left    = x + 'px';
+        patternTooltip.style.top     = y + 'px';
+        patternTooltip.style.display = 'block';
+      } else {
+        patternTooltip.style.display = 'none';
+      }
+    } else {
+      patternTooltip.style.display = 'none';
     }
 
     if (!showSignals || !aiSignals.length || !param.point || !param.time) {
