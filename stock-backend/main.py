@@ -2119,7 +2119,176 @@ def _scrape_all_analyst(symbol: str) -> dict:
     except Exception as e:
         sources.append({"source": "みんかぶ", "url": f"https://minkabu.jp/stock/{symbol}/analyst_consensus", "error": str(e), "entries": [], "history": []})
 
+    # --- 株予報Pro ---
+    try:
+        ky = _scrape_kabuyoho_analyst(symbol)
+        if ky:
+            sources.append(ky)
+    except Exception as e:
+        sources.append({"source": "株予報Pro", "url": f"https://kabuyoho.jp/reportTarget?bcode={symbol}", "error": str(e), "entries": []})
+
+    # --- IFIS株予報 ---
+    try:
+        ifis = _scrape_ifis_analyst(symbol)
+        if ifis:
+            sources.append(ifis)
+    except Exception as e:
+        sources.append({"source": "IFIS株予報", "url": f"https://kabuyoho.ifis.co.jp/index.php?action=tp1&sa=report_pbr&bcode={symbol}", "error": str(e), "entries": []})
+
     return {"symbol": symbol, "sources": sources}
+
+
+def _scrape_kabuyoho_analyst(code: str) -> dict:
+    """株予報Pro アナリスト目標株価ページをスクレイピング"""
+    url = f"https://kabuyoho.jp/reportTarget?bcode={code}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "ja,en;q=0.9",
+    }
+    resp = _requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    html = resp.text
+
+    result = {
+        "source": "株予報Pro",
+        "url": url,
+        "date": None,
+        "consensus_price": None,
+        "price_change_pct": None,
+        "divergence_pct": None,
+        "consensus_rating": None,
+        "analyst_count": None,
+        "breakdown": {},
+        "history": [],
+        "entries": [],
+    }
+
+    def clean_cell(c):
+        return _re.sub(r'<[^>]+>', '', c).strip().replace('\xa0', '').replace('  ', ' ')
+
+    tbodies = _re.findall(r'<tbody[^>]*>(.*?)</tbody>', html, _re.DOTALL)
+
+    # tbody[0]: 目標株価平均 / 対前週変化率 / 対株価かい離
+    if len(tbodies) > 0:
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[0], _re.DOTALL)
+        if rows:
+            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', rows[0], _re.DOTALL)
+            clean = [clean_cell(c) for c in cells]
+            if clean:
+                p = _re.search(r'([\d,]+)円', clean[0])
+                if p:
+                    result["consensus_price"] = int(p.group(1).replace(',', ''))
+                if len(clean) > 1:
+                    result["price_change_pct"] = clean[1]
+                if len(clean) > 2:
+                    result["divergence_pct"] = clean[2]
+
+    # tbody[1]: レーティング平均 / アナリスト数
+    if len(tbodies) > 1:
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[1], _re.DOTALL)
+        for row in rows:
+            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, _re.DOTALL)
+            c = [clean_cell(x) for x in cells]
+            if len(c) >= 2:
+                if 'レーティング' in c[0]:
+                    result["consensus_rating"] = c[1]
+                elif 'アナリスト数' in c[0]:
+                    result["analyst_count"] = c[1]
+
+    # tbody[2]: 内訳（強気/やや強気/中立/やや弱気/弱気）
+    if len(tbodies) > 2:
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[2], _re.DOTALL)
+        for row in rows:
+            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, _re.DOTALL)
+            c = [clean_cell(x) for x in cells]
+            if len(c) >= 2 and c[0] and c[1]:
+                result["breakdown"][c[0]] = c[1]
+
+    return result
+
+
+def _scrape_ifis_analyst(code: str) -> dict:
+    """IFIS株予報 アナリスト予想ページをスクレイピング"""
+    url = f"https://kabuyoho.ifis.co.jp/index.php?action=tp1&sa=report_pbr&bcode={code}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "ja,en;q=0.9",
+    }
+    resp = _requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    html = resp.text
+
+    result = {
+        "source": "IFIS株予報",
+        "url": url,
+        "date": None,
+        "consensus_rating": None,
+        "consensus_price": None,
+        "analyst_count": None,
+        "breakdown": {},
+        "recent_changes": [],   # 最近のレーティング変更ニュース
+        "entries": [],
+    }
+
+    def clean_cell(c):
+        return _re.sub(r'\s+', ' ', _re.sub(r'<[^>]+>', '', c)).strip().replace('\xa0', '')
+
+    tbodies = _re.findall(r'<tbody[^>]*>(.*?)</tbody>', html, _re.DOTALL)
+
+    # tbody[0]: 株価/レーティング星/業種/更新日
+    if len(tbodies) > 0:
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[0], _re.DOTALL)
+        if rows:
+            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', rows[0], _re.DOTALL)
+            c = [clean_cell(x) for x in cells]
+            # 更新日
+            date_m = _re.search(r'更新日：(\d{4}/\d{2}/\d{2})', ' '.join(c))
+            if date_m:
+                result["date"] = date_m.group(1)
+
+    # tbody[1]: レーティング（★表示＋テキスト）
+    if len(tbodies) > 1:
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[1], _re.DOTALL)
+        if rows:
+            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', rows[0], _re.DOTALL)
+            c = [clean_cell(x) for x in cells]
+            if c:
+                # 例: "★★★★☆ やや強気"
+                rating_m = _re.search(r'(やや強気|強気|やや弱気|弱気|中立)', c[0])
+                if rating_m:
+                    result["consensus_rating"] = rating_m.group(1)
+
+    # tbody[5]: 内訳（強気/やや強気/中立/やや弱気/弱気 N人）
+    if len(tbodies) > 5:
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[5], _re.DOTALL)
+        total = 0
+        for row in rows:
+            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, _re.DOTALL)
+            c = [clean_cell(x) for x in cells]
+            if len(c) >= 2 and c[0]:
+                cnt_m = _re.search(r'(\d+)', c[1])
+                if cnt_m:
+                    cnt = int(cnt_m.group(1))
+                    result["breakdown"][c[0]] = cnt
+                    total += cnt
+        result["analyst_count"] = f"{total}人"
+
+    # tbody[7]: 最近のレーティング変更（日付 + テキスト）
+    if len(tbodies) > 7:
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[7], _re.DOTALL)
+        for row in rows[:5]:
+            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, _re.DOTALL)
+            c = [clean_cell(x) for x in cells]
+            if len(c) >= 2 and c[0] and c[1]:
+                # 目標株価を本文から抽出
+                target_m = _re.search(r'目標株価.*?([\d,]+)円', c[1])
+                result["recent_changes"].append({
+                    "date": c[0],
+                    "text": c[1],
+                    "target": int(target_m.group(1).replace(',','')) if target_m else None,
+                })
+
+    return result
 
 
 def _scrape_minkabu_analyst(code: str) -> dict:

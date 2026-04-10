@@ -4267,29 +4267,60 @@ function renderAnalyst(d) {
 
       // ── 内訳バー ──
       if (src.breakdown && Object.keys(src.breakdown).length > 0) {
-        const bdColors = {'強気買い':'#22c55e','買い':'#86efac','中立':'#facc15','売り':'#fca5a5','強気売り':'#ef4444'};
-        const total = Object.values(src.breakdown).reduce((a,b) => a+b, 0);
+        const bdColors = {'強気買い':'#22c55e','強気':'#22c55e','買い':'#86efac','やや強気':'#86efac','中立':'#facc15','やや弱気':'#fca5a5','売り':'#fca5a5','弱気':'#ef4444','強気売り':'#ef4444'};
+        const vals = Object.values(src.breakdown);
+        const total = vals.reduce((a,b) => (typeof b === 'number' ? a+b : a+parseInt(b)||0), 0);
+        const totalLabel = src.analyst_count || `${total}人`;
         html += `<div style="padding:12px 16px;border-bottom:1px solid var(--border);">
-          <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">アナリスト内訳 (合計${total}人)</div>
+          <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">アナリスト内訳 (${totalLabel})</div>
           <div style="display:flex;height:16px;border-radius:4px;overflow:hidden;margin-bottom:8px;">`;
         for (const [label, cnt] of Object.entries(src.breakdown)) {
-          const pct = (cnt / total * 100).toFixed(1);
-          html += `<div style="width:${pct}%;background:${bdColors[label]||'#888'};position:relative;" title="${label}: ${cnt}人"></div>`;
+          const n = typeof cnt === 'number' ? cnt : parseInt(cnt) || 0;
+          if (!n || !total) continue;
+          const pct = (n / total * 100).toFixed(1);
+          html += `<div style="width:${pct}%;background:${bdColors[label]||'#888'};" title="${label}: ${cnt}"></div>`;
         }
         html += `</div><div style="display:flex;gap:12px;flex-wrap:wrap;">`;
         for (const [label, cnt] of Object.entries(src.breakdown)) {
           html += `<span style="font-size:11px;display:flex;align-items:center;gap:4px;">
             <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${bdColors[label]||'#888'};"></span>
             <span style="color:var(--text2);">${label}</span>
-            <span style="color:var(--text);font-weight:600;">${cnt}人</span>
+            <span style="color:var(--text);font-weight:600;">${cnt}</span>
           </span>`;
         }
         html += `</div></div>`;
       }
 
-      // ── 推移テーブル ──
+      // ── 株予報Pro 追加情報 ──
+      if (src.source === '株予報Pro') {
+        const rows2 = [];
+        if (src.price_change_pct) rows2.push(['対前週変化率', src.price_change_pct]);
+        if (src.divergence_pct) rows2.push(['対株価かい離', src.divergence_pct]);
+        if (rows2.length) {
+          html += `<div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:24px;flex-wrap:wrap;">`;
+          for (const [k,v] of rows2) {
+            html += `<div><span style="font-size:10px;color:var(--text2);">${k}：</span><span style="font-size:13px;font-weight:600;color:var(--text);">${v}</span></div>`;
+          }
+          html += `</div>`;
+        }
+      }
+
+      // ── IFIS 最近のレーティング変更 ──
+      if (src.source === 'IFIS株予報' && src.recent_changes && src.recent_changes.length > 0) {
+        html += `<div style="padding:12px 16px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:8px;">最近のレーティング変更</div>`;
+        for (const ch of src.recent_changes) {
+          html += `<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;gap:10px;align-items:flex-start;">
+            <span style="font-size:11px;color:var(--text2);white-space:nowrap;min-width:72px;">${ch.date}</span>
+            <span style="font-size:12px;color:var(--text);flex:1;">${ch.text}</span>
+            ${ch.target ? `<span style="font-size:12px;font-weight:700;color:var(--accent);white-space:nowrap;">¥${ch.target.toLocaleString()}</span>` : ''}
+          </div>`;
+        }
+        html += `</div>`;
+      }
+
+      // ── みんかぶ コンセンサス推移テーブル ──
       if (src.history && src.history.length > 0) {
-        // history: [{period, label, value}, ...]  を label x period のグリッドに変換
         const periods = [...new Set(src.history.map(h => h.period))];
         const labels  = [...new Set(src.history.map(h => h.label))];
         const map = {};
