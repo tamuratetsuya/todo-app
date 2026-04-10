@@ -3713,14 +3713,27 @@ function setupSimulationClick() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') exitSimulation(); });
 }
 
+let _simSavedLogRange = null;
+
 function enterSimulation(idx) {
   simCutoffIdx = idx;
+  _simSavedLogRange = chart.timeScale().getVisibleLogicalRange();
 
   const sliced = candleData.slice(0, idx + 1);
   candleSeries.setData(sliced.map(d => ({...d})));
   applyIndicatorsForData(sliced);
   applySubChart(currentSubChart, sliced);
   applySignalMarkersForTime(candleData[idx].time);
+
+  // setData後にLWCが内部でリセットするのをrAF×2で上書き
+  if (_simSavedLogRange) {
+    const width = _simSavedLogRange.to - _simSavedLogRange.from;
+    const to   = sliced.length - 1;
+    const from = to - width;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try { chart.timeScale().setVisibleLogicalRange({ from, to }); } catch(e) {}
+    }));
+  }
 
   document.getElementById('simBannerText').textContent =
     `シミュレーション中: ${candleData[idx].time} まで表示`;
@@ -3729,12 +3742,20 @@ function enterSimulation(idx) {
 
 function exitSimulation() {
   if (simCutoffIdx === null) return;
+  const savedRange = _simSavedLogRange;
   simCutoffIdx = null;
+  _simSavedLogRange = null;
 
   candleSeries.setData(candleData.map(d => ({...d})));
   applyIndicators();
   applySubChart(currentSubChart, candleData);
   applySignalMarkers();
+
+  if (savedRange) {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try { chart.timeScale().setVisibleLogicalRange(savedRange); } catch(e) {}
+    }));
+  }
 
   document.getElementById('simBanner').style.display = 'none';
 }
