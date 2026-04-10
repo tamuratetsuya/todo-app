@@ -1260,6 +1260,10 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
         財務
       </button>
+      <button class="analysis-tab" id="tabAnalyst" onclick="switchAnalysisTab('analyst')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        アナリスト予想
+      </button>
     </div>
   </div>
   <div class="viewpoints-bar" id="viewpointsBar" style="display:none;">
@@ -1319,6 +1323,7 @@
   <div class="analysis-body" id="xBody" style="display:none;"></div>
   <div class="analysis-body" id="holdersBody" style="display:none;"></div>
   <div class="analysis-body" id="financialsBody" style="display:none;"></div>
+  <div class="analysis-body" id="analystBody" style="display:none;"></div>
 </div>
 
 <div id="dragOverlay">CSVファイルをドロップ</div>
@@ -2681,7 +2686,7 @@ function selectSymbol(code) {
   currentSymbol = code;
   stockSelect.value = code;
   aiSignals = [];  // 銘柄変更時にシグナルリセット
-  xLoadedSymbol = ''; holdersLoadedSymbol = ''; financialsLoadedSymbol = '';
+  xLoadedSymbol = ''; holdersLoadedSymbol = ''; financialsLoadedSymbol = ''; analystLoadedSymbol = '';
   for (const s of stopLossSeries) { try { chart.removeSeries(s); } catch(e) {} }
   stopLossSeries = [];
   renderPnl();
@@ -3697,7 +3702,7 @@ let currentNewsTab = 'rules';
 
 function switchAnalysisTab(tab) {
   currentNewsTab = tab;
-  ['rules','news','x','holders','financials'].forEach(t => {
+  ['rules','news','x','holders','financials','analyst'].forEach(t => {
     const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (el) el.classList.toggle('active', t === tab);
   });
@@ -3706,10 +3711,12 @@ function switchAnalysisTab(tab) {
   document.getElementById('xBody').style.display           = tab === 'x'          ? '' : 'none';
   document.getElementById('holdersBody').style.display     = tab === 'holders'    ? '' : 'none';
   document.getElementById('financialsBody').style.display  = tab === 'financials' ? '' : 'none';
+  document.getElementById('analystBody').style.display     = tab === 'analyst'    ? '' : 'none';
   if (tab === 'news')       loadNews();
   if (tab === 'x')          loadXPosts();
   if (tab === 'holders')    loadHolders();
   if (tab === 'financials') loadFinancials();
+  if (tab === 'analyst')    loadAnalyst();
 }
 
 // ===== X投稿タブ =====
@@ -4098,6 +4105,145 @@ function renderFinancials(d) {
     ${fyYear ? `<div style="font-size:10px;color:var(--text2);text-align:right;margin-bottom:8px;">※チャートは${fyYear}年${fyMonth}月期時点</div>` : ''}
   </div>`;
 
+  body.innerHTML = html;
+}
+
+// ===== アナリスト予想タブ =====
+let analystLoadedSymbol = '';
+async function loadAnalyst() {
+  const sym = currentSymbol;
+  if (!sym) return;
+  const body = document.getElementById('analystBody');
+  if (analystLoadedSymbol === sym) return;
+  analystLoadedSymbol = sym;
+  body.innerHTML = '<div style="padding:20px;color:var(--text2);font-size:13px;">取得中...</div>';
+  try {
+    const res = await fetch(`${API}/analyst?symbol=${encodeURIComponent(sym)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    renderAnalyst(d);
+  } catch(e) {
+    analystLoadedSymbol = '';
+    body.innerHTML = `<div style="padding:20px;color:var(--red);font-size:13px;">取得失敗: ${e.message}</div>`;
+  }
+}
+
+function renderAnalyst(d) {
+  const body = document.getElementById('analystBody');
+  if (!d.sources || !d.sources.length) {
+    body.innerHTML = '<div style="padding:20px;color:var(--text2);font-size:13px;">データなし</div>';
+    return;
+  }
+
+  const ratingColor = r => {
+    if (!r) return 'var(--text2)';
+    if (/強気買い|強気|買い|Buy|Outperform|OP|Overweight|OW/i.test(r)) return '#4ade80';
+    if (/強気売り|弱気売り|売り|Sell|Underperform|UP|Underweight|UW/i.test(r)) return '#f87171';
+    if (/中立|Neutral|Hold|NR|MP|Market/i.test(r)) return '#facc15';
+    return 'var(--text)';
+  };
+
+  let html = `<div style="padding:14px 16px 20px;font-size:12px;color:var(--text);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-size:15px;font-weight:700;">${currentSymbol} アナリスト予想</div>
+    </div>`;
+
+  for (const src of d.sources) {
+    html += `<div style="margin-bottom:20px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">`;
+    html += `<div style="background:var(--bg3);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);">
+      <div style="font-size:13px;font-weight:700;color:var(--text);">${src.source}${src.date ? `<span style="font-size:10px;color:var(--text2);font-weight:400;margin-left:8px;">${src.date} 時点</span>` : ''}</div>
+      <a href="${src.url}" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;">${src.source}で見る →</a>
+    </div>`;
+
+    if (src.error) {
+      html += `<div style="padding:12px 14px;color:var(--text2);font-size:12px;">取得失敗: ${src.error}</div>`;
+    } else {
+      // ── コンセンサスサマリー ──
+      html += `<div style="padding:14px 16px;display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end;border-bottom:1px solid var(--border);">`;
+
+      if (src.consensus_rating) {
+        html += `<div>
+          <div style="font-size:10px;color:var(--text2);margin-bottom:4px;">コンセンサス評価</div>
+          <div style="font-size:22px;font-weight:700;color:${ratingColor(src.consensus_rating)};">${src.consensus_rating}</div>
+        </div>`;
+      }
+      if (src.consensus_price) {
+        html += `<div>
+          <div style="font-size:10px;color:var(--text2);margin-bottom:4px;">目標株価</div>
+          <div style="font-size:22px;font-weight:700;color:var(--accent);">¥${src.consensus_price.toLocaleString()}</div>
+        </div>`;
+      }
+      if (src.price_diff != null) {
+        const col = src.price_diff >= 0 ? '#4ade80' : '#f87171';
+        html += `<div>
+          <div style="font-size:10px;color:var(--text2);margin-bottom:4px;">現在株価との差</div>
+          <div style="font-size:16px;font-weight:700;color:${col};">${src.price_diff >= 0 ? '+' : ''}${src.price_diff.toLocaleString()}円</div>
+        </div>`;
+      }
+      if (src.upside_pct != null) {
+        const col = src.upside_pct >= 0 ? '#4ade80' : '#f87171';
+        html += `<div>
+          <div style="font-size:10px;color:var(--text2);margin-bottom:4px;">上昇余地</div>
+          <div style="font-size:16px;font-weight:700;color:${col};">+${src.upside_pct}%</div>
+        </div>`;
+      }
+      html += `</div>`;
+
+      // ── 内訳バー ──
+      if (src.breakdown && Object.keys(src.breakdown).length > 0) {
+        const bdColors = {'強気買い':'#22c55e','買い':'#86efac','中立':'#facc15','売り':'#fca5a5','強気売り':'#ef4444'};
+        const total = Object.values(src.breakdown).reduce((a,b) => a+b, 0);
+        html += `<div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+          <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">アナリスト内訳 (合計${total}人)</div>
+          <div style="display:flex;height:16px;border-radius:4px;overflow:hidden;margin-bottom:8px;">`;
+        for (const [label, cnt] of Object.entries(src.breakdown)) {
+          const pct = (cnt / total * 100).toFixed(1);
+          html += `<div style="width:${pct}%;background:${bdColors[label]||'#888'};position:relative;" title="${label}: ${cnt}人"></div>`;
+        }
+        html += `</div><div style="display:flex;gap:12px;flex-wrap:wrap;">`;
+        for (const [label, cnt] of Object.entries(src.breakdown)) {
+          html += `<span style="font-size:11px;display:flex;align-items:center;gap:4px;">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${bdColors[label]||'#888'};"></span>
+            <span style="color:var(--text2);">${label}</span>
+            <span style="color:var(--text);font-weight:600;">${cnt}人</span>
+          </span>`;
+        }
+        html += `</div></div>`;
+      }
+
+      // ── 推移テーブル ──
+      if (src.history && src.history.length > 0) {
+        // history: [{period, label, value}, ...]  を label x period のグリッドに変換
+        const periods = [...new Set(src.history.map(h => h.period))];
+        const labels  = [...new Set(src.history.map(h => h.label))];
+        const map = {};
+        for (const h of src.history) map[`${h.label}___${h.period}`] = h.value;
+
+        html += `<div style="padding:12px 16px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:8px;">コンセンサス推移</div>
+          <div style="overflow-x:auto;">
+          <table style="border-collapse:collapse;font-size:12px;width:100%;">
+            <thead><tr style="background:var(--bg3);">
+              <th style="padding:6px 10px;text-align:left;color:var(--text2);font-weight:500;border-bottom:1px solid var(--border);"></th>`;
+        for (const p of periods) html += `<th style="padding:6px 10px;text-align:right;color:var(--text2);font-weight:500;border-bottom:1px solid var(--border);">${p}</th>`;
+        html += `</tr></thead><tbody>`;
+        for (const label of labels) {
+          html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+            <td style="padding:6px 10px;color:var(--text2);">${label}</td>`;
+          for (const p of periods) {
+            const v = map[`${label}___${p}`] || '-';
+            const col = label === '評価' ? ratingColor(v) : 'var(--text)';
+            html += `<td style="padding:6px 10px;text-align:right;color:${col};font-weight:${label==='評価'?'700':'400'};">${v}</td>`;
+          }
+          html += `</tr>`;
+        }
+        html += `</tbody></table></div></div>`;
+      }
+    }
+    html += `</div>`;
+  }
+
+  html += `</div>`;
   body.innerHTML = html;
 }
 

@@ -145,6 +145,15 @@ def init_db():
                 UNIQUE KEY uq_fav (symbol)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS analyst_cache (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                data MEDIUMTEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_analyst (symbol)
+            )
+        """)
     conn.commit()
     conn.close()
 
@@ -2068,6 +2077,125 @@ def get_holders(symbol: str = Query(...)):
         raise HTTPException(500, str(e))
     finally:
         conn.close()
+
+
+@app.get("/analyst")
+def get_analyst(symbol: str = Query(...)):
+    """アナリスト予想を複数サイトから取得"""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data, updated_at FROM analyst_cache WHERE symbol=%s", (symbol,))
+            row = cur.fetchone()
+            if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 10800:
+                return json.loads(row["data"])
+
+        result = _scrape_all_analyst(symbol)
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO analyst_cache (symbol,data) VALUES (%s,%s) ON DUPLICATE KEY UPDATE data=%s,updated_at=NOW()",
+                (symbol, json.dumps(result, ensure_ascii=False), json.dumps(result, ensure_ascii=False))
+            )
+        conn.commit()
+        return result
+    except Exception as e:
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+def _scrape_all_analyst(symbol: str) -> dict:
+    sources = []
+
+    # --- みんかぶ アナリストコンセンサス ---
+    try:
+        mk = _scrape_minkabu_analyst(symbol)
+        if mk:
+            sources.append(mk)
+    except Exception as e:
+        sources.append({"source": "みんかぶ", "url": f"https://minkabu.jp/stock/{symbol}/analyst_consensus", "error": str(e), "entries": [], "history": []})
+
+    return {"symbol": symbol, "sources": sources}
+
+
+def _scrape_minkabu_analyst(code: str) -> dict:
+    """みんかぶ アナリストコンセンサスページをスクレイピング"""
+    url = f"https://minkabu.jp/stock/{code}/analyst_consensus"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "ja,en;q=0.9",
+    }
+    resp = _requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    html = resp.text
+
+    result = {
+        "source": "みんかぶ",
+        "url": url,
+        "date": None,
+        "consensus_rating": None,
+        "consensus_price": None,
+        "price_diff": None,
+        "upside_pct": None,
+        "breakdown": {},   # 強気買い/買い/中立/売り/強気売り の人数
+        "history": [],     # 3ヶ月前/1ヶ月前/1週間前/最新 の推移
+        "entries": [],
+    }
+
+    # 日付 (2026/04/10)
+    date_m = _re.search(r'アナリスト予想<br><span[^>]*>\((\d{4}/\d{2}/\d{2})\)</span>', html)
+    if date_m:
+        result["date"] = date_m.group(1)
+
+    # コンセンサス評価 (買い/中立/売り等)
+    rating_m = _re.search(r'<span class="value">([^<]+)</span>', html)
+    if not rating_m:
+        rating_m = _re.search(r'md_picksPlate[^>]+>.*?<span[^>]*>([^<]+)</span>', html, _re.DOTALL)
+    if rating_m:
+        result["consensus_rating"] = rating_m.group(1).strip()
+
+    # 目標株価（複数パターン対応）
+    price_m = (_re.search(r'<span[^>]*fsxxl[^>]*>([\d,]+)</span>', html)
+               or _re.search(r'予想株価\s*([\d,]+)円', html)
+               or _re.search(r'平均目標株価は([\d,]+)円', html))
+    if price_m:
+        result["consensus_price"] = int(price_m.group(1).replace(',', ''))
+
+    # 現在株価との差
+    diff_m = _re.search(r'現在株価との差&nbsp;&nbsp;<span>([+-]?[\d.]+)&nbsp;円</span>', html)
+    if diff_m:
+        result["price_diff"] = float(diff_m.group(1).replace(',', ''))
+
+    # 上昇余地%
+    upside_m = _re.search(r'あと([\d.]+)%上昇', html)
+    if upside_m:
+        result["upside_pct"] = float(upside_m.group(1))
+
+    # 内訳 (強気買いN人、買いN人、中立N人)
+    for label in ['強気買い', '買い', '中立', '売り', '強気売り']:
+        m = _re.search(label + r'(\d+)人', html)
+        if m:
+            result["breakdown"][label] = int(m.group(1))
+
+    # 推移テーブル (tbody[0]: 3ヶ月前/1ヶ月前/1週間前/最新)
+    tbodies = _re.findall(r'<tbody[^>]*>(.*?)</tbody>', html, _re.DOTALL)
+    if tbodies:
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', tbodies[0], _re.DOTALL)
+        # ヘッダー行から時期ラベルを取得
+        header_cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', rows[0], _re.DOTALL) if rows else []
+        periods = [_re.sub(r'<[^>]+>', '', c).strip() for c in header_cells][1:]  # 先頭空列を除く
+        for row in rows[1:]:
+            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, _re.DOTALL)
+            clean = [_re.sub(r'<[^>]+>', '', c).strip() for c in cells]
+            if len(clean) >= 2:
+                label = clean[0]
+                values = clean[1:]
+                for i, period in enumerate(periods):
+                    if i < len(values):
+                        result["history"].append({"period": period, "label": label, "value": values[i]})
+
+    return result
 
 
 @app.get("/financials")
