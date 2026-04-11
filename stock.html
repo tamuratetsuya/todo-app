@@ -2230,11 +2230,11 @@ function applyIndicators() {
   if (document.getElementById('chkIchi').checked) {
     const { tenkan, kijun, spanAArr, spanBArr, chikou, extTimes } = calcIchimoku(highs, lows, closes, times, isDate);
 
-    const sTenkan = chart.addLineSeries({ color: '#e11d48', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    const sTenkan = chart.addLineSeries({ color: '#e11d48', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
     sTenkan.setData(makePoints(tenkan));
     indicatorSeries.push({ series: sTenkan, label: '転換線（9日）' });
 
-    const sKijun = chart.addLineSeries({ color: '#2563eb', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    const sKijun = chart.addLineSeries({ color: '#2563eb', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
     sKijun.setData(makePoints(kijun));
     indicatorSeries.push({ series: sKijun, label: '基準線（26日）' });
 
