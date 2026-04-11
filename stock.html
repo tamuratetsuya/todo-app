@@ -2981,6 +2981,18 @@ function renderPnl() {
   }
 
   pnlBody.appendChild(table);
+
+  // 価格未取得の銘柄をまとめてフェッチ
+  const missing = allRows.map(r => r.code).filter(c => stockPrices[c] == null);
+  if (missing.length) {
+    fetch(`${API}/prices?symbols=${encodeURIComponent(missing.join(','))}`)
+      .then(r => r.json())
+      .then(data => {
+        Object.assign(stockPrices, data);
+        renderPnl();
+      })
+      .catch(() => {});
+  }
 }
 
 function renderTrades() {

@@ -1493,6 +1493,27 @@ US_ECON_EVENTS = [
 ]
 
 
+@app.get("/prices")
+def get_prices(symbols: str = Query(...)):
+    """カンマ区切りの銘柄コードの最新終値を一括返却"""
+    codes = [s.strip() for s in symbols.split(",") if s.strip()]
+    conn = get_conn()
+    result = {}
+    try:
+        with conn.cursor() as cur:
+            for code in codes:
+                cur.execute(
+                    "SELECT close FROM candles WHERE symbol=%s AND interval_type='1d' ORDER BY candle_time DESC LIMIT 1",
+                    (code,)
+                )
+                row = cur.fetchone()
+                if row:
+                    result[code] = float(row[0])
+    finally:
+        conn.close()
+    return result
+
+
 @app.get("/events")
 def get_events(
     symbol: str = Query(...),
