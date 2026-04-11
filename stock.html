@@ -1421,7 +1421,6 @@ let stockNames = {};    // { code: name }
 let currentSymbol = '';
 let currentInterval = '1d';
 let candleData = [];    // raw candle array from API
-let stockPrices = {};  // code -> latest close price
 let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
@@ -2623,8 +2622,6 @@ async function loadChart() {
     }
 
     candleData = data;
-    stockPrices[currentSymbol] = data[data.length - 1].close;
-    renderPnl();
     noDataMsg.style.display = 'none';
 
     // Update chart time scale
@@ -2949,8 +2946,7 @@ function renderPnl() {
     nameDiv.style.alignItems = 'center';
     nameDiv.appendChild(favBtn);
     const nameText = document.createElement('span');
-    const shortName = r.name.length > 7 ? r.name.slice(0, 7) + '…' : r.name;
-    nameText.innerHTML = esc(shortName) + (r.isPartial ? ' <span style="font-size:10px;color:var(--text2)">(一部)</span>' : '');
+    nameText.innerHTML = esc(r.name) + (r.isPartial ? ' <span style="font-size:10px;color:var(--text2)">(一部保有中)</span>' : '');
     nameDiv.appendChild(nameText);
     tdName.appendChild(nameDiv);
     const codeDiv = document.createElement('div');
@@ -2959,13 +2955,6 @@ function renderPnl() {
     codeDiv.textContent = r.code;
     tdName.appendChild(codeDiv);
     tr.appendChild(tdName);
-
-    // 現在株価
-    const tdPrice = document.createElement('td');
-    tdPrice.style.cssText = 'text-align:right;font-size:12px;color:var(--text);white-space:nowrap;padding:7px 6px;';
-    const p = stockPrices[r.code];
-    tdPrice.textContent = p != null ? Number(p).toLocaleString('ja-JP') : '—';
-    tr.appendChild(tdPrice);
 
     const td = document.createElement('td');
     if (r.type === 'pnl') {
