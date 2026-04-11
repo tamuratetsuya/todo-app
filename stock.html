@@ -1909,7 +1909,7 @@ function renderPatternSection() {
   function rows(list) {
     return list.map(p => {
       const desc = PATTERN_DESC[p.pattern] || '';
-      return `<li style="margin-bottom:6px;"><b>${p.pattern}</b>${desc ? `<br><span style="color:var(--text2);font-size:10px;">${desc}</span>` : ''}</li>`;
+      return `<li style="margin-bottom:6px;"><b>${p.pattern}</b>${desc ? `　<span style="color:var(--text2);">${desc}</span>` : ''}</li>`;
     }).join('');
   }
   el.innerHTML =
