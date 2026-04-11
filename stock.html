@@ -1183,10 +1183,6 @@
       </div>
       <div id="signalTooltip"></div>
       <div id="patternTooltip"></div>
-      <div id="simBanner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:200;background:rgba(30,40,60,0.92);border:1px solid #f59e0b;border-radius:8px;padding:6px 14px;font-size:12px;color:#f59e0b;display:none;align-items:center;gap:10px;white-space:nowrap;pointer-events:auto;">
-        <span id="simBannerText"></span>
-        <button onclick="exitSimulation()" style="background:#f59e0b;color:#0d1117;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;font-weight:600;">解除</button>
-      </div>
       <div id="refreshBadge" style="position:absolute;bottom:8px;right:8px;z-index:100;font-size:10px;color:var(--text2);background:rgba(13,17,23,0.7);padding:2px 7px;border-radius:4px;pointer-events:none;"></div>
       <div id="indTooltip"></div>
       <div id="eventMarkerLayer"></div>
@@ -1548,7 +1544,6 @@ function initChart() {
   setupSignalTooltip();
   setupCandleLegend();
   initEventMarkerSubscription();
-  setupSimulationClick();
 }
 
 // ========== サブチャート（出来高 / MACD / HV）==========
@@ -3012,8 +3007,6 @@ function esc(s) {
 
 // ===== SELECT SYMBOL =====
 function selectSymbol(code) {
-  simCutoffIdx = null;
-  document.getElementById('simBanner').style.display = 'none';
   currentSymbol = code;
   stockSelect.value = code;
   aiSignals = [];  // 銘柄変更時にシグナルリセット
@@ -3706,139 +3699,7 @@ let _backendScores = {};  // バックエンドスコアの原本
 let patternSignals = [];  // チャートパターン検出結果
 let showSignals = false;
 let stopLossSeries = [];
-let simCutoffIdx = null; // シミュレーション: このインデックス以降を非表示
 
-function setupSimulationClick() {
-  if (!chart) return;
-  chart.subscribeClick(param => {
-    if (!param.time || !candleData.length) return;
-    const idx = candleData.findIndex(c => c.time === param.time);
-    if (idx < 0) return;
-    // 同じ足を再クリックで解除
-    if (simCutoffIdx === idx) {
-      exitSimulation();
-    } else {
-      enterSimulation(idx);
-    }
-  });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') exitSimulation(); });
-}
-
-function enterSimulation(idx) {
-  simCutoffIdx = idx;
-
-  // 横軸を時刻ベースで保存（論理インデックスはデータ長が変わると無効になるため）
-  const timeRange = chart.timeScale().getVisibleRange();
-  // 縦軸の表示価格範囲を手動計算して保存
-  const visibleFrom = timeRange ? timeRange.from : null;
-  const visibleTo   = timeRange ? timeRange.to   : null;
-
-  const sliced = candleData.slice(0, idx + 1);
-  candleSeries.setData(sliced.map(d => ({...d})));
-  applyIndicatorsForData(sliced);
-  applySubChart(currentSubChart, sliced);
-  applySignalMarkersForTime(candleData[idx].time);
-
-  // setData 後に再描画を2フレーム待って時刻ベースで復元（chart内部のinvalidate rAFより後に実行するため）
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (visibleFrom !== null && visibleTo !== null) {
-        try {
-          // visibleToがスライス末尾より未来だと右側に空白が生じ縦軸がずれるためクランプ
-          const clampedTo = Math.min(visibleTo, candleData[idx].time);
-          chart.timeScale().setVisibleRange({ from: visibleFrom, to: clampedTo });
-        } catch(e) {}
-      }
-    });
-  });
-
-  const banner = document.getElementById('simBanner');
-  document.getElementById('simBannerText').textContent =
-    `シミュレーション中: ${candleData[idx].time} まで表示`;
-  banner.style.display = 'flex';
-}
-
-function exitSimulation() {
-  if (simCutoffIdx === null) return;
-
-  const timeRange = chart.timeScale().getVisibleRange();
-  simCutoffIdx = null;
-
-  candleSeries.setData(candleData.map(d => ({...d})));
-  applyIndicators();
-  applySubChart(currentSubChart, candleData);
-  applySignalMarkers();
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (timeRange) {
-        try {
-          chart.timeScale().setVisibleRange({ from: timeRange.from, to: timeRange.to });
-        } catch(e) {}
-      }
-    });
-  });
-
-  document.getElementById('simBanner').style.display = 'none';
-}
-
-function applyIndicatorsForData(data) {
-  // applyIndicators と同じだが対象データを差し替えて実行
-  const orig = candleData;
-  candleData = data;
-  applyIndicators();
-  candleData = orig;
-}
-
-function applySignalMarkersForTime(cutoffTime) {
-  if (!candleSeries) return;
-  // 損切りライン削除
-  for (const s of stopLossSeries) { try { chart.removeSeries(s); } catch(e) {} }
-  stopLossSeries = [];
-  const cutoff = String(cutoffTime);
-  const realMarkers = buildRealMarkers().filter(m => String(m.time) <= cutoff);
-  if (!showSignals || !aiSignals.length) {
-    candleSeries.setMarkers(realMarkers);
-    return;
-  }
-  const filtered = aiSignals.filter(s => String(s.time) <= cutoff);
-  const sigMarkers = filtered.map(s => ({
-    time: s.time,
-    position: s.side === 'buy' ? 'belowBar' : 'aboveBar',
-    color:    s.side === 'buy' ? '#818cf8' : '#c084fc',
-    shape:    s.side === 'buy' ? 'arrowUp' : 'arrowDown',
-    text: '', size: 2,
-  }));
-  const all = [...realMarkers, ...sigMarkers].sort((a, b) => {
-    if (typeof a.time === 'string') return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
-    return a.time - b.time;
-  });
-  candleSeries.setMarkers(all);
-  // 損切りライン（cutoff以前の買いシグナルのみ）
-  const isDate = filtered.length && typeof filtered[0].time === 'string';
-  const sorted = [...filtered].sort((a, b) => String(a.time) < String(b.time) ? -1 : 1);
-  for (let i = 0; i < sorted.length; i++) {
-    const sig = sorted[i];
-    if (sig.side !== 'buy' || !sig.stop_loss) continue;
-    const nextSell = sorted.find((s, j) => j > i && s.side === 'sell');
-    let endTime;
-    if (nextSell) { endTime = nextSell.time; }
-    else if (isDate) {
-      const d = new Date(sig.time + 'T00:00:00Z');
-      d.setUTCDate(d.getUTCDate() + 60);
-      endTime = d.toISOString().slice(0, 10);
-    } else { endTime = Number(sig.time) + 60 * 3600; }
-    // endTimeもcutoff以内に収める
-    if (String(endTime) > cutoff) endTime = cutoffTime;
-    const sl = chart.addLineSeries({
-      color: 'rgba(248,81,73,0.75)', lineWidth: 1,
-      lineStyle: LightweightCharts.LineStyle.Dashed,
-      priceLineVisible: false, lastValueVisible: false,
-    });
-    sl.setData([{ time: sig.time, value: sig.stop_loss }, { time: endTime, value: sig.stop_loss }]);
-    stopLossSeries.push(sl);
-  }
-}
 
 const signalToggleBtn = document.getElementById('signalToggleBtn');
 const signalTooltip   = document.getElementById('signalTooltip');
