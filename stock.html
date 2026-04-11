@@ -1871,17 +1871,46 @@ function buildPatternMarkers() {
   }));
 }
 
+const PATTERN_DESC = {
+  'ハンマー':           '安値圏で下ひげが長く出現。売り圧力を吸収し反転上昇を示唆',
+  '逆ハンマー':         '安値圏で上ひげが長く出現。翌日上昇確認で反転シグナル',
+  '陽の包み足':         '前日の陰線を完全に包む大陽線。強い買い転換を示す',
+  '三白兵':             '3日連続の大陽線。強い上昇トレンドの継続・転換を示す',
+  'ダブルボトム(W字)':  '安値を2回試して反発。底打ちと上昇転換のサイン',
+  '下降ウェッジ':       '下値切り上げの収束パターン。上方ブレイクで上昇転換',
+  '上昇フラッグ':       '急騰後の短期横ばい。トレンド継続の上昇シグナル',
+  '上昇三角形':         '高値横ばい・安値切り上げ。上方ブレイクで買いシグナル',
+  'レクタングル上抜け': 'レンジ上限を突破。上昇トレンド再開のシグナル',
+  '対称三角形上抜け':   '収束後に上方ブレイク。上昇方向へのトレンド確定',
+  '逆ヘッド&ショルダー':'底値での三山反転パターン。強い上昇転換シグナル',
+  'カップ&ハンドル':    'U字回復後の小調整から上昇。中長期の買いシグナル',
+  'トンカチ(首吊り線)': '高値圏で下ひげが長く出現。上昇トレンドの終わりを示唆',
+  '陰の包み足':         '前日の陽線を完全に包む大陰線。強い売り転換を示す',
+  '三羽烏':             '3日連続の大陰線。強い下降トレンドの継続・転換を示す',
+  'ダブルトップ(M字)':  '高値を2回試して失敗。天井打ちと下落転換のサイン',
+  '下降フラッグ':       '急落後の短期横ばい。トレンド継続の下落シグナル',
+  '下降三角形':         '高値切り下げ・安値横ばい。下方ブレイクで売りシグナル',
+  'レクタングル下抜け': 'レンジ下限を突破。下降トレンド再開のシグナル',
+  '対称三角形下抜け':   '収束後に下方ブレイク。下落方向へのトレンド確定',
+  'ヘッド&ショルダー':  '高値での三山反転パターン。強い下落転換シグナル',
+  '上昇ウェッジ':       '上値切り下がりの収束パターン。下方ブレイクで下落転換',
+};
+
 function renderPatternSection() {
   const el = document.getElementById('patternSection');
   if (!el) return;
   if (!patternSignals.length) { el.innerHTML = ''; return; }
   const recent = [...patternSignals].sort((a,b) => String(b.time) > String(a.time) ? -1 : 1).slice(0, 30);
-  const buys  = recent.filter(p => p.side === 'buy');
-  const sells = recent.filter(p => p.side === 'sell');
+  // パターン名の重複を除去（同じパターンは最初の1件のみ）
+  const seen = new Set();
+  const unique = recent.filter(p => { if (seen.has(p.pattern)) return false; seen.add(p.pattern); return true; });
+  const buys  = unique.filter(p => p.side === 'buy');
+  const sells = unique.filter(p => p.side === 'sell');
   function rows(list) {
-    return list.slice(0, 8).map(p =>
-      `<li><b>${p.pattern}</b> <span style="color:var(--text2);font-size:10px;">${p.time}</span></li>`
-    ).join('');
+    return list.map(p => {
+      const desc = PATTERN_DESC[p.pattern] || '';
+      return `<li style="margin-bottom:6px;"><b>${p.pattern}</b>${desc ? `<br><span style="color:var(--text2);font-size:10px;">${desc}</span>` : ''}</li>`;
+    }).join('');
   }
   el.innerHTML =
     `<div style="font-weight:600;margin-bottom:6px;color:var(--accent);">チャートパターン検出（各+2pt / -2pt）</div>` +
