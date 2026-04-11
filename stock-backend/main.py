@@ -1499,6 +1499,7 @@ def get_prices(symbols: str = Query(...)):
     codes = [s.strip() for s in symbols.split(",") if s.strip()]
     conn = get_conn()
     result = {}
+    missing = []
     try:
         with conn.cursor() as cur:
             for code in codes:
@@ -1509,8 +1510,22 @@ def get_prices(symbols: str = Query(...)):
                 row = cur.fetchone()
                 if row:
                     result[code] = float(row[0])
+                else:
+                    missing.append(code)
     finally:
         conn.close()
+
+    # DBにない銘柄はyfinanceから直接取得
+    for code in missing:
+        try:
+            suffix = "" if "." in code else ".T"
+            ticker = yf.Ticker(code + suffix)
+            hist = ticker.history(period="5d", interval="1d")
+            if not hist.empty:
+                result[code] = float(hist["Close"].iloc[-1])
+        except Exception:
+            pass
+
     return result
 
 
