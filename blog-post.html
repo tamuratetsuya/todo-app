@@ -227,6 +227,24 @@
     .copy-btn:hover { color: var(--green); border-color: var(--green-dim); }
     .copy-btn.copied { color: var(--green); border-color: var(--green-dim); background: rgba(26,122,62,0.08); }
 
+    .tts-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text-muted);
+      margin-right: 12px;
+      padding: 4px 10px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .tts-btn:hover { color: var(--green); border-color: var(--green-dim); }
+    .tts-btn.playing { color: var(--green); border-color: var(--green-dim); background: rgba(26,122,62,0.08); }
+
     .delete-btn, .edit-btn {
       background: none;
       border: none;
@@ -709,6 +727,10 @@
           <div class="article-text" id="article-body"></div>
           <div class="link-cards" id="link-cards"></div>
           <div class="article-actions">
+            <button class="tts-btn" id="tts-btn" onclick="toggleTts()">
+              <svg id="tts-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span id="tts-label">読み上げ</span>
+            </button>
             <button class="copy-btn" id="copy-${p.id}" onclick="copyText(${p.id}, \`${escapeHtml(p.body)}\`)">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               コピー
@@ -896,6 +918,54 @@
     if (/<[a-z][\s\S]*>/i.test(body)) return body;
     return body.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
   }
+
+  // ── 読み上げ ──
+  let ttsPlaying = false;
+  let ttsText = '';
+
+  function getTtsText() {
+    const titleEl = document.querySelector('.article-title');
+    const bodyEl  = document.getElementById('article-body');
+    const title   = titleEl ? titleEl.textContent.trim() : '';
+    const body    = bodyEl  ? bodyEl.innerText.trim()    : '';
+    return title ? `${title}。${body}` : body;
+  }
+
+  function speakOnce() {
+    if (!ttsPlaying) return;
+    const utter = new SpeechSynthesisUtterance(ttsText);
+    utter.lang  = 'ja-JP';
+    utter.rate  = 1.0;
+    utter.onend = () => { if (ttsPlaying) speakOnce(); };
+    speechSynthesis.speak(utter);
+  }
+
+  function toggleTts() {
+    if (ttsPlaying) {
+      // 停止
+      ttsPlaying = false;
+      speechSynthesis.cancel();
+      document.getElementById('tts-btn').classList.remove('playing');
+      document.getElementById('tts-icon').innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+      document.getElementById('tts-label').textContent = '読み上げ';
+    } else {
+      // 再生開始
+      ttsText = getTtsText();
+      if (!ttsText) return;
+      ttsPlaying = true;
+      document.getElementById('tts-btn').classList.add('playing');
+      document.getElementById('tts-icon').innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+      document.getElementById('tts-label').textContent = '停止';
+      speechSynthesis.cancel();
+      speakOnce();
+    }
+  }
+
+  // ページ離脱時に停止
+  window.addEventListener('beforeunload', () => {
+    ttsPlaying = false;
+    speechSynthesis.cancel();
+  });
 
   loadPost();
 </script>
