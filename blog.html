@@ -892,6 +892,8 @@
 
   function openPostModal() {
     document.getElementById('postModal').classList.add('open');
+    const saved = localStorage.getItem('blogAdminPassword');
+    if (saved) document.getElementById('postPassword').value = saved;
     document.getElementById('postTitle').focus();
   }
 
@@ -961,6 +963,7 @@
       const res = await fetch(`${API}/posts`, { method: 'POST', body: fd });
       if (res.status === 401) { errEl.textContent = 'パスワードが違います'; return; }
       if (!res.ok) throw new Error();
+      localStorage.setItem('blogAdminPassword', password);
       closePostModal();
       loadPosts();
     } catch {
@@ -999,7 +1002,8 @@
     document.getElementById('editPostId').value = id;
     document.getElementById('editTitle').value = title;
     editQuill.root.innerHTML = bodyToQuill(body);
-    document.getElementById('editPassword').value = '';
+    const saved = localStorage.getItem('blogAdminPassword');
+    document.getElementById('editPassword').value = saved || '';
     document.getElementById('editError').textContent = '';
     editSelectedFiles = [];
     document.getElementById('editFilePreview').innerHTML = '';
@@ -1045,6 +1049,7 @@
       });
       if (res.status === 401) { errEl.textContent = 'パスワードが違います'; return; }
       if (!res.ok) throw new Error();
+      localStorage.setItem('blogAdminPassword', password);
 
       if (editSelectedFiles.length > 0) {
         const fd = new FormData();
@@ -1064,11 +1069,13 @@
   }
 
   async function deletePost(id) {
-    const password = prompt('管理者パスワードを入力してください：');
+    const saved = localStorage.getItem('blogAdminPassword') || '';
+    const password = prompt('管理者パスワードを入力してください：', saved);
     if (!password) return;
     try {
       const res = await fetch(`${API}/posts/${id}?password=${encodeURIComponent(password)}`, { method: 'DELETE' });
       if (res.status === 401) { alert('パスワードが違います'); return; }
+      localStorage.setItem('blogAdminPassword', password);
       loadPosts();
     } catch {
       alert('削除に失敗しました');
