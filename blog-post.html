@@ -227,6 +227,26 @@
     .copy-btn:hover { color: var(--green); border-color: var(--green-dim); }
     .copy-btn.copied { color: var(--green); border-color: var(--green-dim); background: rgba(26,122,62,0.08); }
 
+    .mic-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .mic-btn:hover { color: var(--green); border-color: var(--green-dim); }
+    .mic-btn.recording { color: #f87171; border-color: #f87171; background: rgba(248,113,113,0.08); animation: micPulse 1s infinite; }
+    @keyframes micPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
     .tts-btn {
       display: inline-flex;
       align-items: center;
@@ -622,7 +642,7 @@
       <input type="text" id="editTitle" placeholder="タイトルを入力..." />
     </div>
     <div class="form-group">
-      <label>本文</label>
+      <label>本文 <button class="mic-btn" id="editMicBtn" type="button" onclick="toggleEditMic()">🎤 音声入力</button></label>
       <div id="editBodyEditor"></div>
     </div>
     <div class="form-group">
@@ -917,6 +937,46 @@
   function bodyToQuill(body) {
     if (/<[a-z][\s\S]*>/i.test(body)) return body;
     return body.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
+  }
+
+  // ── 音声入力 ──
+  let editRecognition = null;
+  let editMicActive = false;
+
+  function toggleEditMic() {
+    if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
+      alert('このブラウザは音声入力に対応していません');
+      return;
+    }
+    if (editMicActive) { editRecognition.stop(); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    editRecognition = new SR();
+    editRecognition.lang = 'ja-JP';
+    editRecognition.continuous = true;
+    editRecognition.interimResults = false;
+    editRecognition.onstart = () => {
+      editMicActive = true;
+      const btn = document.getElementById('editMicBtn');
+      if (btn) { btn.classList.add('recording'); btn.textContent = '⏹ 停止'; }
+    };
+    editRecognition.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          const text = e.results[i][0].transcript;
+          const range = editQuill.getSelection(true);
+          const idx = range ? range.index : editQuill.getLength() - 1;
+          editQuill.insertText(idx, text);
+          editQuill.setSelection(idx + text.length);
+        }
+      }
+    };
+    editRecognition.onend = () => {
+      editMicActive = false;
+      const btn = document.getElementById('editMicBtn');
+      if (btn) { btn.classList.remove('recording'); btn.textContent = '🎤 音声入力'; }
+    };
+    editRecognition.onerror = () => editRecognition.stop();
+    editRecognition.start();
   }
 
   // ── 読み上げ ──
