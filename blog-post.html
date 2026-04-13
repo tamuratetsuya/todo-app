@@ -638,7 +638,7 @@
   <div class="modal">
     <input type="hidden" id="editPostId" />
     <div class="form-group">
-      <label>タイトル</label>
+      <label>タイトル <button class="mic-btn" id="editTitleMicBtn" type="button" onclick="toggleTitleMic()">🎤 音声入力</button></label>
       <input type="text" id="editTitle" placeholder="タイトルを入力..." />
     </div>
     <div class="form-group">
@@ -939,7 +939,45 @@
     return body.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
   }
 
-  // ── 音声入力 ──
+  // ── タイトル音声入力 ──
+  let titleRecognition = null;
+  let titleMicActive = false;
+
+  function toggleTitleMic() {
+    if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
+      alert('このブラウザは音声入力に対応していません');
+      return;
+    }
+    if (titleMicActive) { titleRecognition.stop(); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    titleRecognition = new SR();
+    titleRecognition.lang = 'ja-JP';
+    titleRecognition.continuous = false;
+    titleRecognition.interimResults = false;
+    titleRecognition.onstart = () => {
+      titleMicActive = true;
+      const btn = document.getElementById('editTitleMicBtn');
+      if (btn) { btn.classList.add('recording'); btn.textContent = '⏹ 停止'; }
+    };
+    titleRecognition.onresult = (e) => {
+      const text = e.results[0][0].transcript;
+      const input = document.getElementById('editTitle');
+      if (input) {
+        const pos = input.selectionStart ?? input.value.length;
+        input.value = input.value.slice(0, pos) + text + input.value.slice(pos);
+        input.selectionStart = input.selectionEnd = pos + text.length;
+      }
+    };
+    titleRecognition.onend = () => {
+      titleMicActive = false;
+      const btn = document.getElementById('editTitleMicBtn');
+      if (btn) { btn.classList.remove('recording'); btn.textContent = '🎤 音声入力'; }
+    };
+    titleRecognition.onerror = () => titleRecognition.stop();
+    titleRecognition.start();
+  }
+
+  // ── 本文音声入力 ──
   let editRecognition = null;
   let editMicActive = false;
 
