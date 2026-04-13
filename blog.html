@@ -281,6 +281,44 @@
     .copy-btn:hover { color: var(--green); border-color: var(--green-dim); }
     .copy-btn.copied { color: var(--green); border-color: var(--green-dim); background: rgba(26,122,62,0.08); }
 
+    .tts-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text-muted);
+      margin-right: 12px;
+      padding: 4px 10px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .tts-btn:hover { color: var(--green); border-color: var(--green-dim); }
+    .tts-btn.playing { color: var(--green); border-color: var(--green-dim); background: rgba(26,122,62,0.08); }
+
+    .mic-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .mic-btn:hover { color: var(--green); border-color: var(--green-dim); }
+    .mic-btn.recording { color: #f87171; border-color: #f87171; background: rgba(248,113,113,0.08); animation: micPulse 1s infinite; }
+    @keyframes micPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
     .empty {
       text-align: center;
       color: var(--text-muted);
@@ -683,7 +721,7 @@
       <input type="text" id="postTitle" placeholder="タイトルを入力..." />
     </div>
     <div class="form-group">
-      <label>本文</label>
+      <label>本文 <button class="mic-btn" id="micBtn" type="button" onclick="toggleMic()">🎤 音声入力</button></label>
       <div id="postBodyEditor"></div>
     </div>
     <div class="form-group">
@@ -837,6 +875,10 @@
           <div class="post-text post-text-${p.id}"></div>
           ${readMoreHtml}
           <div class="post-actions" onclick="event.stopPropagation();">
+            <button class="tts-btn" id="tts-${p.id}" onclick="togglePostTts(${p.id}, event)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              読み上げ
+            </button>
             <button class="copy-btn" id="copy-${p.id}" onclick="copyText(${p.id}, this)">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               コピー
@@ -1115,6 +1157,101 @@
         copyBtn.classList.remove('copied');
       }, 2000);
     });
+  }
+
+  // ── 記事一覧 読み上げ ──
+  let activeTtsId = null;
+  let listTtsPlaying = false;
+  let listTtsText = '';
+
+  function getPostTtsText(id) {
+    const titleEl = document.querySelector(`#tts-${id}`)?.closest('.post-body')?.querySelector('.post-title-link');
+    const bodyEl  = document.querySelector(`.post-text-${id}`);
+    const title   = titleEl ? titleEl.textContent.trim() : '';
+    const body    = bodyEl  ? bodyEl.innerText.trim()    : '';
+    return title ? `${title}。${body}` : body;
+  }
+
+  function setTtsButtonState(id, playing) {
+    const btn = document.getElementById(`tts-${id}`);
+    if (!btn) return;
+    if (playing) {
+      btn.classList.add('playing');
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 停止`;
+    } else {
+      btn.classList.remove('playing');
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> 読み上げ`;
+    }
+  }
+
+  function speakPostLoop() {
+    if (!listTtsPlaying) return;
+    const utter = new SpeechSynthesisUtterance(listTtsText);
+    utter.lang = 'ja-JP';
+    utter.rate = 1.0;
+    utter.onend = () => { if (listTtsPlaying) speakPostLoop(); };
+    speechSynthesis.speak(utter);
+  }
+
+  function stopPostTts() {
+    if (activeTtsId !== null) setTtsButtonState(activeTtsId, false);
+    activeTtsId = null;
+    listTtsPlaying = false;
+    speechSynthesis.cancel();
+  }
+
+  function togglePostTts(id, e) {
+    e.stopPropagation();
+    if (activeTtsId === id && listTtsPlaying) { stopPostTts(); return; }
+    stopPostTts();
+    listTtsText = getPostTtsText(id);
+    if (!listTtsText) return;
+    activeTtsId = id;
+    listTtsPlaying = true;
+    setTtsButtonState(id, true);
+    speakPostLoop();
+  }
+
+  window.addEventListener('beforeunload', () => { listTtsPlaying = false; speechSynthesis.cancel(); });
+
+  // ── 音声入力 ──
+  let recognition = null;
+  let micActive = false;
+
+  function toggleMic() {
+    if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
+      alert('このブラウザは音声入力に対応していません');
+      return;
+    }
+    if (micActive) { recognition.stop(); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SR();
+    recognition.lang = 'ja-JP';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.onstart = () => {
+      micActive = true;
+      const btn = document.getElementById('micBtn');
+      if (btn) { btn.classList.add('recording'); btn.textContent = '⏹ 停止'; }
+    };
+    recognition.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          const text = e.results[i][0].transcript;
+          const range = postQuill.getSelection(true);
+          const idx = range ? range.index : postQuill.getLength() - 1;
+          postQuill.insertText(idx, text);
+          postQuill.setSelection(idx + text.length);
+        }
+      }
+    };
+    recognition.onend = () => {
+      micActive = false;
+      const btn = document.getElementById('micBtn');
+      if (btn) { btn.classList.remove('recording'); btn.textContent = '🎤 音声入力'; }
+    };
+    recognition.onerror = () => recognition.stop();
+    recognition.start();
   }
 
   loadPosts();
