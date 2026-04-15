@@ -2695,26 +2695,89 @@ def chat(req: ChatRequest):
 今日の日付: {datetime.now().strftime('%Y年%m月%d日')}
 """
 
-    # 最新株価をDBから取得
+    # 株価・インジケータをDBから取得（直近60本）
     try:
+        import statistics as _stats
         conn = get_conn()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT close, candle_time FROM candles WHERE symbol=%s AND interval_type='1d' ORDER BY candle_time DESC LIMIT 5",
+                "SELECT candle_time, open, high, low, close, volume FROM candles "
+                "WHERE symbol=%s AND interval_type='1d' ORDER BY candle_time DESC LIMIT 60",
                 (req.symbol,)
             )
             rows = cur.fetchall()
         conn.close()
         if rows:
+            rows_asc = list(reversed(rows))  # 古い順
+            closes = [float(r['close']) for r in rows_asc]
+            highs  = [float(r['high'])  for r in rows_asc]
+            lows   = [float(r['low'])   for r in rows_asc]
+            vols   = [float(r['volume'] or 0) for r in rows_asc]
+
             latest = rows[0]
-            system += f"\n【最新株価情報】\n"
-            system += f"直近終値: {float(latest['close']):.0f}円 ({latest['candle_time']})\n"
-            if len(rows) >= 2:
-                prev = float(rows[1]['close'])
-                curr = float(rows[0]['close'])
+            curr = closes[-1]
+            system += f"\n【株価情報】\n"
+            system += f"直近終値: {curr:.0f}円 ({latest['candle_time']})\n"
+            if len(closes) >= 2:
+                prev = closes[-2]
                 chg = curr - prev
-                chg_pct = chg / prev * 100
-                system += f"前日比: {chg:+.0f}円 ({chg_pct:+.2f}%)\n"
+                system += f"前日比: {chg:+.0f}円 ({chg/prev*100:+.2f}%)\n"
+
+            # 移動平均
+            def sma(data, n):
+                return sum(data[-n:]) / n if len(data) >= n else None
+            ma5  = sma(closes, 5)
+            ma25 = sma(closes, 25)
+            ma75 = sma(closes, 75) if len(closes) >= 75 else None
+            system += f"\n【移動平均】\n"
+            if ma5:  system += f"MA5: {ma5:.0f}円\n"
+            if ma25: system += f"MA25: {ma25:.0f}円\n"
+            if ma75: system += f"MA75: {ma75:.0f}円\n"
+            if ma5 and ma25:
+                system += f"MA5/MA25: {'ゴールデンクロス（短期>長期、上昇傾向）' if ma5>ma25 else 'デッドクロス（短期<長期、下降傾向）'}\n"
+
+            # ボリンジャーバンド（25日）
+            if len(closes) >= 25:
+                mean25 = ma25
+                std25 = _stats.stdev(closes[-25:])
+                bb_upper = mean25 + 2 * std25
+                bb_lower = mean25 - 2 * std25
+                bb_pos = (curr - bb_lower) / (bb_upper - bb_lower) * 100 if bb_upper != bb_lower else 50
+                system += f"\n【ボリンジャーバンド(25)】\n"
+                system += f"上限(+2σ): {bb_upper:.0f}円 / 中央(MA25): {mean25:.0f}円 / 下限(-2σ): {bb_lower:.0f}円\n"
+                system += f"現在位置: バンド内{bb_pos:.0f}%（0%=下限, 100%=上限）\n"
+
+            # RSI（14日）
+            if len(closes) >= 15:
+                gains, losses = [], []
+                for i in range(-14, 0):
+                    d = closes[i] - closes[i-1]
+                    (gains if d > 0 else losses).append(abs(d))
+                avg_gain = sum(gains) / 14
+                avg_loss = sum(losses) / 14
+                rsi = 100 - (100 / (1 + avg_gain / avg_loss)) if avg_loss > 0 else 100
+                system += f"\n【RSI(14)】\n"
+                system += f"RSI: {rsi:.1f}（70以上=買われすぎ、30以下=売られすぎ）\n"
+
+            # 52週高値・安値
+            if len(closes) >= 20:
+                period_highs = highs[-min(252, len(highs)):]
+                period_lows  = lows[-min(252, len(lows)):]
+                h52 = max(period_highs)
+                l52 = min(period_lows)
+                system += f"\n【価格レンジ（直近{len(period_highs)}営業日）】\n"
+                system += f"高値: {h52:.0f}円 / 安値: {l52:.0f}円\n"
+                system += f"現値は高値から{(h52-curr)/h52*100:.1f}%下、安値から{(curr-l52)/l52*100:.1f}%上\n"
+
+            # 出来高（直近5日平均）
+            if len(vols) >= 5:
+                avg_vol5 = sum(vols[-5:]) / 5
+                system += f"\n【出来高】\n直近5日平均: {avg_vol5/10000:.0f}万株\n"
+
+            # 直近10日の価格推移
+            system += f"\n【直近10営業日の終値推移】\n"
+            for r in rows_asc[-10:]:
+                system += f"  {r['candle_time']}: {float(r['close']):.0f}円\n"
     except Exception:
         pass
 
