@@ -1833,7 +1833,7 @@ def get_news(symbol: str = Query(...)):
                     "messages": [{"role": "user", "content": f"以下の英語ニュースタイトルを日本語に翻訳してください。番号付きで返してください。\n{titles}"}]
                 })
                 resp = boto3.client("bedrock-runtime", region_name="us-east-1").invoke_model(
-                    modelId="us.anthropic.claude-3-haiku-20240307-v1:0", body=body,
+                    modelId="us.anthropic.claude-haiku-4-5-20251001-v1:0", body=body,
                     contentType="application/json", accept="application/json"
                 )
                 text = json.loads(resp["body"].read())["content"][0]["text"]
@@ -2639,6 +2639,44 @@ def _scrape_minkabu_annual(html: str) -> list:
     except Exception:
         pass
     return annual
+
+
+class ChatRequest(BaseModel):
+    symbol: str
+    name: str = ""
+    messages: list  # [{"role": "user"|"assistant", "content": "..."}]
+    analyst: dict = {}
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    system = f"""あなたは株式投資アシスタントです。
+現在表示中の銘柄: {req.symbol} {req.name}
+"""
+    if req.analyst:
+        if req.analyst.get("minkabu"):
+            m = req.analyst["minkabu"]
+            system += f"みんかぶ目標株価: {m.get('consensus_price','不明')}円 ({m.get('consensus_label','')})\n"
+        if req.analyst.get("kabuyoho") and req.analyst["kabuyoho"].get("target_price"):
+            system += f"株予報Pro目標株価: {req.analyst['kabuyoho']['target_price']}円\n"
+        if req.analyst.get("kabuka") and req.analyst["kabuka"].get("avg"):
+            system += f"kabuka.jp.net平均目標株価: {req.analyst['kabuka']['avg']}円\n"
+    system += "ユーザーの質問に日本語で答えてください。投資判断はユーザー自身が行うものとし、参考情報として回答してください。"
+
+    try:
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 1024,
+            "system": system,
+            "messages": req.messages
+        })
+        resp = boto3.client("bedrock-runtime", region_name="us-east-1").invoke_model(
+            modelId="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            body=body, contentType="application/json", accept="application/json"
+        )
+        text = json.loads(resp["body"].read())["content"][0]["text"]
+        return {"reply": text}
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @app.get("/candles")
