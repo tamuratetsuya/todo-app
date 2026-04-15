@@ -4849,8 +4849,12 @@ function initAiChat() {
   aiChatInited = true;
 
   body.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px 0;flex-shrink:0;">
+      <span style="font-size:11px;color:var(--text2);">${stockNames[currentSymbol]||currentSymbol} AIチャット</span>
+      <button onclick="clearAiChatHistory()" style="font-size:10px;color:var(--text2);background:none;border:1px solid var(--border2);border-radius:4px;padding:2px 8px;cursor:pointer;">履歴を消す</button>
+    </div>
     <div id="aiChatMessages" style="flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;min-height:0;"></div>
-    <div style="padding:10px 12px;border-top:1px solid var(--border2);display:flex;gap:8px;background:var(--bg2);">
+    <div style="padding:10px 12px;border-top:1px solid var(--border2);display:flex;gap:8px;background:var(--bg2);flex-shrink:0;">
       <input id="aiChatInput" type="text" placeholder="${stockNames[currentSymbol]||currentSymbol} について質問..." style="flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:13px;outline:none;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiChat();}">
       <button onclick="sendAiChat()" style="padding:8px 14px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">送信</button>
     </div>`;
@@ -4861,6 +4865,28 @@ function initAiChat() {
     .then(d => { aiChatAnalyst = d; })
     .catch(() => {});
 
+  // DB から履歴を復元
+  fetch(`${API}/chat/history?symbol=${encodeURIComponent(currentSymbol)}`)
+    .then(r => r.ok ? r.json() : [])
+    .then(history => {
+      if (history.length > 0) {
+        aiChatHistory = history;
+        history.forEach(m => appendAiMessage(m.role, m.content));
+      } else {
+        appendAiMessage('assistant', `${stockNames[currentSymbol]||currentSymbol} について何でも聞いてください。`);
+      }
+    })
+    .catch(() => {
+      appendAiMessage('assistant', `${stockNames[currentSymbol]||currentSymbol} について何でも聞いてください。`);
+    });
+}
+
+async function clearAiChatHistory() {
+  if (!currentSymbol) return;
+  await fetch(`${API}/chat/history?symbol=${encodeURIComponent(currentSymbol)}`, { method: 'DELETE' });
+  aiChatHistory = [];
+  const msgs = document.getElementById('aiChatMessages');
+  if (msgs) msgs.innerHTML = '';
   appendAiMessage('assistant', `${stockNames[currentSymbol]||currentSymbol} について何でも聞いてください。`);
 }
 

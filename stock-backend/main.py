@@ -154,6 +154,16 @@ def init_db():
                 UNIQUE KEY uq_analyst (symbol)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                role VARCHAR(20) NOT NULL,
+                content MEDIUMTEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_chat_symbol (symbol, created_at)
+            )
+        """)
     conn.commit()
     conn.close()
 
@@ -2647,6 +2657,37 @@ class ChatRequest(BaseModel):
     messages: list  # [{"role": "user"|"assistant", "content": "..."}]
     analyst: dict = {}
 
+@app.get("/chat/history")
+def get_chat_history(symbol: str = Query(...)):
+    try:
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT role, content FROM chat_history WHERE symbol=%s ORDER BY created_at ASC",
+                    (symbol,)
+                )
+                rows = cur.fetchall()
+            return [{"role": r["role"], "content": r["content"]} for r in rows]
+        finally:
+            conn.close()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+@app.delete("/chat/history")
+def clear_chat_history(symbol: str = Query(...)):
+    try:
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM chat_history WHERE symbol=%s", (symbol,))
+            conn.commit()
+            return {"ok": True}
+        finally:
+            conn.close()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
 @app.post("/chat")
 def chat(req: ChatRequest):
     system = f"""あなたは株式投資アシスタントです。
@@ -2674,6 +2715,26 @@ def chat(req: ChatRequest):
             body=body, contentType="application/json", accept="application/json"
         )
         text = json.loads(resp["body"].read())["content"][0]["text"]
+
+        # ユーザー発言と返答をDBに保存
+        try:
+            conn = get_conn()
+            user_msg = req.messages[-1] if req.messages else None
+            with conn.cursor() as cur:
+                if user_msg and user_msg.get("role") == "user":
+                    cur.execute(
+                        "INSERT INTO chat_history (symbol, role, content) VALUES (%s,%s,%s)",
+                        (req.symbol, "user", user_msg["content"])
+                    )
+                cur.execute(
+                    "INSERT INTO chat_history (symbol, role, content) VALUES (%s,%s,%s)",
+                    (req.symbol, "assistant", text)
+                )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
         return {"reply": text}
     except Exception as e:
         raise HTTPException(500, str(e))
