@@ -2692,16 +2692,68 @@ def clear_chat_history(symbol: str = Query(...)):
 def chat(req: ChatRequest):
     system = f"""あなたは株式投資アシスタントです。
 現在表示中の銘柄: {req.symbol} {req.name}
+今日の日付: {datetime.now().strftime('%Y年%m月%d日')}
 """
+
+    # 最新株価をDBから取得
+    try:
+        conn = get_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT close, candle_time FROM candles WHERE symbol=%s AND interval_type='1d' ORDER BY candle_time DESC LIMIT 5",
+                (req.symbol,)
+            )
+            rows = cur.fetchall()
+        conn.close()
+        if rows:
+            latest = rows[0]
+            system += f"\n【最新株価情報】\n"
+            system += f"直近終値: {float(latest['close']):.0f}円 ({latest['candle_time']})\n"
+            if len(rows) >= 2:
+                prev = float(rows[1]['close'])
+                curr = float(rows[0]['close'])
+                chg = curr - prev
+                chg_pct = chg / prev * 100
+                system += f"前日比: {chg:+.0f}円 ({chg_pct:+.2f}%)\n"
+    except Exception:
+        pass
+
+    # 直近ニュースをDBから取得（最新5件）
+    try:
+        conn = get_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT title_ja, title, published, source FROM news_cache WHERE symbol=%s ORDER BY published DESC LIMIT 5",
+                (req.symbol,)
+            )
+            news_rows = cur.fetchall()
+        conn.close()
+        if news_rows:
+            system += f"\n【直近ニュース】\n"
+            for n in news_rows:
+                t = n.get('title_ja') or n.get('title') or ''
+                pub = n.get('published')
+                date_str = ''
+                if pub:
+                    try:
+                        date_str = datetime.fromtimestamp(pub / 1000).strftime('%m/%d') if pub > 1e10 else datetime.fromtimestamp(pub).strftime('%m/%d')
+                    except Exception:
+                        pass
+                system += f"- ({date_str}) {t}\n"
+    except Exception:
+        pass
+
     if req.analyst:
+        system += "\n【アナリスト目標株価】\n"
         if req.analyst.get("minkabu"):
             m = req.analyst["minkabu"]
-            system += f"みんかぶ目標株価: {m.get('consensus_price','不明')}円 ({m.get('consensus_label','')})\n"
+            system += f"みんかぶ: {m.get('consensus_price','不明')}円 ({m.get('consensus_label','')})\n"
         if req.analyst.get("kabuyoho") and req.analyst["kabuyoho"].get("target_price"):
-            system += f"株予報Pro目標株価: {req.analyst['kabuyoho']['target_price']}円\n"
+            system += f"株予報Pro: {req.analyst['kabuyoho']['target_price']}円\n"
         if req.analyst.get("kabuka") and req.analyst["kabuka"].get("avg"):
-            system += f"kabuka.jp.net平均目標株価: {req.analyst['kabuka']['avg']}円\n"
-    system += "ユーザーの質問に日本語で答えてください。投資判断はユーザー自身が行うものとし、参考情報として回答してください。"
+            system += f"kabuka.jp.net平均: {req.analyst['kabuka']['avg']}円\n"
+
+    system += "\nユーザーの質問に日本語で答えてください。上記の株価・ニュース・アナリスト情報を積極的に活用して具体的に回答してください。投資判断はユーザー自身が行うものとし、参考情報として回答してください。"
 
     try:
         body = json.dumps({
