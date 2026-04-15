@@ -2702,7 +2702,7 @@ def chat(req: ChatRequest):
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT candle_time, open, high, low, close, volume FROM candles "
-                "WHERE symbol=%s AND interval_type='1d' ORDER BY candle_time DESC LIMIT 60",
+                "WHERE symbol=%s AND interval_type='1d' ORDER BY candle_time DESC LIMIT 65",
                 (req.symbol,)
             )
             rows = cur.fetchall()
@@ -2774,10 +2774,10 @@ def chat(req: ChatRequest):
                 avg_vol5 = sum(vols[-5:]) / 5
                 system += f"\n【出来高】\n直近5日平均: {avg_vol5/10000:.0f}万株\n"
 
-            # 直近10日の価格推移
-            system += f"\n【直近10営業日の終値推移】\n"
-            for r in rows_asc[-10:]:
-                system += f"  {r['candle_time']}: {float(r['close']):.0f}円\n"
+            # 直近3か月の価格推移（全データ）
+            system += f"\n【直近3か月の日次終値推移（{len(rows_asc)}営業日）】\n"
+            for r in rows_asc:
+                system += f"  {r['candle_time']}: 始{float(r['open']):.0f} 高{float(r['high']):.0f} 安{float(r['low']):.0f} 終{float(r['close']):.0f} 出来高{float(r['volume'] or 0)/10000:.0f}万\n"
     except Exception:
         pass
 
