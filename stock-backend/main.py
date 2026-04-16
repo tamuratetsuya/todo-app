@@ -164,6 +164,15 @@ def init_db():
                 INDEX idx_chat_symbol (symbol, created_at)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS stock_memos (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                content MEDIUMTEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_memo (symbol)
+            )
+        """)
     conn.commit()
     conn.close()
 
@@ -1537,6 +1546,35 @@ def get_prices(symbols: str = Query(...)):
             pass
 
     return result
+
+
+@app.get("/memo")
+def get_memo(symbol: str = Query(...)):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT content FROM stock_memos WHERE symbol=%s", (symbol,))
+            row = cur.fetchone()
+            return {"content": row[0] if row else ""}
+    finally:
+        conn.close()
+
+
+@app.post("/memo")
+def save_memo(symbol: str = Query(...), body: dict = None):
+    content = (body or {}).get("content", "")
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO stock_memos (symbol, content) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE content=%s, updated_at=CURRENT_TIMESTAMP",
+                (symbol, content, content)
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
 
 
 @app.get("/events")

@@ -1286,6 +1286,10 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
         AIチャット
       </button>
+      <button class="analysis-tab" id="tabMemo" onclick="switchAnalysisTab('memo')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+        メモ
+      </button>
     </div>
   </div>
   <div class="viewpoints-bar" id="viewpointsBar" style="display:none;">
@@ -1348,6 +1352,13 @@
   <div class="analysis-body" id="financialsBody" style="display:none;"></div>
   <div class="analysis-body" id="analystBody" style="display:none;"></div>
   <div class="analysis-body" id="aiChatBody" style="display:none;flex-direction:column;padding:0;overflow:hidden;"></div>
+  <div class="analysis-body" id="memoBody" style="display:none;flex-direction:column;padding:10px 12px;gap:8px;">
+    <textarea id="memoTextarea" placeholder="この銘柄のメモを入力..." style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;line-height:1.6;padding:8px;resize:none;font-family:inherit;min-height:80px;"></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span id="memoSavedAt" style="font-size:11px;color:var(--text2);"></span>
+      <button id="memoSaveBtn" onclick="saveMemo()" style="background:var(--blue);color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:12px;cursor:pointer;">保存</button>
+    </div>
+  </div>
 </div>
 
 <div id="dragOverlay">CSVファイルをドロップ</div>
@@ -3099,6 +3110,9 @@ function selectSymbol(code) {
   aiSignals = [];  // 銘柄変更時にシグナルリセット
   xLoadedSymbol = ''; holdersLoadedSymbol = ''; financialsLoadedSymbol = ''; analystLoadedSymbol = '';
   aiChatSymbol = ''; aiChatInited = false; aiChatHistory = []; aiChatAnalyst = {};
+  document.getElementById('memoTextarea').value = '';
+  document.getElementById('memoSavedAt').textContent = '';
+  if (currentNewsTab === 'memo') loadMemo();
   for (const s of stopLossSeries) { try { chart.removeSeries(s); } catch(e) {} }
   stopLossSeries = [];
   renderPnl();
@@ -4045,7 +4059,7 @@ let currentNewsTab = 'rules';
 
 function switchAnalysisTab(tab) {
   currentNewsTab = tab;
-  ['rules','news','x','holders','financials','analyst','aiChat'].forEach(t => {
+  ['rules','news','x','holders','financials','analyst','aiChat','memo'].forEach(t => {
     const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (el) el.classList.toggle('active', t === tab);
   });
@@ -4056,12 +4070,45 @@ function switchAnalysisTab(tab) {
   document.getElementById('financialsBody').style.display  = tab === 'financials' ? '' : 'none';
   document.getElementById('analystBody').style.display     = tab === 'analyst'    ? '' : 'none';
   document.getElementById('aiChatBody').style.display      = tab === 'aiChat'     ? 'flex' : 'none';
+  document.getElementById('memoBody').style.display        = tab === 'memo'       ? 'flex' : 'none';
   if (tab === 'news')       loadNews();
   if (tab === 'x')          loadXPosts();
   if (tab === 'holders')    loadHolders();
   if (tab === 'financials') loadFinancials();
   if (tab === 'analyst')    loadAnalyst();
   if (tab === 'aiChat')     initAiChat();
+  if (tab === 'memo')       loadMemo();
+}
+
+// ===== メモタブ =====
+async function loadMemo() {
+  const sym = currentSymbol;
+  if (!sym) return;
+  try {
+    const res = await fetch(`${API}/memo?symbol=${encodeURIComponent(sym)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    document.getElementById('memoTextarea').value = data.content || '';
+    document.getElementById('memoSavedAt').textContent = data.content ? '保存済み' : '';
+  } catch(e) {}
+}
+
+async function saveMemo() {
+  const sym = currentSymbol;
+  if (!sym) return;
+  const content = document.getElementById('memoTextarea').value;
+  try {
+    const res = await fetch(`${API}/memo?symbol=${encodeURIComponent(sym)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    if (res.ok) {
+      const now = new Date();
+      document.getElementById('memoSavedAt').textContent =
+        `保存: ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+    }
+  } catch(e) {}
 }
 
 // ===== X投稿タブ =====
