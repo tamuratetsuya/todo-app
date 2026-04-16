@@ -1180,6 +1180,7 @@
         <button class="sub-chart-btn active" data-sub="volume">出来高</button>
         <button class="sub-chart-btn" data-sub="macd">MACD</button>
         <button class="sub-chart-btn" data-sub="hv">HV</button>
+        <button class="sub-chart-btn" data-sub="rsi">RSI</button>
       </div>
       <div id="signalTooltip"></div>
       <div id="patternTooltip"></div>
@@ -1661,8 +1662,57 @@ function applySubChart(type, candleData) {
       subSeries.push(hvS);
 
       chart.priceScale('sub').applyOptions({ visible: false, scaleMargins: { top: 0.82, bottom: 0 } });
+
+    } else if (type === 'rsi') {
+      const rsi = calcRSI(closes, 14);
+
+      const rsiS = chart.addLineSeries({
+        priceScaleId: 'sub', color: '#facc15', lineWidth: 1,
+        priceLineVisible: false, lastValueVisible: false,
+      });
+      rsiS.setData(times.map((t, i) => rsi[i] !== null ? { time: t, value: rsi[i] } : null).filter(Boolean));
+      subSeries.push(rsiS);
+
+      // 70・30ラインを参考線として追加
+      const ob = chart.addLineSeries({
+        priceScaleId: 'sub', color: 'rgba(248,81,73,0.4)', lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        priceLineVisible: false, lastValueVisible: false,
+      });
+      ob.setData(times.map(t => ({ time: t, value: 70 })));
+      subSeries.push(ob);
+
+      const os = chart.addLineSeries({
+        priceScaleId: 'sub', color: 'rgba(63,185,80,0.4)', lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        priceLineVisible: false, lastValueVisible: false,
+      });
+      os.setData(times.map(t => ({ time: t, value: 30 })));
+      subSeries.push(os);
+
+      chart.priceScale('sub').applyOptions({ visible: false, scaleMargins: { top: 0.82, bottom: 0 } });
     }
   }
+}
+
+function calcRSI(closes, period = 14) {
+  const result = new Array(closes.length).fill(null);
+  if (closes.length < period + 1) return result;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff; else losses -= diff;
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + Math.max(diff, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-diff, 0)) / period;
+    result[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return result;
 }
 
 // ===== CHART PATTERN DETECTION =====
@@ -1957,6 +2007,9 @@ function setupCandleLegend() {
       } else if (currentSubChart === 'hv' && subSeries.length >= 1) {
         const hv = param.seriesData.get(subSeries[0]);
         if (hv != null) subText = 'HV: ' + hv.value.toFixed(1) + '%';
+      } else if (currentSubChart === 'rsi' && subSeries.length >= 1) {
+        const rv = param.seriesData.get(subSeries[0]);
+        if (rv != null) subText = 'RSI(14): ' + rv.value.toFixed(1);
       }
       if (subText) {
         subLabel.textContent = subText;
