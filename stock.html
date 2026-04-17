@@ -494,6 +494,24 @@
   .history-item:hover .history-delete-btn { display: flex; }
   .history-delete-btn:hover { color: var(--red); background: rgba(248,81,73,0.1); }
 
+  #tlBtn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  #tlBtn:hover { border-color: var(--blue); color: var(--text); }
+  #tlBtn.active { border-color: #fbbf24; color: #fbbf24; background: rgba(251,191,36,0.1); }
+  #tlBtn.waiting { border-color: #fbbf24; color: #fbbf24; background: rgba(251,191,36,0.2); }
+
   #historyBtn, #indBtn {
     display: flex;
     align-items: center;
@@ -1132,6 +1150,11 @@
 
   <div class="header-sep"></div>
 
+  <button id="tlBtn" onclick="toggleTLDraw()" title="トレンドライン描画（2点クリック）">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="20" x2="21" y2="4"></line><circle cx="3" cy="20" r="2" fill="currentColor"></circle><circle cx="21" cy="4" r="2" fill="currentColor"></circle></svg>
+    TL
+  </button>
+
   <button id="indBtn" onclick="toggleIndPanel()">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <line x1="4" y1="6" x2="20" y2="6"></line>
@@ -1337,6 +1360,7 @@
       <li><b>急落-4%</b> -2pt — 前日比-4%以上の急下落</li>
     </ul>
     <div id="patternSection" style="margin-top:14px;"></div>
+    <div id="trendLineSection" style="margin-top:14px;"></div>
   </div>
   <div class="analysis-save-bar" id="analysisSaveBar" style="display:none;">
     <button id="saveAnalysisBtn" class="inactive" onclick="saveAnalysis()" title="履歴に保存">
@@ -1561,6 +1585,7 @@ function initChart() {
   ro.observe(chartContainer);
 
   setupSignalTooltip();
+  setupTLClick();
   setupCandleLegend();
   initEventMarkerSubscription();
 }
@@ -1915,6 +1940,169 @@ function detectChartPatterns(data) {
   return final;
 }
 
+// ===== TREND LINE DRAWING =====
+let tlSeriesList = [];
+let tlDrawMode   = false;
+let tlPoint1     = null;
+
+function tlKey() { return `tl_${currentSymbol}_${currentInterval}`; }
+function loadTLs() { try { return JSON.parse(localStorage.getItem(tlKey()) || '[]'); } catch(e) { return []; } }
+function saveTLs(lines) { localStorage.setItem(tlKey(), JSON.stringify(lines)); }
+
+function toggleTLDraw() {
+  tlDrawMode = !tlDrawMode;
+  tlPoint1   = null;
+  const btn = document.getElementById('tlBtn');
+  if (!tlDrawMode) {
+    btn.classList.remove('active', 'waiting');
+    chartContainer.style.cursor = '';
+  } else {
+    btn.classList.add('active');
+    chartContainer.style.cursor = 'crosshair';
+  }
+}
+
+function applyTrendLines() {
+  for (const s of tlSeriesList) { try { chart.removeSeries(s); } catch(e) {} }
+  tlSeriesList = [];
+  if (!chart || !candleData.length) return;
+  const lines = loadTLs();
+  for (const line of lines) {
+    const pts = extendTLToChart(line.p1, line.p2);
+    if (!pts) continue;
+    const s = chart.addLineSeries({
+      color: 'rgba(251,191,36,0.85)', lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      priceLineVisible: false, lastValueVisible: false, title: '',
+    });
+    s.setData(pts);
+    tlSeriesList.push(s);
+  }
+}
+
+function tlTimeMs(t) {
+  return typeof t === 'string' ? new Date(t).getTime() : Number(t) * 1000;
+}
+
+function extendTLToChart(p1, p2) {
+  if (!candleData.length) return null;
+  const t1 = tlTimeMs(p1.time), t2 = tlTimeMs(p2.time);
+  if (t1 === t2) return null;
+  const slope = (p2.value - p1.value) / (t2 - t1);
+  const st = candleData[0].time, et = candleData[candleData.length - 1].time;
+  const sv = p1.value + slope * (tlTimeMs(st) - t1);
+  const ev = p1.value + slope * (tlTimeMs(et) - t1);
+  return [{time: st, value: sv}, {time: et, value: ev}];
+}
+
+function getTLValueAt(p1, p2, targetTime) {
+  const t1 = tlTimeMs(p1.time), t2 = tlTimeMs(p2.time);
+  if (t1 === t2) return null;
+  return p1.value + (p2.value - p1.value) / (t2 - t1) * (tlTimeMs(targetTime) - t1);
+}
+
+function calcTLScores() {
+  const scores = {};
+  if (!candleData.length) return scores;
+  const lines = loadTLs();
+  if (!lines.length) return scores;
+  for (let i = 1; i < candleData.length; i++) {
+    const bar = candleData[i], prev = candleData[i - 1];
+    const key = String(bar.time);
+    for (const line of lines) {
+      const val  = getTLValueAt(line.p1, line.p2, bar.time);
+      const pval = getTLValueAt(line.p1, line.p2, prev.time);
+      if (val === null) continue;
+      if (bar.close > val) {
+        if (!scores[key]) scores[key] = {buy: 0, sell: 0};
+        scores[key].buy += 1;
+      } else if (bar.close < val && pval !== null && prev.close >= pval) {
+        if (!scores[key]) scores[key] = {buy: 0, sell: 0};
+        scores[key].sell += 2;
+      }
+    }
+  }
+  return scores;
+}
+
+function renderTrendLineSection() {
+  const el = document.getElementById('trendLineSection');
+  if (!el) return;
+  const lines = loadTLs();
+  if (!lines.length) { el.innerHTML = ''; return; }
+
+  // 最新バーのトレンドライン状態
+  let statusHtml = '';
+  if (candleData.length) {
+    const last = candleData[candleData.length - 1];
+    const above = lines.filter(l => {
+      const v = getTLValueAt(l.p1, l.p2, last.time);
+      return v !== null && last.close > v;
+    }).length;
+    const below = lines.length - above;
+    statusHtml = `<div style="color:var(--text2);margin-bottom:6px;font-size:11px;">
+      現在: ${above > 0 ? `<span style="color:#2dd4bf;">${above}本の上（+${above}pt買い）</span>` : ''}
+      ${below > 0 ? `<span style="color:#fb923c;">${below}本の下</span>` : ''}
+    </div>`;
+  }
+
+  const listHtml = lines.map((l, i) => {
+    const label = `TL${i+1}:  ${l.p1.time} ¥${Math.round(l.p1.value).toLocaleString()} → ${l.p2.time} ¥${Math.round(l.p2.value).toLocaleString()}`;
+    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px;">
+      <span style="color:#fbbf24;">━</span>
+      <span style="flex:1;color:var(--text2);">${label}</span>
+      <button onclick="deleteTL(${i})" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:11px;padding:0 2px;" title="削除">✕</button>
+    </div>`;
+  }).join('');
+
+  el.innerHTML =
+    `<div style="font-weight:600;margin-bottom:6px;color:#fbbf24;">トレンドライン（上:+1pt買い / 下抜け:-2pt売り）</div>` +
+    statusHtml + listHtml +
+    `<button onclick="clearAllTLs()" style="margin-top:6px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;">全削除</button>`;
+}
+
+function deleteTL(i) {
+  const lines = loadTLs();
+  lines.splice(i, 1);
+  saveTLs(lines);
+  applyTrendLines();
+  rebuildSignalScores();
+  applySignalMarkers();
+  renderTrendLineSection();
+}
+
+function clearAllTLs() {
+  saveTLs([]);
+  applyTrendLines();
+  rebuildSignalScores();
+  applySignalMarkers();
+  renderTrendLineSection();
+}
+
+function setupTLClick() {
+  if (!chart) return;
+  chart.subscribeClick(param => {
+    if (!tlDrawMode || !param.time || !param.point) return;
+    const price = candleSeries.coordinateToPrice(param.point.y);
+    if (price === null) return;
+    const pt = {time: param.time, value: price};
+    if (!tlPoint1) {
+      tlPoint1 = pt;
+      document.getElementById('tlBtn').classList.add('waiting');
+    } else {
+      const lines = loadTLs();
+      lines.push({p1: tlPoint1, p2: pt});
+      saveTLs(lines);
+      tlPoint1 = null;
+      toggleTLDraw();
+      applyTrendLines();
+      rebuildSignalScores();
+      applySignalMarkers();
+      renderTrendLineSection();
+    }
+  });
+}
+
 function rebuildSignalScores() {
   signalScores = {};
   for (const [k, v] of Object.entries(_backendScores)) {
@@ -1925,6 +2113,13 @@ function rebuildSignalScores() {
     if (!signalScores[k]) signalScores[k] = {buy: 0, sell: 0};
     if (ps.side === 'buy') signalScores[k].buy  += ps.pts;
     else                   signalScores[k].sell += Math.abs(ps.pts);
+  }
+  // トレンドラインスコア統合
+  const tlScores = calcTLScores();
+  for (const [k, v] of Object.entries(tlScores)) {
+    if (!signalScores[k]) signalScores[k] = {buy: 0, sell: 0};
+    signalScores[k].buy  += v.buy  || 0;
+    signalScores[k].sell += v.sell || 0;
   }
 }
 
@@ -2784,6 +2979,8 @@ async function loadChart() {
     rebuildSignalScores();
     applySignalMarkers();
     renderPatternSection();
+    applyTrendLines();
+    renderTrendLineSection();
 
   } catch (err) {
     console.error(err);
