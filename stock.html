@@ -1609,6 +1609,7 @@ function initChart() {
 
   setupSignalTooltip();
   setupTLClick();
+  setupTLDrag();
   setupCandleLegend();
   initEventMarkerSubscription();
 }
@@ -1969,7 +1970,12 @@ let tlDrawMode    = false;
 let tlHoveredIdx  = -1;
 let tlSelectedIdx = -1;
 let tlPoint1      = null;
-let tlPreviewSeries = null;  // 描画中プレビューライン
+let tlPreviewSeries = null;
+let tlDragging      = false;
+let tlDragStartPrice = null;
+let tlDragOrigP1    = null;
+let tlDragOrigP2    = null;
+let tlJustDragged   = false;
 
 // TLデータはDBから取得・保存（in-memoryキャッシュ tlData を使用）
 let tlData = [];  // [{id, p1:{time,value}, p2:{time,value}}, ...]
@@ -2250,7 +2256,9 @@ function setupTLClick() {
       return;
     }
 
-    // 閲覧モード：ライン近傍クリックで選択、それ以外で選択解除
+    // 閲覧モード：ドラッグ後のclickは無視
+    if (tlJustDragged) { tlJustDragged = false; return; }
+    // ライン近傍クリックで選択、それ以外で選択解除
     if (!param.time || !param.point) { selectTL(-1); return; }
     const cursorPrice = candleSeries.coordinateToPrice(param.point.y);
     if (cursorPrice === null) { selectTL(-1); return; }
@@ -2300,6 +2308,69 @@ function setupTLClick() {
     }
     tlPreviewSeries.setData([{time: pa.time, value: pa.value}, {time: pb.time, value: pb.value}]);
   });
+}
+
+function setupTLDrag() {
+  chartContainer.addEventListener('mousedown', e => {
+    if (tlDrawMode || tlSelectedIdx < 0) return;
+    const rect = chartContainer.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const x = e.clientX - rect.left;
+    const price = candleSeries.coordinateToPrice(y);
+    const time  = chart.timeScale().coordinateToTime(x);
+    if (price === null || !time) return;
+    if (findNearestTL(time, price) !== tlSelectedIdx) return;
+    tlDragging       = true;
+    tlJustDragged    = false;
+    tlDragStartPrice = price;
+    tlDragOrigP1 = {time: tlData[tlSelectedIdx].p1.time, value: tlData[tlSelectedIdx].p1.value};
+    tlDragOrigP2 = {time: tlData[tlSelectedIdx].p2.time, value: tlData[tlSelectedIdx].p2.value};
+    chart.applyOptions({handleScroll: false, handleScale: false});
+    e.preventDefault();
+  });
+
+  chartContainer.addEventListener('mousemove', e => {
+    if (!tlDragging || tlSelectedIdx < 0) return;
+    const rect = chartContainer.getBoundingClientRect();
+    const price = candleSeries.coordinateToPrice(e.clientY - rect.top);
+    if (price === null) return;
+    const delta = price - tlDragStartPrice;
+    if (Math.abs(delta) > 0) tlJustDragged = true;
+    tlData[tlSelectedIdx] = {
+      ...tlData[tlSelectedIdx],
+      p1: {time: tlDragOrigP1.time, value: tlDragOrigP1.value + delta},
+      p2: {time: tlDragOrigP2.time, value: tlDragOrigP2.value + delta},
+    };
+    applyTrendLines();
+    updateTLDeleteMarkPos();
+  });
+
+  const endDrag = async () => {
+    if (!tlDragging) return;
+    tlDragging = false;
+    chart.applyOptions({handleScroll: true, handleScale: true});
+    if (tlSelectedIdx < 0 || !tlJustDragged) return;
+    // DB更新：削除して再登録
+    const line = tlData[tlSelectedIdx];
+    const oldId = line.id;
+    const newP1 = line.p1, newP2 = line.p2;
+    try {
+      await fetch(`${API}/trendlines/${oldId}`, {method: 'DELETE'});
+      const res = await fetch(`${API}/trendlines`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({symbol: currentSymbol, interval: currentInterval, p1: newP1, p2: newP2})
+      });
+      const data = await res.json();
+      tlData[tlSelectedIdx] = {...tlData[tlSelectedIdx], id: data.id};
+    } catch(e) { console.error('TL move save failed', e); }
+    rebuildSignalScores();
+    applySignalMarkers();
+    renderTrendLineSection();
+  };
+
+  chartContainer.addEventListener('mouseup', endDrag);
+  chartContainer.addEventListener('mouseleave', endDrag);
 }
 
 function rebuildSignalScores() {
