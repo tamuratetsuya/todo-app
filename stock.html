@@ -1944,14 +1944,30 @@ function detectChartPatterns(data) {
 let tlSeriesList = [];
 let tlDrawMode   = false;
 let tlPoint1     = null;
+let tlPreviewSeries = null;  // 描画中プレビューライン
 
 function tlKey() { return `tl_${currentSymbol}_${currentInterval}`; }
 function loadTLs() { try { return JSON.parse(localStorage.getItem(tlKey()) || '[]'); } catch(e) { return []; } }
 function saveTLs(lines) { localStorage.setItem(tlKey(), JSON.stringify(lines)); }
 
+// 全銘柄・全時間足のTLをlocalStorageから削除
+function clearAllTLsGlobal() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('tl_')) keys.push(k);
+  }
+  keys.forEach(k => localStorage.removeItem(k));
+  applyTrendLines();
+  rebuildSignalScores();
+  applySignalMarkers();
+  renderTrendLineSection();
+}
+
 function toggleTLDraw() {
   tlDrawMode = !tlDrawMode;
   tlPoint1   = null;
+  removeTLPreview();
   const btn = document.getElementById('tlBtn');
   if (!tlDrawMode) {
     btn.classList.remove('active', 'waiting');
@@ -1962,37 +1978,41 @@ function toggleTLDraw() {
   }
 }
 
+function removeTLPreview() {
+  if (tlPreviewSeries) {
+    try { chart.removeSeries(tlPreviewSeries); } catch(e) {}
+    tlPreviewSeries = null;
+  }
+}
+
 function applyTrendLines() {
   for (const s of tlSeriesList) { try { chart.removeSeries(s); } catch(e) {} }
   tlSeriesList = [];
   if (!chart || !candleData.length) return;
   const lines = loadTLs();
   for (const line of lines) {
-    const pts = extendTLToChart(line.p1, line.p2);
-    if (!pts) continue;
+    // p1 → p2 の2点間のみ描画（延長しない）
+    const t1ms = tlTimeMs(line.p1.time), t2ms = tlTimeMs(line.p2.time);
+    if (t1ms === t2ms) continue;
+    // 時系列順に並べる
+    const [pa, pb] = t1ms <= t2ms ? [line.p1, line.p2] : [line.p2, line.p1];
     const s = chart.addLineSeries({
-      color: 'rgba(251,191,36,0.85)', lineWidth: 1,
-      lineStyle: LightweightCharts.LineStyle.Dashed,
+      color: 'rgba(251,191,36,0.9)', lineWidth: 2,
+      lineStyle: LightweightCharts.LineStyle.Solid,
       priceLineVisible: false, lastValueVisible: false, title: '',
     });
-    s.setData(pts);
+    s.setData([{time: pa.time, value: pa.value}, {time: pb.time, value: pb.value}]);
+    // 端点マーカー
+    s.setMarkers([
+      {time: pa.time, position: 'inBar', color: '#fbbf24', shape: 'circle', size: 1},
+      {time: pb.time, position: 'inBar', color: '#fbbf24', shape: 'circle', size: 1},
+    ]);
     tlSeriesList.push(s);
   }
 }
 
 function tlTimeMs(t) {
   return typeof t === 'string' ? new Date(t).getTime() : Number(t) * 1000;
-}
-
-function extendTLToChart(p1, p2) {
-  if (!candleData.length) return null;
-  const t1 = tlTimeMs(p1.time), t2 = tlTimeMs(p2.time);
-  if (t1 === t2) return null;
-  const slope = (p2.value - p1.value) / (t2 - t1);
-  const st = candleData[0].time, et = candleData[candleData.length - 1].time;
-  const sv = p1.value + slope * (tlTimeMs(st) - t1);
-  const ev = p1.value + slope * (tlTimeMs(et) - t1);
-  return [{time: st, value: sv}, {time: et, value: ev}];
 }
 
 function getTLValueAt(p1, p2, targetTime) {
@@ -2081,6 +2101,8 @@ function clearAllTLs() {
 
 function setupTLClick() {
   if (!chart) return;
+
+  // クリック：点を確定
   chart.subscribeClick(param => {
     if (!tlDrawMode || !param.time || !param.point) return;
     const price = candleSeries.coordinateToPrice(param.point.y);
@@ -2090,6 +2112,9 @@ function setupTLClick() {
       tlPoint1 = pt;
       document.getElementById('tlBtn').classList.add('waiting');
     } else {
+      // 同じ時刻は無効
+      if (tlTimeMs(tlPoint1.time) === tlTimeMs(pt.time)) return;
+      removeTLPreview();
       const lines = loadTLs();
       lines.push({p1: tlPoint1, p2: pt});
       saveTLs(lines);
@@ -2100,6 +2125,32 @@ function setupTLClick() {
       applySignalMarkers();
       renderTrendLineSection();
     }
+  });
+
+  // クロスヘア移動：第1点確定後にプレビューライン表示
+  chart.subscribeCrosshairMove(param => {
+    if (!tlDrawMode || !tlPoint1 || !param.time || !param.point) {
+      removeTLPreview();
+      return;
+    }
+    const curPrice = candleSeries.coordinateToPrice(param.point.y);
+    if (curPrice === null) { removeTLPreview(); return; }
+    const curTime = param.time;
+    if (tlTimeMs(curTime) === tlTimeMs(tlPoint1.time)) { removeTLPreview(); return; }
+
+    // p1とカーソル位置を時系列順に並べてプレビュー
+    const [pa, pb] = tlTimeMs(tlPoint1.time) <= tlTimeMs(curTime)
+      ? [tlPoint1, {time: curTime, value: curPrice}]
+      : [{time: curTime, value: curPrice}, tlPoint1];
+
+    if (!tlPreviewSeries) {
+      tlPreviewSeries = chart.addLineSeries({
+        color: 'rgba(251,191,36,0.5)', lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        priceLineVisible: false, lastValueVisible: false, title: '',
+      });
+    }
+    tlPreviewSeries.setData([{time: pa.time, value: pa.value}, {time: pb.time, value: pb.value}]);
   });
 }
 
@@ -3698,6 +3749,8 @@ document.addEventListener('drop', async (e) => {
 });
 
 // ===== INIT =====
+// 過去に描画したトレンドラインを全クリア（一度リセット）
+clearAllTLsGlobal();
 initChart();
 noDataMsg.style.display = 'flex';
 
