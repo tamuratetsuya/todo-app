@@ -2137,8 +2137,9 @@ function setupTLClick() {
     // 削除モード
     if (tlDeleteMode) {
       if (tlHoveredIdx >= 0) {
-        deleteTL(tlHoveredIdx);
-        tlHoveredIdx = -1;
+        const idx = tlHoveredIdx;
+        tlHoveredIdx = -1;  // applyTrendLines より先にリセット（ハイライト残り防止）
+        deleteTL(idx);
       }
       return;
     }
