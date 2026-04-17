@@ -494,7 +494,7 @@
   .history-item:hover .history-delete-btn { display: flex; }
   .history-delete-btn:hover { color: var(--red); background: rgba(248,81,73,0.1); }
 
-  #tlBtn {
+  #tlBtn, #tlDelBtn {
     display: flex;
     align-items: center;
     gap: 5px;
@@ -511,6 +511,8 @@
   #tlBtn:hover { border-color: var(--blue); color: var(--text); }
   #tlBtn.active { border-color: #fbbf24; color: #fbbf24; background: rgba(251,191,36,0.1); }
   #tlBtn.waiting { border-color: #fbbf24; color: #fbbf24; background: rgba(251,191,36,0.2); }
+  #tlDelBtn:hover { border-color: #f87171; color: var(--text); }
+  #tlDelBtn.active { border-color: #f87171; color: #f87171; background: rgba(248,113,113,0.1); }
 
   #historyBtn, #indBtn {
     display: flex;
@@ -1153,6 +1155,10 @@
   <button id="tlBtn" onclick="toggleTLDraw()" title="トレンドライン描画（2点クリック）">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="20" x2="21" y2="4"></line><circle cx="3" cy="20" r="2" fill="currentColor"></circle><circle cx="21" cy="4" r="2" fill="currentColor"></circle></svg>
     TL
+  </button>
+  <button id="tlDelBtn" onclick="toggleTLDelete()" title="トレンドライン削除（ライン近くをクリック）">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="20" x2="21" y2="4"></line><circle cx="3" cy="20" r="2" fill="currentColor"></circle><circle cx="21" cy="4" r="2" fill="currentColor"></circle><line x1="17" y1="3" x2="23" y2="9" stroke-width="2.5"></line><line x1="23" y1="3" x2="17" y2="9" stroke-width="2.5"></line></svg>
+    TL削除
   </button>
 
   <button id="indBtn" onclick="toggleIndPanel()">
@@ -1943,6 +1949,8 @@ function detectChartPatterns(data) {
 // ===== TREND LINE DRAWING =====
 let tlSeriesList = [];
 let tlDrawMode   = false;
+let tlDeleteMode = false;
+let tlHoveredIdx = -1;
 let tlPoint1     = null;
 let tlPreviewSeries = null;  // 描画中プレビューライン
 
@@ -1973,8 +1981,26 @@ function toggleTLDraw() {
     btn.classList.remove('active', 'waiting');
     chartContainer.style.cursor = '';
   } else {
+    // 削除モードを切る
+    if (tlDeleteMode) toggleTLDelete();
     btn.classList.add('active');
     chartContainer.style.cursor = 'crosshair';
+  }
+}
+
+function toggleTLDelete() {
+  tlDeleteMode = !tlDeleteMode;
+  const btn = document.getElementById('tlDelBtn');
+  if (tlDeleteMode) {
+    btn.classList.add('active');
+    chartContainer.style.cursor = 'pointer';
+    // 描画モードを切る
+    if (tlDrawMode) toggleTLDraw();
+  } else {
+    btn.classList.remove('active');
+    chartContainer.style.cursor = '';
+    tlHoveredIdx = -1;
+    applyTrendLines();
   }
 }
 
@@ -1990,22 +2016,26 @@ function applyTrendLines() {
   tlSeriesList = [];
   if (!chart || !candleData.length) return;
   const lines = loadTLs();
-  for (const line of lines) {
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx];
     // p1 → p2 の2点間のみ描画（延長しない）
     const t1ms = tlTimeMs(line.p1.time), t2ms = tlTimeMs(line.p2.time);
     if (t1ms === t2ms) continue;
     // 時系列順に並べる
     const [pa, pb] = t1ms <= t2ms ? [line.p1, line.p2] : [line.p2, line.p1];
+    const isHovered = (tlDeleteMode && idx === tlHoveredIdx);
+    const color = isHovered ? 'rgba(248,113,113,0.95)' : 'rgba(251,191,36,0.9)';
+    const markerColor = isHovered ? '#f87171' : '#fbbf24';
     const s = chart.addLineSeries({
-      color: 'rgba(251,191,36,0.9)', lineWidth: 2,
+      color, lineWidth: isHovered ? 3 : 2,
       lineStyle: LightweightCharts.LineStyle.Solid,
       priceLineVisible: false, lastValueVisible: false, title: '',
     });
     s.setData([{time: pa.time, value: pa.value}, {time: pb.time, value: pb.value}]);
     // 端点マーカー
     s.setMarkers([
-      {time: pa.time, position: 'inBar', color: '#fbbf24', shape: 'circle', size: 1},
-      {time: pb.time, position: 'inBar', color: '#fbbf24', shape: 'circle', size: 1},
+      {time: pa.time, position: 'inBar', color: markerColor, shape: 'circle', size: 1},
+      {time: pb.time, position: 'inBar', color: markerColor, shape: 'circle', size: 1},
     ]);
     tlSeriesList.push(s);
   }
@@ -2102,8 +2132,16 @@ function clearAllTLs() {
 function setupTLClick() {
   if (!chart) return;
 
-  // クリック：点を確定
+  // クリック：点を確定 / 削除モードでライン削除
   chart.subscribeClick(param => {
+    // 削除モード
+    if (tlDeleteMode) {
+      if (tlHoveredIdx >= 0) {
+        deleteTL(tlHoveredIdx);
+        tlHoveredIdx = -1;
+      }
+      return;
+    }
     if (!tlDrawMode || !param.time || !param.point) return;
     const price = candleSeries.coordinateToPrice(param.point.y);
     if (price === null) return;
@@ -2127,8 +2165,39 @@ function setupTLClick() {
     }
   });
 
-  // クロスヘア移動：第1点確定後にプレビューライン表示
+  // クロスヘア移動：プレビュー / 削除モードでホバーハイライト
   chart.subscribeCrosshairMove(param => {
+    // 削除モード：ライン近傍検出してハイライト
+    if (tlDeleteMode) {
+      removeTLPreview();
+      if (!param.time || !param.point) {
+        if (tlHoveredIdx !== -1) { tlHoveredIdx = -1; applyTrendLines(); }
+        return;
+      }
+      const lines = loadTLs();
+      let minDist = Infinity, minIdx = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        const t1ms = tlTimeMs(l.p1.time), t2ms = tlTimeMs(l.p2.time);
+        const tCur = tlTimeMs(param.time);
+        const tMin = Math.min(t1ms, t2ms), tMax = Math.max(t1ms, t2ms);
+        // ライン範囲内（端点から少し外側まで許容）
+        if (tCur < tMin - (tMax - tMin) * 0.1 || tCur > tMax + (tMax - tMin) * 0.1) continue;
+        const lineVal = getTLValueAt(l.p1, l.p2, param.time);
+        if (lineVal === null) continue;
+        const lineY = candleSeries.priceToCoordinate(lineVal);
+        if (lineY === null) continue;
+        const dist = Math.abs(param.point.y - lineY);
+        if (dist < minDist) { minDist = dist; minIdx = i; }
+      }
+      const newHovered = minDist < 15 ? minIdx : -1;
+      if (newHovered !== tlHoveredIdx) {
+        tlHoveredIdx = newHovered;
+        applyTrendLines();
+      }
+      return;
+    }
+
     if (!tlDrawMode || !tlPoint1 || !param.time || !param.point) {
       removeTLPreview();
       return;
