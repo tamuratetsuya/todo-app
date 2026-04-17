@@ -2167,13 +2167,23 @@ function setupTLClick() {
 
   // クロスヘア移動：プレビュー / 削除モードでホバーハイライト
   chart.subscribeCrosshairMove(param => {
-    // 削除モード：ライン近傍検出してハイライト
+    // 削除モード：ライン近傍検出してハイライト（価格ベース比較で縮尺に依存しない）
     if (tlDeleteMode) {
       removeTLPreview();
       if (!param.time || !param.point) {
         if (tlHoveredIdx !== -1) { tlHoveredIdx = -1; applyTrendLines(); }
         return;
       }
+      const cursorPrice = candleSeries.coordinateToPrice(param.point.y);
+      if (cursorPrice === null) {
+        if (tlHoveredIdx !== -1) { tlHoveredIdx = -1; applyTrendLines(); }
+        return;
+      }
+      // 表示範囲の価格幅からしきい値を算出（縮尺が変わっても追従）
+      const recent = candleData.slice(-100);
+      const hi = recent.reduce((m, b) => Math.max(m, b.high), -Infinity);
+      const lo = recent.reduce((m, b) => Math.min(m, b.low), Infinity);
+      const priceThreshold = (hi - lo) * 0.04; // 価格幅の4%以内なら選択対象
       const lines = loadTLs();
       let minDist = Infinity, minIdx = -1;
       for (let i = 0; i < lines.length; i++) {
@@ -2181,16 +2191,14 @@ function setupTLClick() {
         const t1ms = tlTimeMs(l.p1.time), t2ms = tlTimeMs(l.p2.time);
         const tCur = tlTimeMs(param.time);
         const tMin = Math.min(t1ms, t2ms), tMax = Math.max(t1ms, t2ms);
-        // ライン範囲内（端点から少し外側まで許容）
+        // ライン範囲内（端点から10%外側まで許容）
         if (tCur < tMin - (tMax - tMin) * 0.1 || tCur > tMax + (tMax - tMin) * 0.1) continue;
         const lineVal = getTLValueAt(l.p1, l.p2, param.time);
         if (lineVal === null) continue;
-        const lineY = candleSeries.priceToCoordinate(lineVal);
-        if (lineY === null) continue;
-        const dist = Math.abs(param.point.y - lineY);
+        const dist = Math.abs(cursorPrice - lineVal);
         if (dist < minDist) { minDist = dist; minIdx = i; }
       }
-      const newHovered = minDist < 15 ? minIdx : -1;
+      const newHovered = minDist < priceThreshold ? minIdx : -1;
       if (newHovered !== tlHoveredIdx) {
         tlHoveredIdx = newHovered;
         applyTrendLines();
