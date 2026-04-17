@@ -1954,22 +1954,42 @@ let tlHoveredIdx = -1;
 let tlPoint1     = null;
 let tlPreviewSeries = null;  // 描画中プレビューライン
 
-function tlKey() { return `tl_${currentSymbol}_${currentInterval}`; }
-function loadTLs() { try { return JSON.parse(localStorage.getItem(tlKey()) || '[]'); } catch(e) { return []; } }
-function saveTLs(lines) { localStorage.setItem(tlKey(), JSON.stringify(lines)); }
+// TLデータはDBから取得・保存（in-memoryキャッシュ tlData を使用）
+let tlData = [];  // [{id, p1:{time,value}, p2:{time,value}}, ...]
 
-// 全銘柄・全時間足のTLをlocalStorageから削除
-function clearAllTLsGlobal() {
-  const keys = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith('tl_')) keys.push(k);
-  }
-  keys.forEach(k => localStorage.removeItem(k));
-  applyTrendLines();
-  rebuildSignalScores();
-  applySignalMarkers();
-  renderTrendLineSection();
+async function fetchTLs() {
+  if (!currentSymbol) { tlData = []; return; }
+  try {
+    const res = await fetch(`${API}/trendlines?symbol=${encodeURIComponent(currentSymbol)}&interval=${currentInterval}`);
+    tlData = await res.json();
+  } catch(e) { tlData = []; }
+}
+
+async function addTLToAPI(p1, p2) {
+  try {
+    const res = await fetch(`${API}/trendlines`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({symbol: currentSymbol, interval: currentInterval, p1, p2})
+    });
+    const data = await res.json();
+    tlData.push({id: data.id, p1, p2});
+  } catch(e) { console.error('TL save failed', e); }
+}
+
+async function deleteTLById(id) {
+  try {
+    await fetch(`${API}/trendlines/${id}`, {method: 'DELETE'});
+    tlData = tlData.filter(l => l.id !== id);
+  } catch(e) { console.error('TL delete failed', e); }
+}
+
+async function deleteAllTLsFromAPI() {
+  if (!currentSymbol) return;
+  try {
+    await fetch(`${API}/trendlines?symbol=${encodeURIComponent(currentSymbol)}&interval=${currentInterval}`, {method: 'DELETE'});
+    tlData = [];
+  } catch(e) { console.error('TL deleteAll failed', e); }
 }
 
 function toggleTLDraw() {
@@ -2015,7 +2035,7 @@ function applyTrendLines() {
   for (const s of tlSeriesList) { try { chart.removeSeries(s); } catch(e) {} }
   tlSeriesList = [];
   if (!chart || !candleData.length) return;
-  const lines = loadTLs();
+  const lines = tlData;
   for (let idx = 0; idx < lines.length; idx++) {
     const line = lines[idx];
     // p1 → p2 の2点間のみ描画（延長しない）
@@ -2054,7 +2074,7 @@ function getTLValueAt(p1, p2, targetTime) {
 function calcTLScores() {
   const scores = {};
   if (!candleData.length) return scores;
-  const lines = loadTLs();
+  const lines = tlData;
   if (!lines.length) return scores;
   for (let i = 1; i < candleData.length; i++) {
     const bar = candleData[i], prev = candleData[i - 1];
@@ -2078,7 +2098,7 @@ function calcTLScores() {
 function renderTrendLineSection() {
   const el = document.getElementById('trendLineSection');
   if (!el) return;
-  const lines = loadTLs();
+  const lines = tlData;
   if (!lines.length) { el.innerHTML = ''; return; }
 
   // 最新バーのトレンドライン状態
@@ -2101,7 +2121,7 @@ function renderTrendLineSection() {
     return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px;">
       <span style="color:#fbbf24;">━</span>
       <span style="flex:1;color:var(--text2);">${label}</span>
-      <button onclick="deleteTL(${i})" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:11px;padding:0 2px;" title="削除">✕</button>
+      <button onclick="deleteTLByIdx(${i})" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:11px;padding:0 2px;" title="削除">✕</button>
     </div>`;
   }).join('');
 
@@ -2111,18 +2131,19 @@ function renderTrendLineSection() {
     `<button onclick="clearAllTLs()" style="margin-top:6px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;">全削除</button>`;
 }
 
-function deleteTL(i) {
-  const lines = loadTLs();
-  lines.splice(i, 1);
-  saveTLs(lines);
+async function deleteTLByIdx(i) {
+  const line = tlData[i];
+  if (!line) return;
+  tlHoveredIdx = -1;
+  await deleteTLById(line.id);
   applyTrendLines();
   rebuildSignalScores();
   applySignalMarkers();
   renderTrendLineSection();
 }
 
-function clearAllTLs() {
-  saveTLs([]);
+async function clearAllTLs() {
+  await deleteAllTLsFromAPI();
   applyTrendLines();
   rebuildSignalScores();
   applySignalMarkers();
@@ -2133,13 +2154,13 @@ function setupTLClick() {
   if (!chart) return;
 
   // クリック：点を確定 / 削除モードでライン削除
-  chart.subscribeClick(param => {
+  chart.subscribeClick(async param => {
     // 削除モード
     if (tlDeleteMode) {
       if (tlHoveredIdx >= 0) {
         const idx = tlHoveredIdx;
-        tlHoveredIdx = -1;  // applyTrendLines より先にリセット（ハイライト残り防止）
-        deleteTL(idx);
+        tlHoveredIdx = -1;
+        deleteTLByIdx(idx);
       }
       return;
     }
@@ -2154,11 +2175,10 @@ function setupTLClick() {
       // 同じ時刻は無効
       if (tlTimeMs(tlPoint1.time) === tlTimeMs(pt.time)) return;
       removeTLPreview();
-      const lines = loadTLs();
-      lines.push({p1: tlPoint1, p2: pt});
-      saveTLs(lines);
+      const p1 = tlPoint1;
       tlPoint1 = null;
       toggleTLDraw();
+      await addTLToAPI(p1, pt);
       applyTrendLines();
       rebuildSignalScores();
       applySignalMarkers();
@@ -2185,7 +2205,7 @@ function setupTLClick() {
       const hi = recent.reduce((m, b) => Math.max(m, b.high), -Infinity);
       const lo = recent.reduce((m, b) => Math.min(m, b.low), Infinity);
       const priceThreshold = (hi - lo) * 0.04; // 価格幅の4%以内なら選択対象
-      const lines = loadTLs();
+      const lines = tlData;
       let minDist = Infinity, minIdx = -1;
       for (let i = 0; i < lines.length; i++) {
         const l = lines[i];
@@ -3105,6 +3125,8 @@ async function loadChart() {
 
     // チャートパターン検出
     patternSignals = detectChartPatterns(candleData);
+    // トレンドラインをDBから取得してから描画
+    await fetchTLs();
     rebuildSignalScores();
     applySignalMarkers();
     renderPatternSection();
