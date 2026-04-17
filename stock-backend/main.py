@@ -719,6 +719,19 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             sig = ema(macd_vals, 9)
             return macd_vals[-1], sig
 
+        def _rsi(i, period=14):
+            """RSI(period)を返す。データ不足時はNone"""
+            if i < period: return None
+            gains, losses = 0.0, 0.0
+            for j in range(i - period + 1, i + 1):
+                diff = closes[j] - closes[j - 1]
+                if diff >= 0: gains += diff
+                else: losses -= diff
+            avg_gain = gains / period
+            avg_loss = losses / period
+            if avg_loss == 0: return 100.0
+            return 100 - 100 / (1 + avg_gain / avg_loss)
+
         def _kumo(i):
             """現在足iの雲上限・下限を返す (None, None) if insufficient data"""
             if i < 52: return None, None
@@ -858,6 +871,10 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             # VIX≤17: 安定水準
             if vix is not None and vix <= 17:
                 buy_tags.append("VIX低")
+            # RSI≤40: 売られすぎ水準
+            rsi_val = _rsi(i)
+            if rsi_val is not None and rsi_val <= 40:
+                buy_tags.append("RSI低")
 
             # ---- 売り条件（sell_tags: 表示用、sell_pts: スコア合計）----
             sell_tags = []
@@ -881,6 +898,9 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     add_sell("支持下抜け")
             if vix is not None and vix >= 20:
                 add_sell("VIX高")
+            # RSI≥70: 買われすぎ水準
+            if rsi_val is not None and rsi_val >= 70:
+                add_sell("RSI高")
             # 急落: 前日比-2%以下で1pt、-4%以下で2pt
             if i >= 1 and closes[i-1] > 0:
                 chg = (closes[i] - closes[i-1]) / closes[i-1]
