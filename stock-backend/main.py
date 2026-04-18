@@ -13,6 +13,9 @@ from collections import defaultdict
 from dotenv import load_dotenv
 import boto3
 import json
+import urllib.parse
+import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime as _parse_rfc2822
 
 load_dotenv()
 
@@ -1726,55 +1729,36 @@ def get_events(
         except Exception:
             pass
 
-        # Company news
-        try:
-            news_list = ticker.news
-            if news_list:
-                for item in news_list[:30]:
-                    try:
-                        # yfinance news構造の違いに対応
-                        ts = None
-                        title = ""
-                        url = ""
-                        publisher = ""
-                        if isinstance(item, dict):
-                            content = item.get("content") or {}
-                            if isinstance(content, dict):
-                                pub = content.get("pubDate") or content.get("providerPublishTime")
-                                if isinstance(pub, str):
-                                    d = date.fromisoformat(pub[:10])
-                                elif pub:
-                                    d = date.fromtimestamp(int(pub))
-                                else:
-                                    d = None
-                                title = content.get("title") or item.get("title", "")
-                                url   = (content.get("canonicalUrl") or {}).get("url") or item.get("link", "")
-                                publisher = (content.get("provider") or {}).get("displayName") or item.get("publisher", "")
-                            else:
-                                pts = item.get("providerPublishTime")
-                                d = date.fromtimestamp(int(pts)) if pts else None
-                                title = item.get("title", "")
-                                url   = item.get("link", "")
-                                publisher = item.get("publisher", "")
-                        else:
-                            continue
-                        if d is None or d < d_from or d > d_to:
-                            continue
-                        if not title:
-                            continue
-                        events.append({
-                            "date":   d.isoformat(),
-                            "type":   "news",
-                            "title":  title[:60] + ("…" if len(title) > 60 else ""),
-                            "detail": publisher,
-                            "result": None,
-                            "url":    url or None,
-                        })
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+    except Exception:
+        pass
 
+    # --- Google News RSS（銘柄コード関連の日本語ニュース）---
+    try:
+        q = urllib.parse.quote(f'[{symbol}]')
+        rss_url = f"https://news.google.com/rss/search?q={q}&hl=ja&gl=JP&ceid=JP%3Aja"
+        resp = _requests.get(rss_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        if resp.ok:
+            root = ET.fromstring(resp.content)
+            for item in root.findall(".//item"):
+                title = item.findtext("title", "").strip()
+                link  = item.findtext("link",  "").strip()
+                pub_str = item.findtext("pubDate", "").strip()
+                if not title or not pub_str:
+                    continue
+                try:
+                    d = _parse_rfc2822(pub_str).date()
+                except Exception:
+                    continue
+                if d < d_from or d > d_to:
+                    continue
+                events.append({
+                    "date":   d.isoformat(),
+                    "type":   "news",
+                    "title":  title[:60] + ("…" if len(title) > 60 else ""),
+                    "detail": "Googleニュース",
+                    "result": None,
+                    "url":    link or None,
+                })
     except Exception:
         pass
 
