@@ -1732,9 +1732,11 @@ def get_events(
     except Exception:
         pass
 
-    # --- Google News RSS（銘柄コード関連の日本語ニュース）---
+    # --- Google News RSS（銘柄の適時開示・公式発表のみ）---
+    # "[コード]：" 形式（TDnet 適時開示フォーマット）を含むタイトルのみ採用
+    _official_pat = _re.compile(rf'\[{_re.escape(symbol)}\][：:]')
     try:
-        q = urllib.parse.quote(f'[{symbol}]')
+        q = urllib.parse.quote(f'[{symbol}] 適時開示')
         rss_url = f"https://news.google.com/rss/search?q={q}&hl=ja&gl=JP&ceid=JP%3Aja"
         resp = _requests.get(rss_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         if resp.ok:
@@ -1745,17 +1747,25 @@ def get_events(
                 pub_str = item.findtext("pubDate", "").strip()
                 if not title or not pub_str:
                     continue
+                # 適時開示フォーマット "[コード]：" を含むもののみ
+                if not _official_pat.search(title):
+                    continue
                 try:
                     d = _parse_rfc2822(pub_str).date()
                 except Exception:
                     continue
                 if d < d_from or d > d_to:
                     continue
+                # "[コード]：" より後の部分をタイトルとして使用
+                m = _official_pat.search(title)
+                clean_title = title[m.end():].strip() if m else title
+                # メディア名（" - 出典名"）を除去
+                clean_title = _re.sub(r'\s[-−]\s[^-−]+$', '', clean_title).strip()
                 events.append({
                     "date":   d.isoformat(),
                     "type":   "news",
-                    "title":  title[:60] + ("…" if len(title) > 60 else ""),
-                    "detail": "Googleニュース",
+                    "title":  clean_title[:60] + ("…" if len(clean_title) > 60 else ""),
+                    "detail": "適時開示",
                     "result": None,
                     "url":    link or None,
                 })
