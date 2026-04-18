@@ -1617,7 +1617,8 @@ def get_events(
     try:
         ticker = yf.Ticker(sym)
 
-        # Earnings dates
+        # Earnings dates (earnings_dates + calendar の両方を試みる)
+        earnings_dates_set = set()
         try:
             ed = ticker.earnings_dates
             if ed is not None and not ed.empty:
@@ -1641,8 +1642,45 @@ def get_events(
                             "detail": detail,
                             "result": result,
                         })
+                        earnings_dates_set.add(d.isoformat())
                     except Exception:
                         pass
+        except Exception:
+            pass
+
+        # calendar から次回決算日を補完
+        try:
+            cal = ticker.calendar
+            if cal is not None:
+                # dict形式の場合
+                earn_val = None
+                if isinstance(cal, dict):
+                    earn_val = cal.get("Earnings Date") or cal.get("earningsDate")
+                elif hasattr(cal, 'T'):
+                    # DataFrame形式
+                    try:
+                        earn_val = cal.T.get("Earnings Date", [None])[0] if "Earnings Date" in cal.T.columns else None
+                    except Exception:
+                        pass
+                if earn_val is not None:
+                    dates_to_check = earn_val if isinstance(earn_val, (list, tuple)) else [earn_val]
+                    for ev in dates_to_check:
+                        try:
+                            d = ev.date() if hasattr(ev, 'date') else date.fromisoformat(str(ev)[:10])
+                            if d < d_from or d > d_to:
+                                continue
+                            if d.isoformat() in earnings_dates_set:
+                                continue
+                            events.append({
+                                "date":   d.isoformat(),
+                                "type":   "company",
+                                "title":  "決算発表（予定）",
+                                "detail": "決算発表予定日",
+                                "result": None,
+                            })
+                            earnings_dates_set.add(d.isoformat())
+                        except Exception:
+                            pass
         except Exception:
             pass
 
@@ -1682,6 +1720,55 @@ def get_events(
                             "title":  "株式分割",
                             "detail": f"分割比率: {val}",
                             "result": None,
+                        })
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Company news
+        try:
+            news_list = ticker.news
+            if news_list:
+                for item in news_list[:30]:
+                    try:
+                        # yfinance news構造の違いに対応
+                        ts = None
+                        title = ""
+                        url = ""
+                        publisher = ""
+                        if isinstance(item, dict):
+                            content = item.get("content") or {}
+                            if isinstance(content, dict):
+                                pub = content.get("pubDate") or content.get("providerPublishTime")
+                                if isinstance(pub, str):
+                                    d = date.fromisoformat(pub[:10])
+                                elif pub:
+                                    d = date.fromtimestamp(int(pub))
+                                else:
+                                    d = None
+                                title = content.get("title") or item.get("title", "")
+                                url   = (content.get("canonicalUrl") or {}).get("url") or item.get("link", "")
+                                publisher = (content.get("provider") or {}).get("displayName") or item.get("publisher", "")
+                            else:
+                                pts = item.get("providerPublishTime")
+                                d = date.fromtimestamp(int(pts)) if pts else None
+                                title = item.get("title", "")
+                                url   = item.get("link", "")
+                                publisher = item.get("publisher", "")
+                        else:
+                            continue
+                        if d is None or d < d_from or d > d_to:
+                            continue
+                        if not title:
+                            continue
+                        events.append({
+                            "date":   d.isoformat(),
+                            "type":   "news",
+                            "title":  title[:60] + ("…" if len(title) > 60 else ""),
+                            "detail": publisher,
+                            "result": None,
+                            "url":    url or None,
                         })
                     except Exception:
                         pass
