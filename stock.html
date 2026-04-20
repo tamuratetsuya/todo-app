@@ -1986,7 +1986,10 @@ async function fetchTLs() {
   if (!currentSymbol) { tlData = []; return; }
   try {
     const res = await fetch(`${API}/trendlines?symbol=${encodeURIComponent(currentSymbol)}&interval=${currentInterval}`);
-    tlData = await res.json();
+    const raw = await res.json();
+    // DBから返る時刻は文字列。1時間足のunixタイムスタンプ（"1776438000"）は数値に戻す
+    const norm = t => (typeof t === 'string' && /^\d+$/.test(t)) ? Number(t) : t;
+    tlData = raw.map(l => ({...l, p1: {...l.p1, time: norm(l.p1.time)}, p2: {...l.p2, time: norm(l.p2.time)}}));
   } catch(e) { tlData = []; }
 }
 
