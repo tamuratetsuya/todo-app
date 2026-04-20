@@ -1976,27 +1976,41 @@ def get_news(symbol: str = Query(...)):
         except Exception:
             pass
 
-        # Yahoo Finance Japan RSS（銘柄別）
+        # irbank.net（銘柄別IR/決算ニュース）
         try:
-            code_only = symbol.replace(".T", "")
-            feed = feedparser.parse(f"https://finance.yahoo.co.jp/rss/company/{code_only}")
-            for entry in feed.entries[:15]:
-                url = entry.get("link", "")
-                if not url:
-                    continue
-                published = None
-                if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    published = cal_mod.timegm(entry.published_parsed) * 1000
-                summary_raw = entry.get("summary", "")
-                summary_ja = re2.sub('<[^>]+>', '', summary_raw)[:300] if summary_raw else None
-                new_items.append({
-                    "url": url,
-                    "title": entry.get("title", ""),
-                    "published": published,
-                    "source": "Yahoo!ファイナンス",
-                    "summary_ja": summary_ja,
-                    "title_ja": entry.get("title", ""),
-                })
+            import datetime as _dt2
+            code_only = symbol.replace(".T", "").replace(".OS", "")
+            _ib_headers = {"User-Agent": "Mozilla/5.0 (compatible)"}
+            _ib_resp = _requests.get(f"https://irbank.net/{code_only}/news", headers=_ib_headers, timeout=8)
+            if _ib_resp.status_code == 200:
+                _ib_text = _ib_resp.text
+                # 日付セクションと記事タイトルを対応付け
+                _cur_date = None
+                _date_re = re2.compile(r'<td class="lf" colspan="\d+"[^>]*>(\d{4})年(\d+)月(\d+)日</td>')
+                # title属性がhrefより先に来るパターン: <a class="nxq" title="..." href="/news/...">
+                _news_re = re2.compile(r'<a[^>]+title="([^"]+)"[^>]+href="/news/(\d+)"')
+                for _line in _ib_text.split('\n'):
+                    _dm = _date_re.search(_line)
+                    if _dm:
+                        try:
+                            _cur_date = int(_dt2.datetime(int(_dm.group(1)), int(_dm.group(2)), int(_dm.group(3))).timestamp() * 1000)
+                        except Exception:
+                            _cur_date = None
+                    _nm = _news_re.search(_line)
+                    if _nm:
+                        _full_title = _nm.group(1)  # "7203 トヨタ自動車、..." 形式
+                        _doc_id = _nm.group(2)
+                        # 社名プレフィックス "7203 トヨタ自動車、" を除去
+                        _title = re2.sub(r'^[\w\s]+[\u3001、]', '', _full_title).strip() or _full_title
+                        _url = f"https://irbank.net/news/{_doc_id}"
+                        new_items.append({
+                            "url": _url,
+                            "title": _title,
+                            "published": _cur_date,
+                            "source": "irbank（企業開示）",
+                            "summary_ja": None,
+                            "title_ja": _title,
+                        })
         except Exception:
             pass
 
@@ -2055,6 +2069,10 @@ def get_news(symbol: str = Query(...)):
         ja_query = company_name_ja if company_name_ja else code_only
         new_items += fetch_google_news(ja_query, "ja", 10)
 
+        # 適時開示ニュース（日本語）
+        if company_name_ja:
+            new_items += fetch_google_news(f"{company_name_ja} 適時開示", "ja", 5)
+
         # 英語: 会社名
         if company_name_en:
             new_items += fetch_google_news(company_name_en, "en", 8)
@@ -2104,11 +2122,19 @@ def get_news(symbol: str = Query(...)):
                         pass
             conn.commit()
 
-        # DBから直近1週間のデータを返す
+        # DBから直近データを返す（一般ニュース：1週間 / 企業開示(irbank)：90日）
+        one_week_ago_ms = int((datetime.utcnow().timestamp() - 7 * 86400) * 1000)
+        ninety_days_ago_ms = int((datetime.utcnow().timestamp() - 90 * 86400) * 1000)
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT url, title, title_ja, published, source, summary_ja FROM news_cache WHERE symbol=%s AND published >= %s ORDER BY published DESC LIMIT 30",
-                (symbol, one_week_ago_ms)
+                """SELECT url, title, title_ja, published, source, summary_ja
+                   FROM news_cache
+                   WHERE symbol=%s AND (
+                     (source LIKE '%%irbank%%' AND published >= %s) OR
+                     (source NOT LIKE '%%irbank%%' AND published >= %s)
+                   )
+                   ORDER BY published DESC LIMIT 40""",
+                (symbol, ninety_days_ago_ms, one_week_ago_ms)
             )
             rows = cur.fetchall()
 
