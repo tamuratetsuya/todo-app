@@ -323,6 +323,67 @@ def _df_to_candles(df, is_date: bool) -> list:
     return result
 
 
+TWELVE_DATA_API_KEY = "1810b430cc7e4b92a7d83e845d2573fc"
+
+def _fetch_twelve_data(sym: str, interval: str) -> list:
+    """Twelve Data APIで日本株OHLCVを取得（JPX上場銘柄向け）"""
+    import datetime as _dt
+    # sym例: "7203.T" → "7203", "6758.T" → "6758"
+    td_sym = sym.replace(".T", "").replace(".OS", "")
+    interv_map = {"1d": "1day", "1wk": "1week", "1h": "1h"}
+    outputsize_map = {"1d": 500, "1wk": 260, "1h": 500}
+    td_interval = interv_map.get(interval)
+    if not td_interval:
+        return []
+    url = "https://api.twelvedata.com/time_series"
+    params = {
+        "symbol": td_sym,
+        "exchange": "JPX",
+        "interval": td_interval,
+        "outputsize": outputsize_map.get(interval, 500),
+        "apikey": TWELVE_DATA_API_KEY,
+        "timezone": "Asia/Tokyo",
+        "order": "ASC",
+    }
+    try:
+        resp = _requests.get(url, params=params, timeout=15)
+        data = resp.json()
+        if data.get("status") != "ok" or "values" not in data:
+            return []
+        bars = []
+        for v in data["values"]:
+            try:
+                close = float(v["close"])
+                open_ = float(v["open"])
+                high  = float(v["high"])
+                low   = float(v["low"])
+                vol   = int(v.get("volume", 0) or 0)
+                dt_str = v["datetime"]  # "2026-04-17" or "2026-04-17 09:00:00"
+                if interval in ("1d", "1wk"):
+                    t = dt_str[:10]  # date only
+                else:
+                    # 1h: "2026-04-17 09:00:00" JST → unix timestamp
+                    # strptime without tz = naive, dt.timestamp() uses local tz on server (UTC)
+                    # so subtract 9h offset manually to convert JST→UTC unix
+                    dt = _dt.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                    # サーバーはUTC: naive JST文字列をそのままtimestamp()するとJST-offset unix
+                    # = Yahoo rawの ts+9*3600 と同じ形式（LightweightCharts用）
+                    t = str(int(dt.timestamp()))
+                bars.append({
+                    "time":   t,
+                    "open":   round(open_, 1),
+                    "high":   round(high,  1),
+                    "low":    round(low,   1),
+                    "close":  round(close, 1),
+                    "volume": vol,
+                })
+            except Exception:
+                pass
+        return bars
+    except Exception:
+        return []
+
+
 def _fetch_yahoo_raw(sym: str, interval: str) -> list:
     """Yahoo Finance生APIを直接叩いて取得（yfinanceより最新データが得られる）"""
     import datetime as _dt
@@ -374,18 +435,26 @@ def fetch_from_yfinance(sym: str, interval: str) -> list:
     cfg = INTERVALS[interval]
     from datetime import date as _date
     today_str = str(_date.today())
+    is_japan = sym.endswith(".T") or sym.endswith(".OS")
 
-    # 1. Yahoo Finance 生APIで取得（yfinanceより最新）
-    result = _fetch_yahoo_raw(sym, interval)
+    # 1. 日本株はTwelve Dataを優先
+    result = []
+    if is_japan:
+        result = _fetch_twelve_data(sym, interval)
 
-    # 2. 生APIが空の場合はyfinanceにフォールバック
+    # 2. Twelve Dataが空 or 非日本株 → Yahoo Finance 生API
+    if not result:
+        result = _fetch_yahoo_raw(sym, interval)
+
+    # 3. それも空ならyfinanceにフォールバック
     if not result:
         ticker = yf.Ticker(sym)
         df = ticker.history(period=cfg["period"], interval=interval, auto_adjust=True)
         result = _df_to_candles(df, cfg["is_date"]) if not df.empty else []
 
-    # 3. 日足の場合、yfinanceの1時間足から当日バーを補完（取引時間中）
-    if interval == "1d":
+    # 4. 日本株の1時間足はTwelve Dataが提供するので補完不要
+    #    非日本株の日足のみ1h補完を試みる
+    if interval == "1d" and not is_japan:
         try:
             ticker = yf.Ticker(sym)
             df_h = ticker.history(period="1d", interval="1h", auto_adjust=True)
