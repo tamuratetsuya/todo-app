@@ -3089,6 +3089,13 @@ def _run_screening_update():
 
         today_str = _dt3.now().strftime("%Y-%m-%d")
 
+        # screening_cacheでvolume_avg/hvがNULLの銘柄を取得（再計算対象）
+        conn2 = get_conn()
+        with conn2.cursor() as cur:
+            cur.execute("SELECT code FROM screening_cache WHERE volume_avg IS NULL OR hv IS NULL")
+            needs_recalc = {r["code"] for r in cur.fetchall()}
+        conn2.close()
+
         # 分類: fresh(今日データあり) / stale(古いデータあり) / new(データなし)
         fresh_codes = set()
         stale_codes = []   # (code, start_date)  差分fetch対象
@@ -3104,9 +3111,12 @@ def _run_screening_update():
             else:
                 new_codes.append(code)
 
+        # fresh銘柄でもvolume_avg/hvがNULLならDB再計算対象に追加
+        fresh_recalc = fresh_codes & needs_recalc
+
         fetch_targets = stale_codes + [(c, None) for c in new_codes]
         _screening_status["total"] = len(fetch_targets) + len(fresh_codes)
-        _screening_status["skipped"] = len(fresh_codes)
+        _screening_status["skipped"] = len(fresh_codes) - len(fresh_recalc)
 
         # --- yfinanceダウンロード（100銘柄ずつ）---
         candle_data = {}  # code -> [row, ...]
@@ -3213,6 +3223,46 @@ def _run_screening_update():
                     )
                     db_rows = list(reversed(cur.fetchall()))
 
+                score = _calc_screening_score(db_rows, vix_latest=vix_latest)
+                if score:
+                    s = stock_map.get(code, {})
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO screening_cache "
+                            "(code,name,sector,buy_score,sell_score,net_score,close_price,change_pct,"
+                            "buy_signals,sell_signals,volume_avg,hv) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                            "ON DUPLICATE KEY UPDATE name=%s,sector=%s,buy_score=%s,sell_score=%s,net_score=%s,"
+                            "close_price=%s,change_pct=%s,buy_signals=%s,sell_signals=%s,"
+                            "volume_avg=%s,hv=%s,updated_at=NOW()",
+                            (code, s.get("name",""), s.get("sector",""),
+                             score["buy_score"], score["sell_score"], score["net_score"],
+                             score["close"], score["change_pct"],
+                             json.dumps(score["buy_signals"], ensure_ascii=False),
+                             json.dumps(score["sell_signals"], ensure_ascii=False),
+                             score["volume_avg"], score["hv"],
+                             s.get("name",""), s.get("sector",""),
+                             score["buy_score"], score["sell_score"], score["net_score"],
+                             score["close"], score["change_pct"],
+                             json.dumps(score["buy_signals"], ensure_ascii=False),
+                             json.dumps(score["sell_signals"], ensure_ascii=False),
+                             score["volume_avg"], score["hv"])
+                        )
+                    conn.commit()
+            except Exception:
+                pass
+
+        # fresh銘柄でvolume_avg/hvがNULLなものをDBから再計算
+        for code in fresh_recalc:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT candle_time,open,high,low,close,volume FROM candles "
+                        "WHERE symbol=%s AND interval_type='1d' "
+                        "ORDER BY candle_time DESC LIMIT 65",
+                        (code,)
+                    )
+                    db_rows = list(reversed(cur.fetchall()))
                 score = _calc_screening_score(db_rows, vix_latest=vix_latest)
                 if score:
                     s = stock_map.get(code, {})
