@@ -1922,6 +1922,55 @@ def get_events(
     return events
 
 
+@app.get("/margin_balance")
+def get_margin_balance(symbol: str = Query(...)):
+    """kabutan から信用残高データを取得（週次・直近4週分）"""
+    import re as _re2
+    code_only = symbol.replace(".T", "").replace(".OS", "")
+    if not code_only.isdigit():
+        return {"history": []}
+    hdrs = {"User-Agent": "Mozilla/5.0 (compatible)"}
+    try:
+        r = _requests.get(f"https://kabutan.jp/stock/?code={code_only}", headers=hdrs, timeout=8)
+        text = r.text
+        tables = _re2.findall(r'<table[^>]*>(.*?)</table>', text, _re2.DOTALL)
+        for t in tables:
+            if "売り残" in t and "買い残" in t:
+                rows = _re2.findall(
+                    r'<time datetime="([^"]+)">[^<]+</time>\s*</th>\s*'
+                    r'<td>([\d,.]+)</td>\s*<td>([\d,.]+)</td>\s*<td>([\d,.]+)</td>',
+                    t, _re2.DOTALL
+                )
+                history = []
+                for date_str, sell_str, buy_str, ratio_str in rows:
+                    sell = float(sell_str.replace(',', ''))
+                    buy  = float(buy_str.replace(',', ''))
+                    ratio = float(ratio_str.replace(',', ''))
+                    # 単位: 千株 → 万株に変換
+                    history.append({
+                        "date": date_str,
+                        "sell": round(sell / 10, 2),   # 万株
+                        "buy":  round(buy  / 10, 2),   # 万株
+                        "ratio": ratio,
+                    })
+                if history:
+                    latest = history[0]
+                    sell_wow = round(history[0]["sell"] - history[1]["sell"], 2) if len(history) > 1 else None
+                    buy_wow  = round(history[0]["buy"]  - history[1]["buy"],  2) if len(history) > 1 else None
+                    return {
+                        "history":  history,
+                        "sell_wow": sell_wow,
+                        "buy_wow":  buy_wow,
+                        "sell":     latest["sell"],
+                        "buy":      latest["buy"],
+                        "ratio":    latest["ratio"],
+                        "date":     latest["date"],
+                    }
+        return {"history": []}
+    except Exception:
+        return {"history": []}
+
+
 @app.get("/news")
 def get_news(symbol: str = Query(...)):
     """銘柄関連ニュースをYahoo Finance RSS + yfinance newsから取得しDBに差分保存、直近1週間を返す"""

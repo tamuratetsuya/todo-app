@@ -1334,6 +1334,10 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
         AIチャット
       </button>
+      <button class="analysis-tab" id="tabMargin" onclick="switchAnalysisTab('margin')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+        信用残高
+      </button>
       <button class="analysis-tab" id="tabMemo" onclick="switchAnalysisTab('memo')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
         メモ
@@ -1403,6 +1407,7 @@
   <div class="analysis-body" id="financialsBody" style="display:none;"></div>
   <div class="analysis-body" id="analystBody" style="display:none;"></div>
   <div class="analysis-body" id="aiChatBody" style="display:none;flex-direction:column;padding:0;overflow:hidden;"></div>
+  <div class="analysis-body" id="marginBody" style="display:none;overflow-y:auto;padding:12px 14px;"></div>
   <div class="analysis-body" id="memoBody" style="display:none;flex-direction:column;padding:10px 12px;gap:8px;">
     <textarea id="memoTextarea" placeholder="この銘柄のメモを入力..." style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;line-height:1.6;padding:8px;resize:none;font-family:inherit;min-height:80px;"></textarea>
     <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -4535,7 +4540,7 @@ let currentNewsTab = 'rules';
 
 function switchAnalysisTab(tab) {
   currentNewsTab = tab;
-  ['rules','news','x','holders','financials','analyst','aiChat','memo'].forEach(t => {
+  ['rules','news','x','holders','financials','analyst','aiChat','margin','memo'].forEach(t => {
     const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (el) el.classList.toggle('active', t === tab);
   });
@@ -4546,6 +4551,7 @@ function switchAnalysisTab(tab) {
   document.getElementById('financialsBody').style.display  = tab === 'financials' ? '' : 'none';
   document.getElementById('analystBody').style.display     = tab === 'analyst'    ? '' : 'none';
   document.getElementById('aiChatBody').style.display      = tab === 'aiChat'     ? 'flex' : 'none';
+  document.getElementById('marginBody').style.display      = tab === 'margin'     ? '' : 'none';
   document.getElementById('memoBody').style.display        = tab === 'memo'       ? 'flex' : 'none';
   if (tab === 'news')       loadNews();
   if (tab === 'x')          loadXPosts();
@@ -4553,7 +4559,157 @@ function switchAnalysisTab(tab) {
   if (tab === 'financials') loadFinancials();
   if (tab === 'analyst')    loadAnalyst();
   if (tab === 'aiChat')     initAiChat();
+  if (tab === 'margin')     loadMarginBalance();
   if (tab === 'memo')       loadMemo();
+}
+
+// ===== 信用残高タブ =====
+async function loadMarginBalance() {
+  const sym = currentSymbol;
+  if (!sym) return;
+  const body = document.getElementById('marginBody');
+  body.innerHTML = '<div class="news-loading">取得中...</div>';
+  try {
+    const res = await fetch(`${API}/margin_balance?symbol=${encodeURIComponent(sym)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    if (!d.history || !d.history.length) {
+      body.innerHTML = '<div class="news-loading">信用残高データなし（日本株以外は非対応）</div>';
+      return;
+    }
+    renderMarginBalance(d);
+  } catch(e) {
+    body.innerHTML = `<div class="news-loading" style="color:var(--red)">取得失敗: ${e.message}</div>`;
+  }
+}
+
+function renderMarginBalance(d) {
+  const body = document.getElementById('marginBody');
+  const sell = d.sell, buy = d.buy, ratio = d.ratio;
+  const net = Math.round((buy - sell) * 100) / 100;
+  const wow_sell = d.sell_wow, wow_buy = d.buy_wow;
+  const wow_net = wow_sell != null && wow_buy != null ? Math.round((wow_buy - wow_sell) * 100) / 100 : null;
+  const fmtWow = v => v == null ? '—' : `<span style="color:${v >= 0 ? '#2dd4bf' : '#f87171'}">${v >= 0 ? '+' : ''}${v.toFixed(2)}万</span>`;
+  const fmtNum = v => v.toFixed(2) + '万';
+
+  // サマリーテーブル
+  let html = `
+<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">${d.date} 週次データ（kabutan）</div>
+<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">
+  <thead>
+    <tr style="border-bottom:1px solid var(--border);">
+      <th style="text-align:left;padding:5px 4px;color:var(--text2);font-weight:500;"></th>
+      <th style="text-align:right;padding:5px 4px;color:var(--text2);font-weight:500;">売残</th>
+      <th style="text-align:right;padding:5px 4px;color:var(--text2);font-weight:500;">買残</th>
+      <th style="text-align:right;padding:5px 4px;color:var(--text2);font-weight:500;">差引</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:5px 4px;color:var(--text2);">残高</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtNum(sell)}</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtNum(buy)}</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtNum(net)}</td>
+    </tr>
+    <tr>
+      <td style="padding:5px 4px;color:var(--text2);">前週比</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtWow(wow_sell)}</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtWow(wow_buy)}</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtWow(wow_net)}</td>
+    </tr>
+  </tbody>
+</table>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+  <span style="color:var(--text2);font-size:12px;">信用倍率</span>
+  <span style="font-size:18px;font-weight:700;color:#fbbf24;">${ratio}倍</span>
+  <span style="font-size:11px;color:var(--text2);">(買残÷売残)</span>
+</div>`;
+
+  // 履歴チャート（SVG）
+  const hist = d.history;
+  if (hist.length >= 2) {
+    html += renderMarginChart(hist);
+  }
+
+  body.innerHTML = html;
+}
+
+function renderMarginChart(hist) {
+  const W = 280, H = 120, PAD = { t: 10, r: 10, b: 28, l: 48 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  const n = hist.length;
+
+  // 逆順（古い→新しい）
+  const data = [...hist].reverse();
+
+  const maxVal = Math.max(...data.map(r => r.buy));
+  const minVal = 0;
+  const range = maxVal - minVal || 1;
+
+  const xStep = cW / Math.max(n - 1, 1);
+  const yScale = v => cH - ((v - minVal) / range) * cH;
+
+  // 買残ライン（緑）
+  const buyPts = data.map((r, i) => `${PAD.l + i * xStep},${PAD.t + yScale(r.buy)}`).join(' ');
+  // 売残ライン（赤）
+  const sellPts = data.map((r, i) => `${PAD.l + i * xStep},${PAD.t + yScale(r.sell)}`).join(' ');
+
+  // X軸ラベル（日付）
+  const xLabels = data.map((r, i) => {
+    const x = PAD.l + i * xStep;
+    const label = r.date.slice(5).replace('-', '/');  // "04/10"
+    return `<text x="${x}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--text2)">${label}</text>`;
+  }).join('');
+
+  // Y軸ラベル
+  const yTicks = [0, maxVal * 0.5, maxVal].map(v => {
+    const y = PAD.t + yScale(v);
+    const label = (v / 100).toFixed(0) + '百万';
+    return `<text x="${PAD.l - 4}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--text2)">${v === 0 ? '0' : (v / 10).toFixed(0) + '万'}</text>
+<line x1="${PAD.l}" y1="${y}" x2="${PAD.l + cW}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
+  }).join('');
+
+  // バーチャート（下部）
+  const BH = 60, BPAD = { t: 8, r: 10, b: 24, l: 48 };
+  const bW = cW;
+  const bMaxVal = Math.max(...data.map(r => Math.max(r.buy, r.sell)));
+  const barW = Math.min(bW / n * 0.35, 20);
+  const bScale = v => (v / (bMaxVal || 1)) * (BH - BPAD.t - BPAD.b);
+
+  const bars = data.map((r, i) => {
+    const x = BPAD.l + i * (bW / Math.max(n - 1, 1));
+    const bh = bScale(r.buy);
+    const sh = bScale(r.sell);
+    const bBase = BH - BPAD.b;
+    return `
+<rect x="${x - barW}" y="${bBase - bh}" width="${barW}" height="${bh}" fill="#2dd4bf" opacity="0.8" rx="1"/>
+<rect x="${x}" y="${bBase - sh}" width="${barW}" height="${sh}" fill="#f87171" opacity="0.8" rx="1"/>`;
+  }).join('');
+
+  const bXLabels = data.map((r, i) => {
+    const x = BPAD.l + i * (bW / Math.max(n - 1, 1));
+    return `<text x="${x}" y="${BH - 4}" text-anchor="middle" font-size="9" fill="var(--text2)">${r.date.slice(5).replace('-', '/')}</text>`;
+  }).join('');
+
+  return `
+<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">信用残高推移（万株）</div>
+<svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible;margin-bottom:6px;">
+  ${yTicks}
+  <polyline points="${buyPts}" fill="none" stroke="#2dd4bf" stroke-width="2"/>
+  <polyline points="${sellPts}" fill="none" stroke="#f87171" stroke-width="2"/>
+  ${data.map((r, i) => `<circle cx="${PAD.l + i * xStep}" cy="${PAD.t + yScale(r.buy)}" r="3" fill="#2dd4bf"/>
+<circle cx="${PAD.l + i * xStep}" cy="${PAD.t + yScale(r.sell)}" r="3" fill="#f87171"/>`).join('')}
+  ${xLabels}
+</svg>
+<div style="display:flex;gap:12px;margin-bottom:12px;font-size:11px;">
+  <span><span style="color:#2dd4bf;">━</span> 買残</span>
+  <span><span style="color:#f87171;">━</span> 売残</span>
+</div>
+<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">週次バー（緑:買残 赤:売残）</div>
+<svg width="100%" viewBox="0 0 ${W} ${BH}" style="overflow:visible;">
+  ${bars}
+  ${bXLabels}
+</svg>`;
 }
 
 // ===== メモタブ =====
