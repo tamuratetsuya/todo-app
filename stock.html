@@ -4693,7 +4693,7 @@ function renderMarginChart(hist) {
 
   return `
 <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">信用残高推移（万株）</div>
-<svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible;margin-bottom:6px;">
+<svg width="${W}" height="${H}" style="overflow:visible;display:block;margin-bottom:6px;">
   ${yTicks}
   <polyline points="${buyPts}" fill="none" stroke="#2dd4bf" stroke-width="2"/>
   <polyline points="${sellPts}" fill="none" stroke="#f87171" stroke-width="2"/>
@@ -4706,7 +4706,7 @@ function renderMarginChart(hist) {
   <span><span style="color:#f87171;">━</span> 売残</span>
 </div>
 <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">週次バー（緑:買残 赤:売残）</div>
-<svg width="100%" viewBox="0 0 ${W} ${BH}" style="overflow:visible;">
+<svg width="${W}" height="${BH}" style="overflow:visible;display:block;">
   ${bars}
   ${bXLabels}
 </svg>`;
