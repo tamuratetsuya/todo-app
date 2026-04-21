@@ -176,6 +176,29 @@ def init_db():
                 UNIQUE KEY uq_memo (symbol)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS prime_stocks (
+                code VARCHAR(10) NOT NULL PRIMARY KEY,
+                name VARCHAR(200),
+                sector VARCHAR(100),
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS screening_cache (
+                code VARCHAR(10) NOT NULL PRIMARY KEY,
+                name VARCHAR(200),
+                sector VARCHAR(100),
+                buy_score INT DEFAULT 0,
+                sell_score INT DEFAULT 0,
+                net_score INT DEFAULT 0,
+                close_price FLOAT,
+                change_pct FLOAT,
+                buy_signals TEXT,
+                sell_signals TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        """)
     conn.commit()
     conn.close()
 
@@ -2788,6 +2811,447 @@ def _scrape_minkabu_annual(html: str) -> list:
     except Exception:
         pass
     return annual
+
+
+# ===== スクリーニング =====
+
+import threading as _threading
+
+_screening_status = {"running": False, "progress": 0, "total": 0, "updated_at": None, "error": None}
+
+def _calc_screening_score(rows: list) -> dict | None:
+    """OHLCVデータからstock.htmlと同じルールでシグナルスコアを計算"""
+    if len(rows) < 35:
+        return None
+    closes  = [float(r['close'])  for r in rows]
+    highs   = [float(r['high'])   for r in rows]
+    lows    = [float(r['low'])    for r in rows]
+    volumes = [float(r['volume'] or 0) for r in rows]
+    n = len(rows)
+    i = n - 1
+
+    def sma(arr, p, idx):
+        if idx < p - 1: return None
+        return sum(arr[idx-p+1:idx+1]) / p
+
+    def ema_val(arr, p, idx):
+        if idx < p - 1: return None
+        k = 2 / (p + 1)
+        v = sum(arr[:p]) / p
+        for j in range(p, idx + 1):
+            v = arr[j] * k + v * (1 - k)
+        return v
+
+    def tenkan(idx):
+        if idx < 8: return None
+        return (max(highs[idx-8:idx+1]) + min(lows[idx-8:idx+1])) / 2
+
+    def kijun(idx):
+        if idx < 25: return None
+        return (max(highs[idx-25:idx+1]) + min(lows[idx-25:idx+1])) / 2
+
+    def cloud(idx):
+        """(cloud_top, cloud_bot) 26本前の先行スパン"""
+        ci = idx - 26
+        if ci < 51: return None, None
+        t = tenkan(ci); k = kijun(ci)
+        if t is None or k is None: return None, None
+        sa = (t + k) / 2
+        sb = (max(highs[ci-51:ci+1]) + min(lows[ci-51:ci+1])) / 2
+        return max(sa, sb), min(sa, sb)
+
+    buy_sigs  = []
+    sell_sigs = []
+
+    ma5      = sma(closes, 5,  i);   ma5p  = sma(closes, 5,  i-1)
+    ma25     = sma(closes, 25, i);   ma25p = sma(closes, 25, i-1)
+
+    # GC / DC
+    if None not in (ma5, ma25, ma5p, ma25p):
+        if ma5p <= ma25p and ma5 > ma25:   buy_sigs.append("GC")
+        elif ma5p >= ma25p and ma5 < ma25: sell_sigs.append("DC")
+
+    # ボリンジャーバンド (25日)
+    if i >= 25:
+        w = closes[i-24:i+1]; mean25 = sum(w)/25
+        std25 = (sum((x-mean25)**2 for x in w)/25)**0.5
+        bbu = mean25 + 2*std25; bbl = mean25 - 2*std25
+        rng = bbu - bbl
+        bb_pct = (closes[i] - bbl) / rng if rng > 0 else 0.5
+        below_cloud = False
+        ct, cb = cloud(i)
+        if ct and cb and closes[i] < cb and ma5 and ma25 and ma5 < ma25:
+            below_cloud = True
+        # BB反転
+        if bb_pct <= 0.3 and closes[i] > closes[i-1] and not below_cloud:
+            buy_sigs.append("BB反転")
+        # BBウォーク↑
+        if i >= 3:
+            walk = all(
+                (lambda w2, c2: (c2 - (sum(w2)/25 - 2*(sum((x-sum(w2)/25)**2 for x in w2)/25)**0.5)) /
+                 max((sum(w2)/25 + 2*(sum((x-sum(w2)/25)**2 for x in w2)/25)**0.5) -
+                     (sum(w2)/25 - 2*(sum((x-sum(w2)/25)**2 for x in w2)/25)**0.5), 1e-9) >= 0.8)(
+                    closes[i-j-24:i-j+1], closes[i-j])
+                for j in range(3) if i-j >= 25)
+            if walk: buy_sigs.append("BBウォーク")
+        # BBウォーク↓
+        if i >= 3:
+            walkd = all(
+                (lambda w2, c2: (c2 - (sum(w2)/25 - 2*(sum((x-sum(w2)/25)**2 for x in w2)/25)**0.5)) /
+                 max((sum(w2)/25 + 2*(sum((x-sum(w2)/25)**2 for x in w2)/25)**0.5) -
+                     (sum(w2)/25 - 2*(sum((x-sum(w2)/25)**2 for x in w2)/25)**0.5), 1e-9) <= 0.2)(
+                    closes[i-j-24:i-j+1], closes[i-j])
+                for j in range(3) if i-j >= 25)
+            if walkd: sell_sigs.append("BBウォーク↓")
+
+    # 抵抗ブレイク / 支持反転 / 抵抗手前 / 支持下抜け (直近20本)
+    if i >= 20:
+        h20 = max(highs[i-20:i]); l20 = min(lows[i-20:i])
+        if closes[i] > h20:                                      buy_sigs.append("抵抗ブレイク")
+        elif closes[i] >= h20 * 0.98:                           sell_sigs.append("抵抗手前")
+        if closes[i] >= l20 * 0.985 and closes[i] > closes[i-1] and not (ma5 and ma25 and ma5 < ma25):
+            buy_sigs.append("支持反転")
+        if closes[i] < l20:                                      sell_sigs.append("支持下抜け")
+
+    # RSI (14)
+    if i >= 14:
+        gains = losses = 0.0
+        for j in range(i-13, i+1):
+            d = closes[j] - closes[j-1]
+            if d > 0: gains += d
+            else:     losses += -d
+        avg_g = gains / 14; avg_l = losses / 14
+        rsi = 100 - 100/(1 + avg_g/avg_l) if avg_l > 0 else 100.0
+        if rsi <= 40:  buy_sigs.append("RSI低")
+        elif rsi >= 70: sell_sigs.append("RSI高")
+
+    # MACD (12,26,9)
+    if i >= 35:
+        e12 = ema_val(closes, 12, i);  e12p = ema_val(closes, 12, i-1)
+        e26 = ema_val(closes, 26, i);  e26p = ema_val(closes, 26, i-1)
+        if None not in (e12, e26, e12p, e26p):
+            macd = e12 - e26; macdp = e12p - e26p
+            if macdp <= 0 and macd > 0:  buy_sigs.append("MACD↑")
+            elif macdp >= 0 and macd < 0: sell_sigs.append("MACD↓")
+
+    # 一目均衡表
+    if i >= 52:
+        tk = tenkan(i); kj = kijun(i); tkp = tenkan(i-1); kjp = kijun(i-1)
+        ct, cb = cloud(i)
+        # IK↑ / IK↓
+        if None not in (tk, kj, tkp, kjp):
+            if tkp <= kjp and tk > kj:  buy_sigs.append("IK↑")
+            elif tkp >= kjp and tk < kj: sell_sigs.append("IK↓")
+        # 三役好転
+        if None not in (tk, kj, ct, cb) and tk > kj and closes[i] > ct:
+            if i >= 26 and closes[i] > closes[i-26]: buy_sigs.append("IK3")
+        # 雲侵入 / 雲下抜け
+        if ct and cb:
+            pp = closes[i-1]
+            if pp >= ct and closes[i] < ct and closes[i] >= cb: sell_sigs.append("雲侵入")
+            elif pp >= cb and closes[i] < cb:                    sell_sigs.append("雲下抜け")
+
+    # 急騰/急落
+    if i >= 1:
+        chg = (closes[i] - closes[i-1]) / closes[i-1] * 100
+        if chg >= 4:    buy_sigs.append("急騰+4%")
+        elif chg >= 2:  buy_sigs.append("急騰+2%")
+        elif chg <= -4: sell_sigs.append("急落-4%")
+        elif chg <= -2: sell_sigs.append("急落-2%")
+
+    buy_score  = sum(2 if s == "急騰+4%" else 1 for s in buy_sigs)
+    sell_score = sum(2 if s in ("急落-4%","BBウォーク↓","雲下抜け") else 1 for s in sell_sigs)
+
+    return {
+        "buy_score":   buy_score,
+        "sell_score":  sell_score,
+        "net_score":   buy_score - sell_score,
+        "buy_signals": buy_sigs,
+        "sell_signals": sell_sigs,
+        "close":       closes[-1],
+        "change_pct":  (closes[-1]-closes[-2])/closes[-2]*100 if len(closes)>=2 else 0,
+    }
+
+
+def _fetch_prime_stocks(conn) -> list:
+    """JPX無料CSVからプライム市場銘柄を取得、DBにキャッシュ"""
+    import io
+    try:
+        url = "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls"
+        resp = _requests.get(url, timeout=30)
+        resp.raise_for_status()
+        import pandas as pd
+        df = pd.read_excel(io.BytesIO(resp.content), engine="xlrd")
+        prime = df[df.iloc[:, 3].astype(str).str.contains("プライム", na=False)]
+        stocks = []
+        for _, row in prime.iterrows():
+            code = str(row.iloc[1]).strip().zfill(4)
+            name = str(row.iloc[2]).strip()
+            sector = str(row.iloc[5]).strip() if len(row) > 5 else ""
+            stocks.append({"code": code, "name": name, "sector": sector})
+        # DBに保存
+        with conn.cursor() as cur:
+            for s in stocks:
+                cur.execute(
+                    "INSERT INTO prime_stocks (code,name,sector) VALUES (%s,%s,%s) "
+                    "ON DUPLICATE KEY UPDATE name=%s, sector=%s",
+                    (s["code"], s["name"], s["sector"], s["name"], s["sector"])
+                )
+        conn.commit()
+        return stocks
+    except Exception as e:
+        # フォールバック: DBから取得
+        with conn.cursor() as cur:
+            cur.execute("SELECT code, name, sector FROM prime_stocks")
+            rows = cur.fetchall()
+        if rows:
+            return [{"code": r["code"], "name": r["name"], "sector": r["sector"]} for r in rows]
+        raise Exception(f"JPXデータ取得失敗: {e}")
+
+
+def _run_screening_update():
+    global _screening_status
+    _screening_status.update({"running": True, "progress": 0, "total": 0, "error": None})
+    try:
+        import yfinance as yf
+        import pandas as pd
+        from datetime import datetime as _dt3, timedelta as _td
+
+        conn = get_conn()
+        stocks = _fetch_prime_stocks(conn)
+
+        codes = [s["code"] for s in stocks]
+        stock_map = {s["code"]: s for s in stocks}
+
+        # DBに既存の最新candle_timeを一括取得
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT symbol, MAX(candle_time) as latest FROM candles "
+                "WHERE interval_type='1d' AND symbol IN %s GROUP BY symbol",
+                (tuple(codes),)
+            ) if codes else None
+            latest_map = {r["symbol"]: str(r["latest"]) for r in (cur.fetchall() if codes else [])}
+        conn.close()
+
+        today_str = _dt3.now().strftime("%Y-%m-%d")
+
+        # 分類: fresh(今日データあり) / stale(古いデータあり) / new(データなし)
+        fresh_codes = set()
+        stale_codes = []   # (code, start_date)  差分fetch対象
+        new_codes   = []   # 全取得対象
+
+        for code in codes:
+            latest = latest_map.get(code)
+            if latest and latest >= today_str:
+                fresh_codes.add(code)
+            elif latest:
+                start = (_dt3.strptime(latest, "%Y-%m-%d") + _td(days=1)).strftime("%Y-%m-%d")
+                stale_codes.append((code, start))
+            else:
+                new_codes.append(code)
+
+        fetch_targets = stale_codes + [(c, None) for c in new_codes]
+        _screening_status["total"] = len(fetch_targets) + len(fresh_codes)
+        _screening_status["skipped"] = len(fresh_codes)
+
+        # --- yfinanceダウンロード（100銘柄ずつ）---
+        candle_data = {}  # code -> [row, ...]
+        batch_size = 100
+        done = 0
+
+        # 1) 差分fetch (stale): 各バッチ内の最古start_dateから今日まで
+        stale_only = [(c, s) for c, s in stale_codes]
+        for b in range(0, len(stale_only), batch_size):
+            batch = stale_only[b:b+batch_size]
+            batch_codes   = [c for c, _ in batch]
+            batch_starts  = [s for _, s in batch]
+            tickers = [f"{c}.T" for c in batch_codes]
+            min_start = min(batch_starts)
+            try:
+                raw = yf.download(tickers, start=min_start, end=today_str,
+                                  interval="1d", group_by="ticker",
+                                  progress=False, threads=True, auto_adjust=True)
+                for code, ticker in zip(batch_codes, tickers):
+                    try:
+                        df = raw if len(tickers) == 1 else (
+                            raw[ticker] if ticker in raw.columns.get_level_values(0) else pd.DataFrame()
+                        )
+                        if df is None or df.empty: continue
+                        df = df.dropna(subset=["Close"])
+                        rows = [{"candle_time": str(dt.date()),
+                                 "open":   float(row["Open"]),
+                                 "high":   float(row["High"]),
+                                 "low":    float(row["Low"]),
+                                 "close":  float(row["Close"]),
+                                 "volume": float(row.get("Volume", 0) or 0)}
+                                for dt, row in df.iterrows()]
+                        if rows:
+                            candle_data[code] = rows
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            done += len(batch)
+            _screening_status["progress"] = done
+
+        # 2) 全取得 (new): period="3mo"
+        for b in range(0, len(new_codes), batch_size):
+            batch = new_codes[b:b+batch_size]
+            tickers = [f"{c}.T" for c in batch]
+            try:
+                raw = yf.download(tickers, period="3mo", interval="1d",
+                                  group_by="ticker", progress=False, threads=True, auto_adjust=True)
+                for code, ticker in zip(batch, tickers):
+                    try:
+                        df = raw if len(tickers) == 1 else (
+                            raw[ticker] if ticker in raw.columns.get_level_values(0) else pd.DataFrame()
+                        )
+                        if df is None or df.empty: continue
+                        df = df.dropna(subset=["Close"])
+                        rows = [{"candle_time": str(dt.date()),
+                                 "open":   float(row["Open"]),
+                                 "high":   float(row["High"]),
+                                 "low":    float(row["Low"]),
+                                 "close":  float(row["Close"]),
+                                 "volume": float(row.get("Volume", 0) or 0)}
+                                for dt, row in df.iterrows()]
+                        if rows:
+                            candle_data[code] = rows
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            done += len(batch)
+            _screening_status["progress"] = done
+
+        # --- DBに保存 & スコア計算（fetchした銘柄のみ）---
+        conn = get_conn()
+        for code, new_rows in candle_data.items():
+            try:
+                with conn.cursor() as cur:
+                    for r in new_rows:
+                        cur.execute(
+                            "INSERT INTO candles (symbol,interval_type,candle_time,open,high,low,close,volume) "
+                            "VALUES (%s,'1d',%s,%s,%s,%s,%s,%s) "
+                            "ON DUPLICATE KEY UPDATE open=%s,high=%s,low=%s,close=%s,volume=%s",
+                            (code, r["candle_time"],
+                             r["open"], r["high"], r["low"], r["close"], r["volume"],
+                             r["open"], r["high"], r["low"], r["close"], r["volume"])
+                        )
+                conn.commit()
+
+                # スコア計算はDBから最新65行を読む（新規データ込み）
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT candle_time,open,high,low,close,volume FROM candles "
+                        "WHERE symbol=%s AND interval_type='1d' "
+                        "ORDER BY candle_time DESC LIMIT 65",
+                        (code,)
+                    )
+                    db_rows = list(reversed(cur.fetchall()))
+
+                score = _calc_screening_score(db_rows)
+                if score:
+                    s = stock_map.get(code, {})
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO screening_cache "
+                            "(code,name,sector,buy_score,sell_score,net_score,close_price,change_pct,buy_signals,sell_signals) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                            "ON DUPLICATE KEY UPDATE name=%s,sector=%s,buy_score=%s,sell_score=%s,net_score=%s,"
+                            "close_price=%s,change_pct=%s,buy_signals=%s,sell_signals=%s,updated_at=NOW()",
+                            (code, s.get("name",""), s.get("sector",""),
+                             score["buy_score"], score["sell_score"], score["net_score"],
+                             score["close"], score["change_pct"],
+                             json.dumps(score["buy_signals"], ensure_ascii=False),
+                             json.dumps(score["sell_signals"], ensure_ascii=False),
+                             s.get("name",""), s.get("sector",""),
+                             score["buy_score"], score["sell_score"], score["net_score"],
+                             score["close"], score["change_pct"],
+                             json.dumps(score["buy_signals"], ensure_ascii=False),
+                             json.dumps(score["sell_signals"], ensure_ascii=False))
+                        )
+                    conn.commit()
+            except Exception:
+                pass
+
+        _screening_status["progress"] = len(codes)
+        conn.close()
+        _screening_status.update({"running": False,
+                                   "updated_at": _dt3.now().strftime("%Y-%m-%d %H:%M"),
+                                   "error": None})
+    except Exception as e:
+        _screening_status.update({"running": False, "error": str(e)})
+
+
+@app.get("/screening/status")
+def screening_status():
+    return _screening_status
+
+
+@app.post("/screening/update")
+def screening_update():
+    if _screening_status["running"]:
+        return {"message": "already running"}
+    t = _threading.Thread(target=_run_screening_update, daemon=True)
+    t.start()
+    return {"message": "started"}
+
+
+@app.get("/screening")
+def get_screening(
+    min_score: int = Query(1),
+    sector: str = Query(""),
+    sort: str = Query("net_score"),
+):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM screening_cache")
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    results = []
+    for r in rows:
+        if r["net_score"] < min_score:
+            continue
+        if sector and sector not in (r["sector"] or ""):
+            continue
+        try:
+            buy_sigs  = json.loads(r["buy_signals"]  or "[]")
+            sell_sigs = json.loads(r["sell_signals"] or "[]")
+        except Exception:
+            buy_sigs = sell_sigs = []
+        results.append({
+            "code":        r["code"],
+            "name":        r["name"],
+            "sector":      r["sector"],
+            "buy_score":   r["buy_score"],
+            "sell_score":  r["sell_score"],
+            "net_score":   r["net_score"],
+            "close":       r["close_price"],
+            "change_pct":  r["change_pct"],
+            "buy_signals": buy_sigs,
+            "sell_signals": sell_sigs,
+            "updated_at":  str(r["updated_at"]),
+        })
+
+    reverse = sort not in ("change_pct",) or True
+    results.sort(key=lambda x: (x.get(sort) or 0), reverse=True)
+    return results
+
+
+@app.get("/screening/sectors")
+def get_sectors():
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT sector FROM prime_stocks ORDER BY sector")
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+    return [r["sector"] for r in rows if r["sector"]]
 
 
 class ChatRequest(BaseModel):
