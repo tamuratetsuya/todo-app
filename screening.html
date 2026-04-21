@@ -365,7 +365,7 @@
 </div>
 
 <script>
-const API = 'https://stock.golfspace.jp/api';
+const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:8020' : '/api/stock';
 
 let allData = [];
 let sortCol = 'net_score';
