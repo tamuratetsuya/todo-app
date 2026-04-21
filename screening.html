@@ -598,7 +598,10 @@ function buildRow(r) {
 }
 
 function openStock(code) {
-  window.open(`stock.html?code=${encodeURIComponent(code)}`, '_blank');
+  const item = filteredData.find(r => r.code === code) || allData.find(r => r.code === code);
+  const name = item ? item.name : '';
+  const url = `stock.html?code=${encodeURIComponent(code)}` + (name ? `&name=${encodeURIComponent(name)}` : '');
+  window.open(url, '_blank');
 }
 
 function renderEmpty(msg) {

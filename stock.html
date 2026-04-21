@@ -5748,13 +5748,19 @@ async function sendAiChat() {
   renderPnl();
 
   // URLパラメータで銘柄指定（スクリーニングページから遷移）
-  const _urlCode = new URLSearchParams(location.search).get('code');
+  const _urlParams = new URLSearchParams(location.search);
+  const _urlCode = _urlParams.get('code');
   if (_urlCode) {
+    const _urlName = _urlParams.get('name') || _urlCode;
     if (!trades[_urlCode]) trades[_urlCode] = [];
-    if (!watchStocks.find(w => w.code === _urlCode)) {
-      watchStocks.push({ code: _urlCode, name: _urlCode });
-      localStorage.setItem('watchStocks', JSON.stringify(watchStocks));
+    if (!stockNames[_urlCode]) stockNames[_urlCode] = _urlName;
+    const _existing = watchStocks.find(w => w.code === _urlCode);
+    if (_existing) {
+      if (_urlName && _urlName !== _urlCode) _existing.name = _urlName;
+    } else {
+      watchStocks.push({ code: _urlCode, name: _urlName });
     }
+    localStorage.setItem('watchStocks', JSON.stringify(watchStocks));
     rebuildStockSelect();
     selectSymbol(_urlCode);
   } else {
