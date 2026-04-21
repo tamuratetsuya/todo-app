@@ -2819,7 +2819,7 @@ import threading as _threading
 
 _screening_status = {"running": False, "progress": 0, "total": 0, "updated_at": None, "error": None}
 
-def _calc_screening_score(rows: list) -> dict | None:
+def _calc_screening_score(rows: list):
     """OHLCVデータからstock.htmlと同じルールでシグナルスコアを計算"""
     if len(rows) < 35:
         return None
