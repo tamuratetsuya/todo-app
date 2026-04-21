@@ -877,6 +877,11 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if i < n - 1 + 19: return False
             return all((_bb(j) or 0) >= 80 for j in range(i-n+1, i+1))
 
+        def _bb_walk_down(i, n=3):
+            """直近n本連続BB%≤20（バンドウォーク下落）"""
+            if i < n - 1 + 19: return False
+            return all((_bb(j) or 100) <= 20 for j in range(i-n+1, i+1))
+
         def _macd(i):
             """MACD(12,26,9) と シグナル線を返す (macd, signal) or (None, None)"""
             if i < 33: return None, None  # 26+9-1
@@ -1092,6 +1097,10 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 mcp, msp = _macd(i - 1)
                 if mc and ms and mcp and msp and mcp >= msp and mc < ms:
                     add_sell("MACD↓")
+
+            # BBバンドウォーク下落: BB%≤20を3本以上継続
+            if _bb_walk_down(i):
+                add_sell("BBウォーク↓", 2)
 
             # 一目雲: 雲に下向きに入った(-1pt) / 雲を下抜け(-2pt)
             if i >= 1:
