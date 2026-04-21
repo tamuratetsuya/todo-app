@@ -2990,6 +2990,150 @@ def _calc_screening_score(rows: list, vix_latest=None):
         if vix_latest <= 17:  buy_sigs.append("VIX低")
         elif vix_latest >= 20: sell_sigs.append("VIX高")
 
+    # ===== チャートパターン (最終バー基準) =====
+    def _slope(arr):
+        mn = len(arr)
+        if mn < 2: return 0.0
+        mean_x = (mn - 1) / 2
+        mean_y = sum(arr) / mn
+        num = sum((j - mean_x) * (arr[j] - mean_y) for j in range(mn))
+        den = sum((j - mean_x) ** 2 for j in range(mn))
+        return (num / den) / (mean_y or 1) if den else 0.0
+
+    # ローソク足パターン（最終バーのみ）
+    if i >= 2:
+        c = rows[i]; p = rows[i-1]; p2 = rows[i-2]
+        co, ch, cl, cc = float(c['open']), float(c['high']), float(c['low']), float(c['close'])
+        po, ph, pl, pc = float(p['open']), float(p['high']), float(p['low']), float(p['close'])
+        p2o, p2c = float(p2['open']), float(p2['close'])
+        body = abs(cc - co); rng = ch - cl
+        if rng > 0:
+            lw = min(co, cc) - cl; uw = ch - max(co, cc)
+            ma5_now = sma(closes, 5, i); ma5_prev = sma(closes, 5, max(0, i-5))
+            up_trend = ma5_now and ma5_prev and ma5_now > ma5_prev
+            dn_trend = ma5_now and ma5_prev and ma5_now < ma5_prev
+            # ハンマー
+            if dn_trend and lw >= 0.55*rng and uw <= 0.15*rng and body <= 0.3*rng:
+                buy_sigs.append("ハンマー")
+            # トンカチ
+            if up_trend and lw >= 0.55*rng and uw <= 0.15*rng and body <= 0.3*rng:
+                sell_sigs.append("トンカチ")
+            # 逆ハンマー
+            if dn_trend and uw >= 0.55*rng and lw <= 0.15*rng and body <= 0.3*rng:
+                buy_sigs.append("逆ハンマー")
+        # 陽の包み足
+        if pc < po and cc > co and co <= pc and cc >= po:
+            buy_sigs.append("陽の包み足")
+        # 陰の包み足
+        if pc > po and cc < co and co >= pc and cc <= po:
+            sell_sigs.append("陰の包み足")
+        # 三白兵
+        if (p2c > p2o and pc > po and cc > co and
+                pc > p2c and cc > pc and po >= p2o and co >= po):
+            buy_sigs.append("三白兵")
+        # 三羽烏
+        if (p2c < p2o and pc < po and cc < co and
+                pc < p2c and cc < pc and po <= p2o and co <= po):
+            sell_sigs.append("三羽烏")
+
+    # ダブルトップ / ダブルボトム
+    if i >= 15:
+        lb = min(40, i); seg_h = highs[i-lb:i+1]; seg_l = lows[i-lb:i+1]
+        seg_c = closes[i-lb:i+1]; sn = len(seg_h)
+        lhighs = []; llows = []
+        for j in range(2, sn-2):
+            if seg_h[j] > seg_h[j-1] and seg_h[j] > seg_h[j-2] and seg_h[j] > seg_h[j+1] and seg_h[j] > seg_h[j+2]:
+                lhighs.append((j, seg_h[j]))
+            if seg_l[j] < seg_l[j-1] and seg_l[j] < seg_l[j-2] and seg_l[j] < seg_l[j+1] and seg_l[j] < seg_l[j+2]:
+                llows.append((j, seg_l[j]))
+        if len(lhighs) >= 2:
+            (j1,h1),(j2,h2) = lhighs[-2], lhighs[-1]
+            if j2-j1 >= 5 and abs(h1-h2)/h1 < 0.03 and sn-1 > j2:
+                neck = min(seg_l[j1:j2+1])
+                if closes[i] < neck:
+                    sell_sigs.append("ダブルトップ")
+        if len(llows) >= 2:
+            (j1,l1),(j2,l2) = llows[-2], llows[-1]
+            if j2-j1 >= 5 and abs(l1-l2)/l1 < 0.03 and sn-1 > j2:
+                neck = max(seg_h[j1:j2+1])
+                if closes[i] > neck:
+                    buy_sigs.append("ダブルボトム")
+
+    # ヘッド&ショルダー / 逆ヘッド&ショルダー
+    if i >= 20:
+        lb = min(60, i); seg_h = highs[i-lb:i+1]; seg_l = lows[i-lb:i+1]; sn = len(seg_h)
+        pks = []; trs = []
+        for j in range(3, sn-3):
+            w_h = seg_h[j-3:j+4]; w_l = seg_l[j-3:j+4]
+            if seg_h[j] == max(w_h): pks.append((j, seg_h[j]))
+            if seg_l[j] == min(w_l): trs.append((j, seg_l[j]))
+        if len(pks) >= 3:
+            (lsi,lsv),(hdi,hdv),(rsi2,rsv) = pks[-3], pks[-2], pks[-1]
+            if hdv > lsv*1.02 and hdv > rsv*1.02 and abs(lsv-rsv)/lsv < 0.05 and rsi2-lsi >= 10:
+                n1 = min(seg_l[lsi:hdi+1]); n2 = min(seg_l[hdi:rsi2+1])
+                if closes[i] < (n1+n2)/2:
+                    sell_sigs.append("H&S")
+        if len(trs) >= 3:
+            (lsi,lsv),(hdi,hdv),(rsi2,rsv) = trs[-3], trs[-2], trs[-1]
+            if hdv < lsv*0.98 and hdv < rsv*0.98 and abs(lsv-rsv)/lsv < 0.05 and rsi2-lsi >= 10:
+                n1 = max(seg_h[lsi:hdi+1]); n2 = max(seg_h[hdi:rsi2+1])
+                if closes[i] > (n1+n2)/2:
+                    buy_sigs.append("逆H&S")
+
+    # フラッグ
+    if i >= 14:
+        p_len = 8; f_len = min(6, i - p_len)
+        if f_len >= 3:
+            ps2 = i - p_len - f_len; pe = i - f_len
+            if ps2 >= 0:
+                pm = (closes[pe] - closes[ps2]) / closes[ps2] if closes[ps2] else 0
+                fbars_h = highs[pe:i+1]; fbars_l = lows[pe:i+1]; fbars_c = closes[pe:i+1]
+                fh = max(fbars_h); fl = min(fbars_l)
+                fsl = (fbars_c[-1] - fbars_c[0]) / fbars_c[0] if fbars_c[0] else 0
+                fr = (fh - fl) / fl if fl else 0
+                if pm > 0.04 and fr < pm*0.6 and fsl < 0 and fsl > -0.04 and closes[i] > fh:
+                    buy_sigs.append("上昇フラッグ")
+                if pm < -0.04 and fr < abs(pm)*0.6 and fsl > 0 and fsl < 0.04 and closes[i] < fl:
+                    sell_sigs.append("下降フラッグ")
+
+    # レクタングル / 三角形 / ウェッジ
+    if i >= 20:
+        c_len = min(25, i-1); seg_h = highs[i-c_len:i]; seg_l = lows[i-c_len:i]
+        mx_h = max(seg_h); mn_l = min(seg_l)
+        rng2 = (mx_h - mn_l) / mn_l if mn_l else 0
+        if rng2 < 0.07:
+            if closes[i] > mx_h * 1.003: buy_sigs.append("レクタングル上抜け")
+            elif closes[i] < mn_l * 0.997: sell_sigs.append("レクタングル下抜け")
+        rs2 = seg_h[-12:]; ls2_arr = seg_l[-12:]
+        if len(rs2) >= 8:
+            hs2 = _slope(list(rs2)); ls2_v = _slope(list(ls2_arr))
+            if abs(hs2) < 0.003 and ls2_v > 0.003 and closes[i] > mx_h:
+                buy_sigs.append("上昇三角形")
+            if hs2 < -0.003 and abs(ls2_v) < 0.003 and closes[i] < mn_l:
+                sell_sigs.append("下降三角形")
+            if hs2 < -0.002 and ls2_v > 0.002:
+                if closes[i] > mx_h: buy_sigs.append("対称三角形↑")
+                if closes[i] < mn_l: sell_sigs.append("対称三角形↓")
+            if hs2 > 0.001 and ls2_v > hs2*1.3 and closes[i] < mn_l:
+                sell_sigs.append("上昇ウェッジ")
+            if hs2 < -0.001 and ls2_v < 0 and hs2 < ls2_v*1.3 and closes[i] > mx_h:
+                buy_sigs.append("下降ウェッジ")
+
+    # カップ&ハンドル
+    if i >= 30:
+        c_len = min(35, i-5)
+        if c_len >= 15:
+            cup = rows[i-c_len:i-3]; hdl_l = lows[i-3:i+1]; hdl_c = closes[i-3:i+1]
+            cup_c = [float(r['close']) for r in cup]; cup_l = [float(r['low']) for r in cup]
+            cleft  = sum(cup_c[:5]) / 5; cright = sum(cup_c[-5:]) / 5
+            cbotm  = min(cup_l)
+            base   = min(cleft, cright)
+            depth  = (base - cbotm) / base if base else 0
+            if 0.05 < depth < 0.4 and abs(cleft-cright)/cleft < 0.05:
+                res = max(cleft, cright)
+                if min(hdl_l) > cbotm and closes[i] > res:
+                    buy_sigs.append("C&H")
+
     # 急騰/急落
     chg = (closes[i] - closes[i-1]) / closes[i-1] * 100
     if chg >= 4:    buy_sigs.append("急騰+4%")
@@ -2997,8 +3141,16 @@ def _calc_screening_score(rows: list, vix_latest=None):
     elif chg <= -4: sell_sigs.append("急落-4%")
     elif chg <= -2: sell_sigs.append("急落-2%")
 
-    buy_score  = sum(2 if s == "急騰+4%" else 1 for s in buy_sigs)
-    sell_score = sum(2 if s in ("急落-4%", "BBウォーク↓", "雲下抜け") else 1 for s in sell_sigs)
+    # チャートパターンは2pt、それ以外は定義通り
+    _pattern_buy  = {"急騰+4%", "ハンマー","逆ハンマー","陽の包み足","三白兵",
+                     "ダブルボトム","逆H&S","上昇フラッグ","レクタングル上抜け",
+                     "上昇三角形","対称三角形↑","下降ウェッジ","C&H"}
+    _pattern_sell = {"急落-4%","BBウォーク↓","雲下抜け",
+                     "トンカチ","陰の包み足","三羽烏",
+                     "ダブルトップ","H&S","下降フラッグ","レクタングル下抜け",
+                     "下降三角形","対称三角形↓","上昇ウェッジ"}
+    buy_score  = sum(2 if s in _pattern_buy  else 1 for s in buy_sigs)
+    sell_score = sum(2 if s in _pattern_sell else 1 for s in sell_sigs)
 
     # 5日平均出来高
     volumes = [float(r['volume'] or 0) for r in rows]
