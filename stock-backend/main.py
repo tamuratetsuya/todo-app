@@ -3229,14 +3229,17 @@ def _run_screening_update():
         codes = [s["code"] for s in stocks]
         stock_map = {s["code"]: s for s in stocks}
 
-        # DBに既存の最新candle_timeを一括取得
+        # .T付きシンボルで統一（stock.htmlと同じキー）
+        symbols_t = [f"{c}.T" for c in codes]
+
+        # DBに既存の最新candle_timeを一括取得（.T付きで検索）
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT symbol, MAX(candle_time) as latest FROM candles "
                 "WHERE interval_type='1d' AND symbol IN %s GROUP BY symbol",
-                (tuple(codes),)
-            ) if codes else None
-            latest_map = {r["symbol"]: str(r["latest"]) for r in (cur.fetchall() if codes else [])}
+                (tuple(symbols_t),)
+            ) if symbols_t else None
+            latest_map = {r["symbol"]: str(r["latest"]) for r in (cur.fetchall() if symbols_t else [])}
         conn.close()
 
         today_str = _dt3.now().strftime("%Y-%m-%d")
@@ -3247,7 +3250,8 @@ def _run_screening_update():
         fresh_count = 0
 
         for code in codes:
-            latest = latest_map.get(code)
+            symbol_t = f"{code}.T"
+            latest = latest_map.get(symbol_t)
             if latest and latest >= today_str:
                 fresh_count += 1  # yfinanceスキップ、スコアは後で全銘柄再計算
             elif latest:
@@ -3293,7 +3297,7 @@ def _run_screening_update():
                                  "volume": float(row.get("Volume", 0) or 0)}
                                 for dt, row in df.iterrows()]
                         if rows:
-                            candle_data[code] = rows
+                            candle_data[f"{code}.T"] = rows
                     except Exception:
                         pass
             except Exception:
@@ -3323,7 +3327,7 @@ def _run_screening_update():
                                  "volume": float(row.get("Volume", 0) or 0)}
                                 for dt, row in df.iterrows()]
                         if rows:
-                            candle_data[code] = rows
+                            candle_data[f"{code}.T"] = rows
                     except Exception:
                         pass
             except Exception:
@@ -3367,7 +3371,7 @@ def _run_screening_update():
                         "SELECT candle_time,open,high,low,close,volume FROM candles "
                         "WHERE symbol=%s AND interval_type='1d' "
                         "ORDER BY candle_time DESC LIMIT 65",
-                        (code,)
+                        (f"{code}.T",)
                     )
                     db_rows = list(reversed(cur.fetchall()))
                 if not db_rows:
