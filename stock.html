@@ -4635,7 +4635,7 @@ function renderMarginBalance(d) {
 }
 
 function renderMarginChart(hist) {
-  const W = 280, H = 120, PAD = { t: 10, r: 10, b: 28, l: 48 };
+  const W = 340, H = 160, PAD = { t: 12, r: 12, b: 32, l: 52 };
   const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
   const n = hist.length;
 
@@ -4670,7 +4670,7 @@ function renderMarginChart(hist) {
   }).join('');
 
   // バーチャート（下部）
-  const BH = 60, BPAD = { t: 8, r: 10, b: 24, l: 48 };
+  const BH = 80, BPAD = { t: 10, r: 12, b: 28, l: 52 };
   const bW = cW;
   const bMaxVal = Math.max(...data.map(r => Math.max(r.buy, r.sell)));
   const barW = Math.min(bW / n * 0.35, 20);
@@ -4693,7 +4693,7 @@ function renderMarginChart(hist) {
 
   return `
 <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">信用残高推移（万株）</div>
-<svg width="${W}" height="${H}" style="overflow:visible;display:block;margin-bottom:6px;">
+<svg width="${W}" height="${H}" style="overflow:visible;display:block;margin-bottom:10px;">
   ${yTicks}
   <polyline points="${buyPts}" fill="none" stroke="#2dd4bf" stroke-width="2"/>
   <polyline points="${sellPts}" fill="none" stroke="#f87171" stroke-width="2"/>
@@ -4701,7 +4701,7 @@ function renderMarginChart(hist) {
 <circle cx="${PAD.l + i * xStep}" cy="${PAD.t + yScale(r.sell)}" r="3" fill="#f87171"/>`).join('')}
   ${xLabels}
 </svg>
-<div style="display:flex;gap:12px;margin-bottom:12px;font-size:11px;">
+<div style="display:flex;gap:12px;margin-bottom:18px;font-size:11px;">
   <span><span style="color:#2dd4bf;">━</span> 買残</span>
   <span><span style="color:#f87171;">━</span> 売残</span>
 </div>
