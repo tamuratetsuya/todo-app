@@ -4585,17 +4585,31 @@ async function loadMarginBalance() {
 
 function renderMarginBalance(d) {
   const body = document.getElementById('marginBody');
-  const sell = d.sell, buy = d.buy, ratio = d.ratio;
-  const net = Math.round((buy - sell) * 100) / 100;
-  const wow_sell = d.sell_wow, wow_buy = d.buy_wow;
-  const wow_net = wow_sell != null && wow_buy != null ? Math.round((wow_buy - wow_sell) * 100) / 100 : null;
+  const latest = d.history && d.history[0] || {};
+  const fmtNum = v => v == null ? '—' : v.toFixed(2) + '万';
   const fmtWow = v => v == null ? '—' : `<span style="color:${v >= 0 ? '#2dd4bf' : '#f87171'}">${v >= 0 ? '+' : ''}${v.toFixed(2)}万</span>`;
-  const fmtNum = v => v.toFixed(2) + '万';
 
-  // サマリーテーブル
+  function wowOf(key) {
+    const h = d.history;
+    if (!h || h.length < 2 || h[0][key] == null || h[1][key] == null) return null;
+    return Math.round((h[0][key] - h[1][key]) * 100) / 100;
+  }
+
+  // 合計行
+  const sell = d.sell, buy = d.buy, ratio = d.ratio;
+  const net = buy != null && sell != null ? Math.round((buy - sell) * 100) / 100 : null;
+
+  // 一般信用
+  const bg = latest.buy_general, sg = latest.sell_general;
+  const ng = bg != null && sg != null ? Math.round((bg - sg) * 100) / 100 : null;
+  // 制度信用
+  const bi = latest.buy_institutional, si = latest.sell_institutional;
+  const ni = bi != null && si != null ? Math.round((bi - si) * 100) / 100 : null;
+
   let html = `
-<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">${d.date} 週次データ（kabutan）</div>
-<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">
+<div style="font-size:11px;color:var(--text2);margin-bottom:8px;">${d.date} 週次データ（irbank）</div>
+
+<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px;">
   <thead>
     <tr style="border-bottom:1px solid var(--border);">
       <th style="text-align:left;padding:5px 4px;color:var(--text2);font-weight:500;"></th>
@@ -4605,107 +4619,93 @@ function renderMarginBalance(d) {
     </tr>
   </thead>
   <tbody>
-    <tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:5px 4px;color:var(--text2);">残高</td>
+    <tr style="border-bottom:1px solid var(--border);font-weight:600;">
+      <td style="padding:5px 4px;color:var(--text2);">合計</td>
       <td style="text-align:right;padding:5px 4px;">${fmtNum(sell)}</td>
       <td style="text-align:right;padding:5px 4px;">${fmtNum(buy)}</td>
       <td style="text-align:right;padding:5px 4px;">${fmtNum(net)}</td>
     </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:5px 4px;color:var(--text2);padding-left:12px;">一般信用</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtNum(sg)}</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtNum(bg)}</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtNum(ng)}</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:5px 4px;color:var(--text2);padding-left:12px;">制度信用</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtNum(si)}</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtNum(bi)}</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtNum(ni)}</td>
+    </tr>
     <tr>
-      <td style="padding:5px 4px;color:var(--text2);">前週比</td>
-      <td style="text-align:right;padding:5px 4px;">${fmtWow(wow_sell)}</td>
-      <td style="text-align:right;padding:5px 4px;">${fmtWow(wow_buy)}</td>
-      <td style="text-align:right;padding:5px 4px;">${fmtWow(wow_net)}</td>
+      <td style="padding:5px 4px;color:var(--text2);">前週比(合計)</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtWow(wowOf('sell'))}</td>
+      <td style="text-align:right;padding:5px 4px;">${fmtWow(wowOf('buy'))}</td>
+      <td style="text-align:right;padding:5px 4px;">—</td>
     </tr>
   </tbody>
 </table>
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
   <span style="color:var(--text2);font-size:12px;">信用倍率</span>
   <span style="font-size:18px;font-weight:700;color:#fbbf24;">${ratio}倍</span>
   <span style="font-size:11px;color:var(--text2);">(買残÷売残)</span>
 </div>`;
 
-  // 履歴チャート（SVG）
   const hist = d.history;
-  if (hist.length >= 2) {
-    html += renderMarginChart(hist);
+  if (hist && hist.length >= 2) {
+    html += renderMarginChart(hist, '一般信用', 'buy_general', 'sell_general', '#60a5fa', '#f87171');
+    html += renderMarginChart(hist, '制度信用', 'buy_institutional', 'sell_institutional', '#2dd4bf', '#fb923c');
   }
 
   body.innerHTML = html;
 }
 
-function renderMarginChart(hist) {
+function renderMarginChart(hist, label, buyKey, sellKey, buyColor, sellColor) {
   const W = 340, H = 160, PAD = { t: 12, r: 12, b: 32, l: 52 };
   const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
-  const n = hist.length;
 
-  // 逆順（古い→新しい）
-  const data = [...hist].reverse();
+  const data = [...hist].reverse().filter(r => r[buyKey] != null || r[sellKey] != null);
+  const n = data.length;
+  if (n < 2) return '';
 
-  const maxVal = Math.max(...data.map(r => r.buy));
-  const minVal = 0;
-  const range = maxVal - minVal || 1;
-
+  const maxVal = Math.max(...data.map(r => Math.max(r[buyKey] || 0, r[sellKey] || 0)));
+  const range = maxVal || 1;
   const xStep = cW / Math.max(n - 1, 1);
-  const yScale = v => cH - ((v - minVal) / range) * cH;
+  const yScale = v => cH - (v / range) * cH;
 
-  // 買残ライン（緑）
-  const buyPts = data.map((r, i) => `${PAD.l + i * xStep},${PAD.t + yScale(r.buy)}`).join(' ');
-  // 売残ライン（赤）
-  const sellPts = data.map((r, i) => `${PAD.l + i * xStep},${PAD.t + yScale(r.sell)}`).join(' ');
+  const buyPts  = data.map((r, i) => `${PAD.l + i * xStep},${PAD.t + yScale(r[buyKey]  || 0)}`).join(' ');
+  const sellPts = data.map((r, i) => `${PAD.l + i * xStep},${PAD.t + yScale(r[sellKey] || 0)}`).join(' ');
 
-  // X軸ラベル（日付）
   const xLabels = data.map((r, i) => {
     const x = PAD.l + i * xStep;
-    const label = r.date.slice(5).replace('-', '/');  // "04/10"
-    return `<text x="${x}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--text2)">${label}</text>`;
+    const lbl = r.date.slice(5).replace('-', '/');
+    return `<text x="${x}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--text2)">${lbl}</text>`;
   }).join('');
 
-  // Y軸ラベル
   const yTicks = [0, maxVal * 0.5, maxVal].map(v => {
     const y = PAD.t + yScale(v);
-    const label = (v / 100).toFixed(0) + '百万';
-    return `<text x="${PAD.l - 4}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--text2)">${v === 0 ? '0' : (v / 10).toFixed(0) + '万'}</text>
+    const lbl = v === 0 ? '0' : (v).toFixed(0) + '万';
+    return `<text x="${PAD.l - 4}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--text2)">${lbl}</text>
 <line x1="${PAD.l}" y1="${y}" x2="${PAD.l + cW}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
   }).join('');
 
-  // バーチャート（下部）
-  const BH = 80, BPAD = { t: 10, r: 12, b: 28, l: 52 };
-  const bW = cW;
-  const bMaxVal = Math.max(...data.map(r => Math.max(r.buy, r.sell)));
-  const barW = Math.min(bW / n * 0.35, 20);
-  const bScale = v => (v / (bMaxVal || 1)) * (BH - BPAD.t - BPAD.b);
-
-  const bars = data.map((r, i) => {
-    const x = BPAD.l + i * (bW / Math.max(n - 1, 1));
-    const bh = bScale(r.buy);
-    const sh = bScale(r.sell);
-    const bBase = BH - BPAD.b;
-    return `
-<rect x="${x - barW}" y="${bBase - bh}" width="${barW}" height="${bh}" fill="#2dd4bf" opacity="0.8" rx="1"/>
-<rect x="${x}" y="${bBase - sh}" width="${barW}" height="${sh}" fill="#f87171" opacity="0.8" rx="1"/>`;
-  }).join('');
-
-  const bXLabels = data.map((r, i) => {
-    const x = BPAD.l + i * (bW / Math.max(n - 1, 1));
-    return `<text x="${x}" y="${BH - 4}" text-anchor="middle" font-size="9" fill="var(--text2)">${r.date.slice(5).replace('-', '/')}</text>`;
-  }).join('');
+  const circles = data.map((r, i) => `
+<circle cx="${PAD.l + i * xStep}" cy="${PAD.t + yScale(r[buyKey]  || 0)}" r="3" fill="${buyColor}"/>
+<circle cx="${PAD.l + i * xStep}" cy="${PAD.t + yScale(r[sellKey] || 0)}" r="3" fill="${sellColor}"/>`).join('');
 
   return `
-<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">信用残高推移（万株）</div>
-<svg width="${W}" height="${H}" style="overflow:visible;display:block;margin-bottom:10px;">
+<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">${label}（万株）</div>
+<svg width="${W}" height="${H}" style="overflow:visible;display:block;margin-bottom:8px;">
   ${yTicks}
-  <polyline points="${buyPts}" fill="none" stroke="#2dd4bf" stroke-width="2"/>
-  <polyline points="${sellPts}" fill="none" stroke="#f87171" stroke-width="2"/>
-  ${data.map((r, i) => `<circle cx="${PAD.l + i * xStep}" cy="${PAD.t + yScale(r.buy)}" r="3" fill="#2dd4bf"/>
-<circle cx="${PAD.l + i * xStep}" cy="${PAD.t + yScale(r.sell)}" r="3" fill="#f87171"/>`).join('')}
+  <polyline points="${buyPts}"  fill="none" stroke="${buyColor}"  stroke-width="2"/>
+  <polyline points="${sellPts}" fill="none" stroke="${sellColor}" stroke-width="2"/>
+  ${circles}
   ${xLabels}
 </svg>
 <div style="display:flex;gap:12px;margin-bottom:18px;font-size:11px;">
-  <span><span style="color:#2dd4bf;">━</span> 買残</span>
-  <span><span style="color:#f87171;">━</span> 売残</span>
-</div>
-`;
+  <span><span style="color:${buyColor};">━</span> 買残</span>
+  <span><span style="color:${sellColor};">━</span> 売残</span>
+</div>`;
 }
 
 // ===== メモタブ =====
