@@ -4682,7 +4682,7 @@ function renderMarginChart(hist, label, buyKey, sellKey, buyColor, sellColor) {
   const xLabels = data.map((r, i) => {
     if (i % labelStep !== 0 && i !== n - 1) return '';
     const x = PAD.l + i * xStep;
-    const lbl = r.date.slice(5).replace('/', '/');
+    const lbl = r.date.slice(2).replace(/\//g, '/');
     return `<text x="${x}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--text2)">${lbl}</text>`;
   }).join('');
 
