@@ -199,6 +199,14 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
         """)
+        try:
+            cur.execute("ALTER TABLE screening_cache ADD COLUMN volume_avg BIGINT DEFAULT NULL")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE screening_cache ADD COLUMN hv FLOAT DEFAULT NULL")
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -2992,6 +3000,20 @@ def _calc_screening_score(rows: list, vix_latest=None):
     buy_score  = sum(2 if s == "急騰+4%" else 1 for s in buy_sigs)
     sell_score = sum(2 if s in ("急落-4%", "BBウォーク↓", "雲下抜け") else 1 for s in sell_sigs)
 
+    # 5日平均出来高
+    volumes = [float(r['volume'] or 0) for r in rows]
+    vol5 = int(sum(volumes[max(0,i-4):i+1]) / min(5, i+1)) if volumes else 0
+
+    # 20日HV（年率%）: log収益率の標準偏差 × sqrt(252) × 100
+    hv = None
+    if n >= 21:
+        import math
+        log_rets = [math.log(closes[j] / closes[j-1]) for j in range(max(1,i-19), i+1) if closes[j-1] > 0]
+        if len(log_rets) >= 2:
+            mean_r = sum(log_rets) / len(log_rets)
+            var_r  = sum((x - mean_r)**2 for x in log_rets) / (len(log_rets) - 1)
+            hv = round(math.sqrt(var_r * 252) * 100, 1)
+
     return {
         "buy_score":   buy_score,
         "sell_score":  sell_score,
@@ -3000,6 +3022,8 @@ def _calc_screening_score(rows: list, vix_latest=None):
         "sell_signals": sell_sigs,
         "close":       closes[-1],
         "change_pct":  (closes[-1]-closes[-2])/closes[-2]*100 if len(closes)>=2 else 0,
+        "volume_avg":  vol5,
+        "hv":          hv,
     }
 
 
@@ -3195,20 +3219,24 @@ def _run_screening_update():
                     with conn.cursor() as cur:
                         cur.execute(
                             "INSERT INTO screening_cache "
-                            "(code,name,sector,buy_score,sell_score,net_score,close_price,change_pct,buy_signals,sell_signals) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                            "(code,name,sector,buy_score,sell_score,net_score,close_price,change_pct,"
+                            "buy_signals,sell_signals,volume_avg,hv) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                             "ON DUPLICATE KEY UPDATE name=%s,sector=%s,buy_score=%s,sell_score=%s,net_score=%s,"
-                            "close_price=%s,change_pct=%s,buy_signals=%s,sell_signals=%s,updated_at=NOW()",
+                            "close_price=%s,change_pct=%s,buy_signals=%s,sell_signals=%s,"
+                            "volume_avg=%s,hv=%s,updated_at=NOW()",
                             (code, s.get("name",""), s.get("sector",""),
                              score["buy_score"], score["sell_score"], score["net_score"],
                              score["close"], score["change_pct"],
                              json.dumps(score["buy_signals"], ensure_ascii=False),
                              json.dumps(score["sell_signals"], ensure_ascii=False),
+                             score["volume_avg"], score["hv"],
                              s.get("name",""), s.get("sector",""),
                              score["buy_score"], score["sell_score"], score["net_score"],
                              score["close"], score["change_pct"],
                              json.dumps(score["buy_signals"], ensure_ascii=False),
-                             json.dumps(score["sell_signals"], ensure_ascii=False))
+                             json.dumps(score["sell_signals"], ensure_ascii=False),
+                             score["volume_avg"], score["hv"])
                         )
                     conn.commit()
             except Exception:
@@ -3273,6 +3301,8 @@ def get_screening(
             "change_pct":  r["change_pct"],
             "buy_signals": buy_sigs,
             "sell_signals": sell_sigs,
+            "volume_avg":  r.get("volume_avg"),
+            "hv":          r.get("hv"),
             "updated_at":  str(r["updated_at"]),
         })
 
