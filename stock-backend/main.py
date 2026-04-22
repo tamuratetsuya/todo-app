@@ -1857,6 +1857,81 @@ def get_events(
     return events
 
 
+@app.get("/margin_balance")
+def get_margin_balance(symbol: str = Query(...)):
+    """irbank から信用残高データを取得（週次・一般/制度分離）"""
+    import re as _re2
+    code_only = symbol.replace(".T", "").replace(".OS", "")
+    if not code_only.isdigit():
+        return {"history": []}
+    hdrs = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36", "Accept-Language": "ja"}
+    try:
+        r = _requests.get(f"https://irbank.net/{code_only}/margin", headers=hdrs, timeout=8)
+        text = r.text
+        rows_html = _re2.findall(r'<tr class="o(?:cc|bb|dd)"[^>]*>(.*?)</tr>', text, _re2.DOTALL)
+
+        def _num(html):
+            s = _re2.sub(r'<[^>]+>', '', html).strip().replace(',', '')
+            m = _re2.search(r'[\d]+', s)
+            return int(m.group()) if m else None
+
+        def _split(html):
+            nums = _re2.findall(r'[\d,]+', html)
+            nums = [int(n.replace(',', '')) for n in nums]
+            return (nums[0], nums[1]) if len(nums) >= 2 else (None, None)
+
+        current_year = None
+        history = []
+        for row_html in rows_html:
+            year_m = _re2.search(r'<td class="ct">(\d{4})</td>', row_html)
+            if year_m:
+                current_year = int(year_m.group(1))
+                continue
+            date_m = _re2.search(r'data-k="\d+"[^>]*>(\d{2}/\d{2})', row_html)
+            if not date_m or current_year is None:
+                continue
+            date_str = f"{current_year}/{date_m.group(1)}"
+            tds = _re2.findall(r'<td[^>]*>(.*?)</td>', row_html, _re2.DOTALL)
+            if len(tds) < 6:
+                continue
+            buy_gen, buy_inst = _split(tds[2])
+            sell_gen, sell_inst = _split(tds[4])
+            buy_total = (buy_gen or 0) + (buy_inst or 0)
+            sell_total = (sell_gen or 0) + (sell_inst or 0)
+            ratio_m = _re2.search(r'[\d.]+', _re2.sub(r'<[^>]+>', '', tds[5]))
+            ratio = float(ratio_m.group()) if ratio_m else None
+            # 単位: 株 → 万株
+            history.append({
+                "date": date_str,
+                "buy":             round(buy_total / 10000, 2),
+                "buy_general":     round(buy_gen   / 10000, 2) if buy_gen   is not None else None,
+                "buy_institutional": round(buy_inst / 10000, 2) if buy_inst is not None else None,
+                "sell":            round(sell_total / 10000, 2),
+                "sell_general":    round(sell_gen   / 10000, 2) if sell_gen  is not None else None,
+                "sell_institutional": round(sell_inst / 10000, 2) if sell_inst is not None else None,
+                "ratio": ratio,
+            })
+
+        if not history:
+            return {"history": []}
+
+        latest = history[0]
+        def _wow(key):
+            return round(history[0][key] - history[1][key], 2) if len(history) > 1 and history[0][key] is not None and history[1][key] is not None else None
+
+        return {
+            "history":  history,
+            "sell_wow": _wow("sell"),
+            "buy_wow":  _wow("buy"),
+            "sell":     latest["sell"],
+            "buy":      latest["buy"],
+            "ratio":    latest["ratio"],
+            "date":     latest["date"],
+        }
+    except Exception:
+        return {"history": []}
+
+
 @app.get("/news")
 def get_news(symbol: str = Query(...)):
     """銘柄関連ニュースをYahoo Finance RSS + yfinance newsから取得しDBに差分保存、直近1週間を返す"""
