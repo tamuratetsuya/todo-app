@@ -5766,7 +5766,7 @@ async function sendAiChat() {
     } else {
       watchStocks.push({ code: _urlCode, name: _urlName });
     }
-    localStorage.setItem('watchStocks', JSON.stringify(watchStocks));
+    localStorage.setItem(WATCH_KEY, JSON.stringify(watchStocks));
     rebuildStockSelect();
     selectSymbol(_urlCode);
   } else {
