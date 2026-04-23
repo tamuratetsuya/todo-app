@@ -3362,3 +3362,710 @@ def delete_all_trendlines(symbol: str = Query(...), interval: str = Query(...)):
         return {"ok": True}
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+# ===== SCREENING =====
+
+import threading as _threading
+import math as _math
+
+_screening_status = {"running": False, "progress": 0, "total": 0, "updated_at": None, "error": None}
+
+
+def _calc_screening_score(rows: list, vix_latest=None):
+    """OHLCVデータからシグナルスコアを計算（チャート表示と同一ルール）"""
+    if len(rows) < 35:
+        return None
+    closes = [float(r['close'])  for r in rows]
+    highs  = [float(r['high'])   for r in rows]
+    lows   = [float(r['low'])    for r in rows]
+    n = len(rows)
+    i = n - 1
+
+    # ---- ヘルパー関数 ----
+    def sma(arr, p, idx):
+        if idx < p - 1: return None
+        return sum(arr[idx-p+1:idx+1]) / p
+
+    def tenkan(idx):
+        if idx < 8: return None
+        return (max(highs[idx-8:idx+1]) + min(lows[idx-8:idx+1])) / 2
+
+    def kijun(idx):
+        if idx < 25: return None
+        return (max(highs[idx-25:idx+1]) + min(lows[idx-25:idx+1])) / 2
+
+    def cloud(idx):
+        ci = idx - 26
+        if ci < 51: return None, None
+        t = tenkan(ci); k = kijun(ci)
+        if t is None or k is None: return None, None
+        sa = (t + k) / 2
+        sb = (max(highs[ci-51:ci+1]) + min(lows[ci-51:ci+1])) / 2
+        return max(sa, sb), min(sa, sb)
+
+    def bb_pct(idx, period=25):
+        if idx < period - 1: return None
+        w = closes[idx-period+1:idx+1]
+        mean = sum(w) / period
+        std = (sum((x-mean)**2 for x in w) / period) ** 0.5
+        rng = 4 * std
+        return (closes[idx] - (mean - 2*std)) / rng if rng > 0 else 0.5
+
+    def macd_and_signal(idx):
+        if idx < 33: return None, None
+        def ema(vals, p):
+            k = 2 / (p + 1); v = vals[0]
+            for x in vals[1:]: v = x * k + v * (1 - k)
+            return v
+        macd_vals = []
+        for j in range(idx - 8, idx + 1):
+            if j < 25: return None, None
+            macd_vals.append(ema(closes[j-11:j+1], 12) - ema(closes[j-25:j+1], 26))
+        sig = ema(macd_vals, 9)
+        return macd_vals[-1], sig
+
+    def rsi(idx, period=14):
+        if idx < period: return None
+        g = l = 0.0
+        for j in range(idx-period+1, idx+1):
+            d = closes[j] - closes[j-1]
+            if d > 0: g += d
+            else: l -= d
+        ag = g / period; al = l / period
+        return 100 - 100/(1+ag/al) if al > 0 else 100.0
+
+    def get_pivot_lows(idx, lookback=5):
+        result = []
+        for j in range(lookback, idx - lookback + 1):
+            if all(lows[k] > lows[j] for k in range(j-lookback, j+lookback+1) if k != j and 0 <= k < len(lows)):
+                result.append({'idx': j, 'price': lows[j]})
+        return result
+
+    def get_pivot_highs(idx, lookback=5):
+        result = []
+        for j in range(lookback, idx - lookback + 1):
+            if all(highs[k] < highs[j] for k in range(j-lookback, j+lookback+1) if k != j and 0 <= k < len(highs)):
+                result.append({'idx': j, 'price': highs[j]})
+        return result
+
+    def trendline_val(idx, lookback=5):
+        """上昇ピボットローを結ぶトレンドラインの現在値"""
+        if idx < lookback * 2 + 1: return None
+        price = closes[idx]
+        pivot_lows = get_pivot_lows(idx, lookback)
+        for ii in range(len(pivot_lows) - 1, 0, -1):
+            p2 = pivot_lows[ii]
+            for jj in range(ii - 1, max(-1, ii - 7), -1):
+                p1 = pivot_lows[jj]
+                if p2['price'] <= p1['price']: continue
+                slope = (p2['price'] - p1['price']) / (p2['idx'] - p1['idx'])
+                valid = all(
+                    pivot_lows[kk]['price'] >= (p1['price'] + slope * (pivot_lows[kk]['idx'] - p1['idx'])) * 0.997
+                    for kk in range(jj + 1, ii)
+                )
+                if not valid: continue
+                end_price = p2['price'] + slope * (idx - p2['idx'])
+                if price >= end_price * 0.96:
+                    return end_price
+        return None
+
+    def trendline_near(idx, thresh=0.02):
+        tl = trendline_val(idx)
+        if tl is None: return False
+        return abs(closes[idx] - tl) / tl <= thresh
+
+    def trendline_below(idx, thresh=0.02):
+        """上昇TLが現在価格のthresh%以内の下（支持として機能）"""
+        tl = trendline_val(idx)
+        if tl is None: return False
+        price = closes[idx]
+        return tl <= price and (price - tl) / tl <= thresh
+
+    def trendline_above(idx, thresh=0.02):
+        """上昇TLが現在価格のthresh%以内の上（価格がTLを下抜け→抵抗）"""
+        tl = trendline_val(idx)
+        if tl is None: return False
+        price = closes[idx]
+        return tl > price and (tl - price) / tl <= thresh
+
+    def support_val(idx, lookback=5):
+        if idx < lookback * 2 + 1: return None
+        price = closes[idx]
+        raw = [p['price'] for p in get_pivot_lows(idx, lookback)
+               if p['price'] <= price and p['price'] >= price * 0.80]
+        if not raw: return None
+        sorted_lows = sorted(raw, reverse=True)
+        groups, j = [], 0
+        while j < len(sorted_lows):
+            group = [sorted_lows[j]]
+            while j + 1 < len(sorted_lows) and abs(sorted_lows[j+1] - sorted_lows[j]) / sorted_lows[j] < 0.012:
+                j += 1
+                group.append(sorted_lows[j])
+            groups.append({'level': sum(group) / len(group), 'strength': len(group)})
+            j += 1
+        groups.sort(key=lambda x: -x['strength'])
+        below = [g['level'] for g in groups[:3] if g['level'] < price]
+        return max(below) if below else None
+
+    def resistance_val(idx, lookback=5):
+        if idx < lookback * 2 + 1: return None
+        price = closes[idx]
+        raw = [p['price'] for p in get_pivot_highs(idx, lookback)
+               if price < p['price'] <= price * 1.20]
+        if not raw: return None
+        sorted_highs = sorted(raw)
+        groups, j = [], 0
+        while j < len(sorted_highs):
+            group = [sorted_highs[j]]
+            while j + 1 < len(sorted_highs) and abs(sorted_highs[j+1] - sorted_highs[j]) / sorted_highs[j] < 0.012:
+                j += 1
+                group.append(sorted_highs[j])
+            groups.append({'level': sum(group) / len(group), 'strength': len(group)})
+            j += 1
+        groups.sort(key=lambda x: -x['strength'])
+        above = [g['level'] for g in groups[:3] if g['level'] > price]
+        return min(above) if above else None
+
+    def support_nearby(idx, thresh=0.02):
+        sv = support_val(idx)
+        if sv is None: return False
+        price = closes[idx]
+        return price * (1 - thresh) <= sv < price
+
+    def resistance_nearby(idx, thresh=0.02):
+        rv = resistance_val(idx)
+        if rv is None: return False
+        price = closes[idx]
+        return price < rv <= price * (1 + thresh)
+
+    def bb_walk_down(idx, n=3):
+        if idx < n - 1 + 24: return False
+        return all((bb_pct(idx - j) or 1) <= 0.2 for j in range(n))
+
+    def _slope(arr):
+        mn = len(arr)
+        if mn < 2: return 0.0
+        mean_x = (mn - 1) / 2
+        mean_y = sum(arr) / mn
+        num = sum((j - mean_x) * (arr[j] - mean_y) for j in range(mn))
+        den = sum((j - mean_x) ** 2 for j in range(mn))
+        return (num / den) / (mean_y or 1) if den else 0.0
+
+    # ---- 判定 ----
+    buy_sigs  = []
+    sell_sigs = []
+
+    ma5  = sma(closes, 5,  i);  ma5p  = sma(closes, 5,  i-1)
+    ma25 = sma(closes, 25, i);  ma25p = sma(closes, 25, i-1)
+    ct, cb = cloud(i)
+    below_cloud = ct and cb and closes[i] < cb and ma5 and ma25 and ma5 < ma25
+
+    # TL: 上昇トレンドライン近傍
+    if trendline_near(i):
+        buy_sigs.append("TL")
+    # 支持線近傍: ピボット安値支持線が2%以内の下
+    if support_nearby(i):
+        buy_sigs.append("支持線近傍")
+    # TL下支持: 上昇TLが2%以内の下で支持
+    if trendline_below(i):
+        buy_sigs.append("TL下支持")
+
+    # GC / DC
+    if None not in (ma5, ma25, ma5p, ma25p):
+        if ma5p <= ma25p and ma5 > ma25:   buy_sigs.append("GC")
+        elif ma5p >= ma25p and ma5 < ma25: sell_sigs.append("DC")
+
+    # ボリンジャーバンド (25日)
+    bbp = bb_pct(i)
+    if bbp is not None:
+        if bbp <= 0.3 and closes[i] > closes[i-1] and not below_cloud:
+            buy_sigs.append("BB反転")
+        if i >= 3 and all((bb_pct(i-j) or 0) >= 0.8 for j in range(3)):
+            buy_sigs.append("BBウォーク")
+        if bb_walk_down(i):
+            sell_sigs.append("BBウォーク↓")
+
+    # 抵抗ブレイク / 抵抗手前 / 支持反転 / 支持下抜け (直近20本)
+    if i >= 20:
+        h20 = max(highs[i-20:i]); l20 = min(lows[i-20:i])
+        if closes[i] > h20:
+            buy_sigs.append("抵抗ブレイク")
+        elif closes[i] >= h20 * 0.98:
+            sell_sigs.append("抵抗手前")
+        near_support = abs(lows[i] - l20) / l20 <= 0.015
+        if near_support and closes[i] > closes[i-1] and not below_cloud:
+            buy_sigs.append("支持反転")
+        if closes[i] < l20 and closes[i-1] >= l20:
+            sell_sigs.append("支持下抜け")
+
+    # 抵抗線近傍 / TL上抵抗
+    if resistance_nearby(i):
+        sell_sigs.append("抵抗線近傍")
+    if trendline_above(i):
+        sell_sigs.append("TL上抵抗")
+
+    # RSI (14)
+    rv = rsi(i)
+    if rv is not None:
+        if rv <= 40:  buy_sigs.append("RSI低")
+        elif rv >= 70: sell_sigs.append("RSI高")
+
+    # MACD (12,26,9)
+    mc, ms = macd_and_signal(i)
+    mcp, msp = macd_and_signal(i-1)
+    if None not in (mc, ms, mcp, msp):
+        if mcp <= msp and mc > ms:  buy_sigs.append("MACD↑")
+        elif mcp >= msp and mc < ms: sell_sigs.append("MACD↓")
+
+    # 一目均衡表
+    if i >= 52:
+        tk = tenkan(i); kj = kijun(i); tkp = tenkan(i-1); kjp = kijun(i-1)
+        if None not in (tk, kj, tkp, kjp):
+            if tkp <= kjp and tk > kj:  buy_sigs.append("IK↑")
+            elif tkp >= kjp and tk < kj: sell_sigs.append("IK↓")
+        if None not in (tk, kj, ct, cb) and tk > kj and closes[i] > ct and closes[i] > closes[i-26]:
+            buy_sigs.append("IK3")
+        if ct and cb:
+            pp = closes[i-1]
+            if pp >= ct and closes[i] < ct and closes[i] >= cb: sell_sigs.append("雲侵入")
+            elif pp >= cb and closes[i] < cb:                    sell_sigs.append("雲下抜け")
+
+    # VIX
+    if vix_latest is not None:
+        if vix_latest <= 17:  buy_sigs.append("VIX低")
+        elif vix_latest >= 20: sell_sigs.append("VIX高")
+
+    # ===== チャートパターン =====
+    if i >= 2:
+        c = rows[i]; p = rows[i-1]; p2 = rows[i-2]
+        co, ch, cl, cc = float(c['open']), float(c['high']), float(c['low']), float(c['close'])
+        po, ph, pl, pc = float(p['open']), float(p['high']), float(p['low']), float(p['close'])
+        p2o, p2c = float(p2['open']), float(p2['close'])
+        body = abs(cc - co); rng = ch - cl
+        if rng > 0:
+            lw = min(co, cc) - cl; uw = ch - max(co, cc)
+            ma5_now = sma(closes, 5, i); ma5_prev = sma(closes, 5, max(0, i-5))
+            up_trend = ma5_now and ma5_prev and ma5_now > ma5_prev
+            dn_trend = ma5_now and ma5_prev and ma5_now < ma5_prev
+            if dn_trend and lw >= 0.55*rng and uw <= 0.15*rng and body <= 0.3*rng:
+                buy_sigs.append("ハンマー")
+            if up_trend and lw >= 0.55*rng and uw <= 0.15*rng and body <= 0.3*rng:
+                sell_sigs.append("トンカチ")
+            if dn_trend and uw >= 0.55*rng and lw <= 0.15*rng and body <= 0.3*rng:
+                buy_sigs.append("逆ハンマー")
+        if pc < po and cc > co and co <= pc and cc >= po:
+            buy_sigs.append("陽の包み足")
+        if pc > po and cc < co and co >= pc and cc <= po:
+            sell_sigs.append("陰の包み足")
+        if (p2c > p2o and pc > po and cc > co and pc > p2c and cc > pc and po >= p2o and co >= po):
+            buy_sigs.append("三白兵")
+        if (p2c < p2o and pc < po and cc < co and pc < p2c and cc < pc and po <= p2o and co <= po):
+            sell_sigs.append("三羽烏")
+
+    if i >= 15:
+        lb = min(40, i); seg_h = highs[i-lb:i+1]; seg_l = lows[i-lb:i+1]
+        sn = len(seg_h)
+        lhighs = []; llows = []
+        for j in range(2, sn-2):
+            if seg_h[j] > seg_h[j-1] and seg_h[j] > seg_h[j-2] and seg_h[j] > seg_h[j+1] and seg_h[j] > seg_h[j+2]:
+                lhighs.append((j, seg_h[j]))
+            if seg_l[j] < seg_l[j-1] and seg_l[j] < seg_l[j-2] and seg_l[j] < seg_l[j+1] and seg_l[j] < seg_l[j+2]:
+                llows.append((j, seg_l[j]))
+        if len(lhighs) >= 2:
+            (j1,h1),(j2,h2) = lhighs[-2], lhighs[-1]
+            if j2-j1 >= 5 and abs(h1-h2)/h1 < 0.03 and sn-1 > j2:
+                neck = min(seg_l[j1:j2+1])
+                if closes[i] < neck:
+                    sell_sigs.append("ダブルトップ")
+        if len(llows) >= 2:
+            (j1,l1),(j2,l2) = llows[-2], llows[-1]
+            if j2-j1 >= 5 and abs(l1-l2)/l1 < 0.03 and sn-1 > j2:
+                neck = max(seg_h[j1:j2+1])
+                if closes[i] > neck:
+                    buy_sigs.append("ダブルボトム")
+
+    if i >= 20:
+        lb = min(60, i); seg_h = highs[i-lb:i+1]; seg_l = lows[i-lb:i+1]; sn = len(seg_h)
+        pks = []; trs = []
+        for j in range(3, sn-3):
+            w_h = seg_h[j-3:j+4]; w_l = seg_l[j-3:j+4]
+            if seg_h[j] == max(w_h): pks.append((j, seg_h[j]))
+            if seg_l[j] == min(w_l): trs.append((j, seg_l[j]))
+        if len(pks) >= 3:
+            (lsi,lsv),(hdi,hdv),(rsi2,rsv) = pks[-3], pks[-2], pks[-1]
+            if hdv > lsv*1.02 and hdv > rsv*1.02 and abs(lsv-rsv)/lsv < 0.05 and rsi2-lsi >= 10:
+                n1 = min(seg_l[lsi:hdi+1]); n2 = min(seg_l[hdi:rsi2+1])
+                if closes[i] < (n1+n2)/2:
+                    sell_sigs.append("H&S")
+        if len(trs) >= 3:
+            (lsi,lsv),(hdi,hdv),(rsi2,rsv) = trs[-3], trs[-2], trs[-1]
+            if hdv < lsv*0.98 and hdv < rsv*0.98 and abs(lsv-rsv)/lsv < 0.05 and rsi2-lsi >= 10:
+                n1 = max(seg_h[lsi:hdi+1]); n2 = max(seg_h[hdi:rsi2+1])
+                if closes[i] > (n1+n2)/2:
+                    buy_sigs.append("逆H&S")
+
+    if i >= 14:
+        p_len = 8; f_len = min(6, i - p_len)
+        if f_len >= 3:
+            ps2 = i - p_len - f_len; pe = i - f_len
+            if ps2 >= 0:
+                pm = (closes[pe] - closes[ps2]) / closes[ps2] if closes[ps2] else 0
+                fbars_h = highs[pe:i+1]; fbars_l = lows[pe:i+1]; fbars_c = closes[pe:i+1]
+                fh = max(fbars_h); fl = min(fbars_l)
+                fsl = (fbars_c[-1] - fbars_c[0]) / fbars_c[0] if fbars_c[0] else 0
+                fr = (fh - fl) / fl if fl else 0
+                if pm > 0.04 and fr < pm*0.6 and fsl < 0 and fsl > -0.04 and closes[i] > fh:
+                    buy_sigs.append("上昇フラッグ")
+                if pm < -0.04 and fr < abs(pm)*0.6 and fsl > 0 and fsl < 0.04 and closes[i] < fl:
+                    sell_sigs.append("下降フラッグ")
+
+    if i >= 20:
+        c_len = min(25, i-1); seg_h = highs[i-c_len:i]; seg_l = lows[i-c_len:i]
+        mx_h = max(seg_h); mn_l = min(seg_l)
+        rng2 = (mx_h - mn_l) / mn_l if mn_l else 0
+        if rng2 < 0.07:
+            if closes[i] > mx_h * 1.003: buy_sigs.append("レクタングル上抜け")
+            elif closes[i] < mn_l * 0.997: sell_sigs.append("レクタングル下抜け")
+        rs2 = seg_h[-12:]; ls2_arr = seg_l[-12:]
+        if len(rs2) >= 8:
+            hs2 = _slope(list(rs2)); ls2_v = _slope(list(ls2_arr))
+            if abs(hs2) < 0.003 and ls2_v > 0.003 and closes[i] > mx_h:
+                buy_sigs.append("上昇三角形")
+            if hs2 < -0.003 and abs(ls2_v) < 0.003 and closes[i] < mn_l:
+                sell_sigs.append("下降三角形")
+            if hs2 < -0.002 and ls2_v > 0.002:
+                if closes[i] > mx_h: buy_sigs.append("対称三角形↑")
+                if closes[i] < mn_l: sell_sigs.append("対称三角形↓")
+            if hs2 > 0.001 and ls2_v > hs2*1.3 and closes[i] < mn_l:
+                sell_sigs.append("上昇ウェッジ")
+            if hs2 < -0.001 and ls2_v < 0 and hs2 < ls2_v*1.3 and closes[i] > mx_h:
+                buy_sigs.append("下降ウェッジ")
+
+    if i >= 30:
+        c_len = min(35, i-5)
+        if c_len >= 15:
+            cup = rows[i-c_len:i-3]; hdl_l = lows[i-3:i+1]; hdl_c = closes[i-3:i+1]
+            cup_c = [float(r['close']) for r in cup]; cup_l = [float(r['low']) for r in cup]
+            cleft  = sum(cup_c[:5]) / 5; cright = sum(cup_c[-5:]) / 5
+            cbotm  = min(cup_l)
+            base   = min(cleft, cright)
+            depth  = (base - cbotm) / base if base else 0
+            if 0.05 < depth < 0.4 and abs(cleft-cright)/cleft < 0.05:
+                res = max(cleft, cright)
+                if min(hdl_l) > cbotm and closes[i] > res:
+                    buy_sigs.append("C&H")
+
+    chg = (closes[i] - closes[i-1]) / closes[i-1] * 100
+    if chg >= 4:    buy_sigs.append("急騰+4%")
+    elif chg >= 2:  buy_sigs.append("急騰+2%")
+    elif chg <= -4: sell_sigs.append("急落-4%")
+    elif chg <= -2: sell_sigs.append("急落-2%")
+
+    # パターン系は2pt、その他1pt
+    _pattern_buy  = {"急騰+4%","ハンマー","逆ハンマー","陽の包み足","三白兵",
+                     "ダブルボトム","逆H&S","上昇フラッグ","レクタングル上抜け",
+                     "上昇三角形","対称三角形↑","下降ウェッジ","C&H"}
+    _pattern_sell = {"急落-4%","BBウォーク↓","雲下抜け",
+                     "トンカチ","陰の包み足","三羽烏",
+                     "ダブルトップ","H&S","下降フラッグ","レクタングル下抜け",
+                     "下降三角形","対称三角形↓","上昇ウェッジ"}
+    buy_score  = sum(2 if s in _pattern_buy  else 1 for s in buy_sigs)
+    sell_score = sum(2 if s in _pattern_sell else 1 for s in sell_sigs)
+
+    # 5日平均出来高
+    volumes = [float(r.get('volume') or 0) for r in rows]
+    vol5 = int(sum(volumes[max(0,i-4):i+1]) / min(5, i+1)) if volumes else 0
+
+    # 20日HV（年率%）
+    hv = None
+    if n >= 21:
+        log_rets = [_math.log(closes[j] / closes[j-1]) for j in range(max(1,i-19), i+1) if closes[j-1] > 0]
+        if len(log_rets) >= 2:
+            mean_r = sum(log_rets) / len(log_rets)
+            var_r  = sum((x - mean_r)**2 for x in log_rets) / (len(log_rets) - 1)
+            hv = round(_math.sqrt(var_r * 252) * 100, 1)
+
+    return {
+        "buy_score":    buy_score,
+        "sell_score":   sell_score,
+        "net_score":    buy_score - sell_score,
+        "buy_signals":  buy_sigs,
+        "sell_signals": sell_sigs,
+        "close":        closes[-1],
+        "change_pct":   (closes[-1]-closes[-2])/closes[-2]*100 if len(closes)>=2 else 0,
+        "volume_avg":   vol5,
+        "hv":           hv,
+    }
+
+
+def _fetch_prime_stocks(conn) -> list:
+    """JPX無料CSVからプライム市場銘柄を取得、DBにキャッシュ"""
+    import io
+    try:
+        url = "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls"
+        resp = _requests.get(url, timeout=30)
+        resp.raise_for_status()
+        df = pd.read_excel(io.BytesIO(resp.content), engine="xlrd")
+        prime = df[df.iloc[:, 3].astype(str).str.contains("プライム", na=False)]
+        stocks = []
+        for _, row in prime.iterrows():
+            code = str(row.iloc[1]).strip().zfill(4)
+            name = str(row.iloc[2]).strip()
+            sector = str(row.iloc[5]).strip() if len(row) > 5 else ""
+            stocks.append({"code": code, "name": name, "sector": sector})
+        with conn.cursor() as cur:
+            for s in stocks:
+                cur.execute(
+                    "INSERT INTO prime_stocks (code,name,sector) VALUES (%s,%s,%s) "
+                    "ON DUPLICATE KEY UPDATE name=%s, sector=%s",
+                    (s["code"], s["name"], s["sector"], s["name"], s["sector"])
+                )
+        conn.commit()
+        return stocks
+    except Exception as e:
+        with conn.cursor() as cur:
+            cur.execute("SELECT code, name, sector FROM prime_stocks")
+            rows = cur.fetchall()
+        if rows:
+            return [{"code": r["code"], "name": r["name"], "sector": r["sector"]} for r in rows]
+        raise Exception(f"JPXデータ取得失敗: {e}")
+
+
+def _run_screening_update():
+    global _screening_status
+    _screening_status.update({"running": True, "progress": 0, "total": 0, "error": None})
+    try:
+        from datetime import datetime as _dt3, timedelta as _td
+
+        conn = get_conn()
+        stocks = _fetch_prime_stocks(conn)
+        codes = [s["code"] for s in stocks]
+        stock_map = {s["code"]: s for s in stocks}
+        symbols_t = [f"{c}.T" for c in codes]
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT symbol, MAX(candle_time) as latest FROM candles "
+                "WHERE interval_type='1d' AND symbol IN %s GROUP BY symbol",
+                (tuple(symbols_t),)
+            ) if symbols_t else None
+            latest_map = {r["symbol"]: str(r["latest"]) for r in (cur.fetchall() if symbols_t else [])}
+        conn.close()
+
+        today_str = _dt3.now().strftime("%Y-%m-%d")
+        stale_codes = []; new_codes = []; fresh_count = 0
+
+        for code in codes:
+            symbol_t = f"{code}.T"
+            latest = latest_map.get(symbol_t)
+            if latest and latest >= today_str:
+                fresh_count += 1
+            elif latest:
+                start = (_dt3.strptime(latest, "%Y-%m-%d") + _td(days=1)).strftime("%Y-%m-%d")
+                stale_codes.append((code, start))
+            else:
+                new_codes.append(code)
+
+        _screening_status["total"] = len(codes)
+        _screening_status["skipped"] = fresh_count
+        fetch_count = len(stale_codes) + len(new_codes)
+        candle_data = {}
+        batch_size = 100
+        done = 0
+
+        for b in range(0, len(stale_codes), batch_size):
+            batch = stale_codes[b:b+batch_size]
+            batch_codes = [c for c, _ in batch]; batch_starts = [s for _, s in batch]
+            tickers = [f"{c}.T" for c in batch_codes]
+            min_start = min(batch_starts)
+            try:
+                raw = yf.download(tickers, start=min_start, end=today_str,
+                                  interval="1d", group_by="ticker",
+                                  progress=False, threads=True, auto_adjust=True)
+                for code, ticker in zip(batch_codes, tickers):
+                    try:
+                        df_t = raw if len(tickers) == 1 else (
+                            raw[ticker] if ticker in raw.columns.get_level_values(0) else pd.DataFrame()
+                        )
+                        if df_t is None or df_t.empty: continue
+                        df_t = df_t.dropna(subset=["Close"])
+                        rows_yf = [{"candle_time": str(dt.date()),
+                                    "open": float(row["Open"]), "high": float(row["High"]),
+                                    "low": float(row["Low"]), "close": float(row["Close"]),
+                                    "volume": float(row.get("Volume", 0) or 0)}
+                                   for dt, row in df_t.iterrows()]
+                        if rows_yf: candle_data[f"{code}.T"] = rows_yf
+                    except Exception: pass
+            except Exception: pass
+            done += len(batch)
+            _screening_status["progress"] = done
+
+        for b in range(0, len(new_codes), batch_size):
+            batch = new_codes[b:b+batch_size]
+            tickers = [f"{c}.T" for c in batch]
+            try:
+                raw = yf.download(tickers, period="3mo", interval="1d",
+                                  group_by="ticker", progress=False, threads=True, auto_adjust=True)
+                for code, ticker in zip(batch, tickers):
+                    try:
+                        df_t = raw if len(tickers) == 1 else (
+                            raw[ticker] if ticker in raw.columns.get_level_values(0) else pd.DataFrame()
+                        )
+                        if df_t is None or df_t.empty: continue
+                        df_t = df_t.dropna(subset=["Close"])
+                        rows_yf = [{"candle_time": str(dt.date()),
+                                    "open": float(row["Open"]), "high": float(row["High"]),
+                                    "low": float(row["Low"]), "close": float(row["Close"]),
+                                    "volume": float(row.get("Volume", 0) or 0)}
+                                   for dt, row in df_t.iterrows()]
+                        if rows_yf: candle_data[f"{code}.T"] = rows_yf
+                    except Exception: pass
+            except Exception: pass
+            done += len(batch)
+            _screening_status["progress"] = done
+
+        vix_latest = None
+        try:
+            vix_df = yf.Ticker("^VIX").history(period="5d")
+            if not vix_df.empty:
+                vix_latest = float(vix_df["Close"].iloc[-1])
+        except Exception: pass
+
+        conn = get_conn()
+        for code, new_rows in candle_data.items():
+            try:
+                with conn.cursor() as cur:
+                    for r in new_rows:
+                        cur.execute(
+                            "INSERT INTO candles (symbol,interval_type,candle_time,open,high,low,close,volume) "
+                            "VALUES (%s,'1d',%s,%s,%s,%s,%s,%s) "
+                            "ON DUPLICATE KEY UPDATE open=%s,high=%s,low=%s,close=%s,volume=%s",
+                            (code, r["candle_time"],
+                             r["open"], r["high"], r["low"], r["close"], r["volume"],
+                             r["open"], r["high"], r["low"], r["close"], r["volume"])
+                        )
+                conn.commit()
+            except Exception: pass
+
+        _screening_status["progress"] = fetch_count
+        from datetime import datetime as _dt3
+        for idx, code in enumerate(codes):
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT candle_time,open,high,low,close,volume FROM candles "
+                        "WHERE symbol=%s AND interval_type='1d' "
+                        "ORDER BY candle_time DESC LIMIT 65",
+                        (f"{code}.T",)
+                    )
+                    db_rows = list(reversed(cur.fetchall()))
+                if not db_rows: continue
+                score = _calc_screening_score(db_rows, vix_latest=vix_latest)
+                if score:
+                    s = stock_map.get(code, {})
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO screening_cache "
+                            "(code,name,sector,buy_score,sell_score,net_score,close_price,change_pct,"
+                            "buy_signals,sell_signals,volume_avg,hv) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                            "ON DUPLICATE KEY UPDATE name=%s,sector=%s,buy_score=%s,sell_score=%s,net_score=%s,"
+                            "close_price=%s,change_pct=%s,buy_signals=%s,sell_signals=%s,"
+                            "volume_avg=%s,hv=%s,updated_at=NOW()",
+                            (code, s.get("name",""), s.get("sector",""),
+                             score["buy_score"], score["sell_score"], score["net_score"],
+                             score["close"], score["change_pct"],
+                             json.dumps(score["buy_signals"], ensure_ascii=False),
+                             json.dumps(score["sell_signals"], ensure_ascii=False),
+                             score["volume_avg"], score["hv"],
+                             s.get("name",""), s.get("sector",""),
+                             score["buy_score"], score["sell_score"], score["net_score"],
+                             score["close"], score["change_pct"],
+                             json.dumps(score["buy_signals"], ensure_ascii=False),
+                             json.dumps(score["sell_signals"], ensure_ascii=False),
+                             score["volume_avg"], score["hv"])
+                        )
+                    conn.commit()
+                if idx % 50 == 0:
+                    _screening_status["progress"] = fetch_count + idx
+            except Exception: pass
+
+        _screening_status["progress"] = len(codes)
+        conn.close()
+        _screening_status.update({"running": False,
+                                   "updated_at": _dt3.now().strftime("%Y-%m-%d %H:%M"),
+                                   "error": None})
+    except Exception as e:
+        _screening_status.update({"running": False, "error": str(e)})
+
+
+@app.get("/screening/status")
+def screening_status():
+    return _screening_status
+
+
+@app.post("/screening/update")
+def screening_update():
+    if _screening_status["running"]:
+        return {"message": "already running"}
+    t = _threading.Thread(target=_run_screening_update, daemon=True)
+    t.start()
+    return {"message": "started"}
+
+
+@app.get("/screening")
+def get_screening(
+    min_score: int = Query(1),
+    sector: str = Query(""),
+    sort: str = Query("net_score"),
+):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM screening_cache")
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    results = []
+    for r in rows:
+        if r["net_score"] < min_score:
+            continue
+        if sector and sector not in (r["sector"] or ""):
+            continue
+        try:
+            buy_sigs  = json.loads(r["buy_signals"]  or "[]")
+            sell_sigs = json.loads(r["sell_signals"] or "[]")
+        except Exception:
+            buy_sigs = sell_sigs = []
+        results.append({
+            "code":        r["code"],
+            "name":        r["name"],
+            "sector":      r["sector"],
+            "buy_score":   r["buy_score"],
+            "sell_score":  r["sell_score"],
+            "net_score":   r["net_score"],
+            "close":       r["close_price"],
+            "change_pct":  r["change_pct"],
+            "buy_signals": buy_sigs,
+            "sell_signals": sell_sigs,
+            "volume_avg":  r.get("volume_avg"),
+            "hv":          r.get("hv"),
+            "updated_at":  str(r["updated_at"]),
+        })
+
+    results.sort(key=lambda x: (x.get(sort) or 0), reverse=True)
+    return results
+
+
+@app.get("/screening/sectors")
+def get_sectors():
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT sector FROM prime_stocks ORDER BY sector")
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+    return [r["sector"] for r in rows if r["sector"]]
