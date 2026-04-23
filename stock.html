@@ -2430,6 +2430,65 @@ function rebuildSignalScores() {
     signalScores[k].buy  += v.buy  || 0;
     signalScores[k].sell += v.sell || 0;
   }
+
+  // バックエンドスコア + TLスコアの合算でシグナルを再計算し aiSignals を上書き
+  recalcAiSignalsWithTL(tlScores);
+}
+
+function recalcAiSignalsWithTL(tlScores) {
+  if (!candleData.length) return;
+  // バックエンドシグナルのreasonを時刻→文字列でマップ
+  const backendReasonMap = {};
+  for (const s of (aiSignals || [])) {
+    backendReasonMap[String(s.time)] = s;
+  }
+
+  const BUY_THR = 2, SELL_THR = 2;
+  let buyReset = true, sellReset = true;
+  const isDateChart = typeof candleData[0].time === 'string';
+  const newSignals = [];
+
+  for (const bar of candleData) {
+    const k = String(bar.time);
+    const bs = _backendScores[k] || {buy: 0, sell: 0};
+    const ts = tlScores[k]       || {buy: 0, sell: 0};
+    const buyPt  = (bs.buy  || 0) + (ts.buy  || 0);
+    const sellPt = (bs.sell || 0) + (ts.sell || 0);
+
+    const netBuy  = buyPt  - sellPt;
+    const netSell = sellPt - buyPt;
+
+    if (netBuy  <= 0) buyReset  = true;
+    if (netSell <= 0) sellReset = true;
+
+    if (netBuy >= BUY_THR && buyReset) {
+      const orig = backendReasonMap[k];
+      newSignals.push({
+        time:              isDateChart ? bar.time : Number(bar.time),
+        side:              'buy',
+        price:             bar.close,
+        reason:            orig ? orig.reason + (ts.buy ? `(+TL${ts.buy})` : '') : `[net+${netBuy}pt]`,
+        stop_loss:         orig ? orig.stop_loss     : null,
+        stop_loss_pct:     orig ? orig.stop_loss_pct : null,
+      });
+      buyReset  = false;
+    }
+
+    if (netSell >= SELL_THR && sellReset) {
+      const orig = backendReasonMap[k];
+      newSignals.push({
+        time:    isDateChart ? bar.time : Number(bar.time),
+        side:    'sell',
+        price:   bar.close,
+        reason:  orig ? orig.reason + (ts.sell ? `(+TL${ts.sell})` : '') : `[net-${netSell}pt]`,
+        stop_loss: null,
+      });
+      sellReset = false;
+      buyReset  = true;
+    }
+  }
+
+  aiSignals = dedupeSignals(newSignals);
 }
 
 function buildPatternMarkers() {
