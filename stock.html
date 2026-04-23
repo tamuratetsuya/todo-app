@@ -2431,7 +2431,7 @@ function rebuildSignalScores() {
     signalScores[k].sell += v.sell || 0;
   }
 
-  // バックエンドスコア + TLスコアの合算でシグナルを再計算し aiSignals を上書き
+  // バックエンドスコア + パターンスコア + TLスコアの合算でシグナルを再計算し aiSignals を上書き
   recalcAiSignalsWithTL(tlScores);
 }
 
@@ -2448,12 +2448,22 @@ function recalcAiSignalsWithTL(tlScores) {
   const isDateChart = typeof candleData[0].time === 'string';
   const newSignals = [];
 
+  // patternSignalsをキー別に集計
+  const patScores = {};
+  for (const ps of (patternSignals || [])) {
+    const k = String(ps.time);
+    if (!patScores[k]) patScores[k] = {buy: 0, sell: 0};
+    if (ps.side === 'buy') patScores[k].buy  += (ps.pts || 0);
+    else                   patScores[k].sell += Math.abs(ps.pts || 0);
+  }
+
   for (const bar of candleData) {
     const k = String(bar.time);
     const bs = _backendScores[k] || {buy: 0, sell: 0};
     const ts = tlScores[k]       || {buy: 0, sell: 0};
-    const buyPt  = (bs.buy  || 0) + (ts.buy  || 0);
-    const sellPt = (bs.sell || 0) + (ts.sell || 0);
+    const ps = patScores[k]      || {buy: 0, sell: 0};
+    const buyPt  = (bs.buy  || 0) + (ts.buy  || 0) + (ps.buy  || 0);
+    const sellPt = (bs.sell || 0) + (ts.sell || 0) + (ps.sell || 0);
 
     const netBuy  = buyPt  - sellPt;
     const netSell = sellPt - buyPt;
