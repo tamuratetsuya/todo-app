@@ -1117,14 +1117,15 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                         add_sell("雲下抜け", 2)
 
             # 全日付のポイントを記録
-            scores[date_key] = {"buy": len(buy_tags), "sell": sell_pts}
-
-            # 買いシグナル: 0pt経由 または 直前に売りシグナルが出た後に3pt以上で許可
             buy_pt = len(buy_tags)
-            if buy_pt == 0:
+            scores[date_key] = {"buy": buy_pt, "sell": sell_pts}
+
+            # 買いシグナル: 買いpt - 売りpt の合計が BUY_THRESHOLD 以上
+            net_buy_pt = buy_pt - sell_pts
+            if net_buy_pt <= 0:
                 buy_reset = True
-            if buy_pt >= BUY_THRESHOLD and buy_reset:
-                score_str = f"[+{buy_pt}pt]"
+            if net_buy_pt >= BUY_THRESHOLD and buy_reset:
+                score_str = f"[net+{net_buy_pt}pt]"
                 sl = stop_loss(i, price)
                 signals.append({
                     "time":         date_key,
