@@ -1137,11 +1137,12 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                 })
                 buy_reset = False
 
-            # 売りシグナル（-2pt以下）: 0pt経由 または 直前に買いシグナルが出た後で許可
-            if sell_pts == 0:
+            # 売りシグナル: 売りpt - 買いpt の合計が 2 以上
+            net_sell_pt = sell_pts - buy_pt
+            if net_sell_pt <= 0:
                 sell_reset = True
-            if sell_pts >= 2 and sell_reset:
-                score_str = f"[-{sell_pts}pt]"
+            if net_sell_pt >= 2 and sell_reset:
+                score_str = f"[net-{net_sell_pt}pt]"
                 signals.append({
                     "time":      date_key,
                     "side":      "sell",
