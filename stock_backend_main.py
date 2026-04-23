@@ -807,6 +807,37 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     result.append({'idx': j, 'price': l})
             return result
 
+        def _get_pivot_highs(i, lookback=5):
+            """ピボットハイ一覧（前後lookback本で最高値の点）"""
+            result = []
+            for j in range(lookback, i - lookback + 1):
+                h = highs[j]
+                is_high = all(highs[k] < h for k in range(j - lookback, j + lookback + 1) if k != j and 0 <= k < len(highs))
+                if is_high:
+                    result.append({'idx': j, 'price': h})
+            return result
+
+        def _resistance_val(i, lookback=5):
+            """ピボットハイをクラスタリングした抵抗線の最近傍値（価格より上）"""
+            if i < lookback * 2 + 1: return None
+            price = closes[i]
+            range_limit = price * 0.20
+            raw = [p['price'] for p in _get_pivot_highs(i, lookback)
+                   if price < p['price'] <= price + range_limit]
+            if not raw: return None
+            sorted_highs = sorted(raw)
+            groups, idx = [], 0
+            while idx < len(sorted_highs):
+                group = [sorted_highs[idx]]
+                while idx + 1 < len(sorted_highs) and abs(sorted_highs[idx+1] - sorted_highs[idx]) / sorted_highs[idx] < 0.012:
+                    idx += 1
+                    group.append(sorted_highs[idx])
+                groups.append({'level': sum(group) / len(group), 'strength': len(group)})
+                idx += 1
+            groups.sort(key=lambda x: -x['strength'])
+            above = [g['level'] for g in groups[:3] if g['level'] > price]
+            return min(above) if above else None
+
         def _trendline_val(i, lookback=5):
             """グラフと同一ロジック: 直近の上昇ピボットロー2点を結ぶ線の現在値"""
             if i < lookback * 2 + 1: return None
@@ -834,6 +865,34 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             tl_val = _trendline_val(i)
             if tl_val is None: return False
             return abs(closes[i] - tl_val) / tl_val <= thresh
+
+        def _trendline_below(i, thresh=0.02):
+            """TLが現在価格のthresh%以内の下にある（支持として機能）"""
+            tl = _trendline_val(i)
+            if tl is None: return False
+            price = closes[i]
+            return tl <= price and (price - tl) / tl <= thresh
+
+        def _trendline_above(i, thresh=0.02):
+            """TLが現在価格のthresh%以内の上にある（抵抗として機能）"""
+            tl = _trendline_val(i)
+            if tl is None: return False
+            price = closes[i]
+            return tl > price and (tl - price) / tl <= thresh
+
+        def _support_nearby(i, thresh=0.02):
+            """支持線が現在価格のthresh%以内の下にある"""
+            sv = _support_val(i)
+            if sv is None: return False
+            price = closes[i]
+            return price * (1 - thresh) <= sv < price
+
+        def _resistance_nearby(i, thresh=0.02):
+            """抵抗線が現在価格のthresh%以内の上にある"""
+            rv = _resistance_val(i)
+            if rv is None: return False
+            price = closes[i]
+            return price < rv <= price * (1 + thresh)
 
         def _support_val(i, lookback=5):
             """グラフと同一ロジック: ピボットローをクラスタリングした支持線の最近傍値"""
@@ -1020,6 +1079,10 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
 
             if _trendline_near(i):
                 buy_tags.append("TL")
+            if _support_nearby(i):
+                buy_tags.append("支持線近傍")
+            if _trendline_below(i):
+                buy_tags.append("TL下支持")
             if ma5_c and ma25_c and ma5_p and ma25_p and ma5_p <= ma25_p and ma5_c > ma25_c:
                 buy_tags.append("GC")
             if _ik3_buy(i):
@@ -1101,6 +1164,12 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             # BBバンドウォーク下落: BB%≤20を3本以上継続
             if _bb_walk_down(i):
                 add_sell("BBウォーク↓", 2)
+
+            # 抵抗線・TLが現在価格の2%以内の上にある
+            if _resistance_nearby(i):
+                add_sell("抵抗線近傍")
+            if _trendline_above(i):
+                add_sell("TL上抵抗")
 
             # 一目雲: 雲に下向きに入った(-1pt) / 雲を下抜け(-2pt)
             if i >= 1:
