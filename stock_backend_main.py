@@ -994,7 +994,7 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             return round(max(recent_low * 0.98, price * 0.85), 1)
 
         # 最低スコア閾値: 3pt以上で買いシグナル表示
-        BUY_THRESHOLD = 3
+        BUY_THRESHOLD = 2
         signals = []
         scores = {}       # date -> {buy: pt, sell: pt}
         buy_reset  = True  # 0ptを経由したらTrue（初回は許可）
