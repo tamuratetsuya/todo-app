@@ -306,6 +306,11 @@
   </div>
 
   <div class="filter-group">
+    <span class="filter-label">最低売りスコア</span>
+    <input type="number" id="minSellScore" class="filter-input" value="" min="0" max="20" placeholder="0">
+  </div>
+
+  <div class="filter-group">
     <span class="filter-label">セクター</span>
     <select id="sectorFilter" class="filter-select">
       <option value="">すべて</option>
@@ -444,6 +449,8 @@ function applyFilters() {
   const minHv  = parseFloat(document.getElementById('minHv').value);
   const maxHv  = parseFloat(document.getElementById('maxHv').value);
 
+  const minSellScore = parseInt(document.getElementById('minSellScore').value);
+
   filteredData = allData.filter(r => {
     if (!isNaN(minVol) && minVol > 0) {
       const vol = (r.volume_avg || 0) / 10000;
@@ -451,6 +458,7 @@ function applyFilters() {
     }
     if (!isNaN(minHv) && minHv > 0 && (r.hv == null || r.hv < minHv)) return false;
     if (!isNaN(maxHv) && maxHv > 0 && (r.hv == null || r.hv > maxHv)) return false;
+    if (!isNaN(minSellScore) && minSellScore > 0 && (r.sell_score || 0) < minSellScore) return false;
     return true;
   });
 
