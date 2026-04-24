@@ -2703,6 +2703,7 @@ def get_holders(symbol: str = Query(...)):
 @app.get("/analyst")
 def get_analyst(symbol: str = Query(...)):
     """アナリスト予想を複数サイトから取得"""
+    symbol = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -3048,6 +3049,7 @@ def _scrape_minkabu_analyst(code: str) -> dict:
 @app.get("/financials")
 def get_financials(symbol: str = Query(...)):
     """みんかぶから四半期・年次財務データを取得"""
+    symbol = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
     conn = get_conn()
     try:
         with conn.cursor() as cur:
