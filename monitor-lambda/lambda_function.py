@@ -89,9 +89,15 @@ def set_failure_count(key, count):
 
 
 def restart_ec2():
-    print(f"[{datetime.now()}] EC2 REBOOT: {EC2_INSTANCE_ID}")
-    ec2_client.reboot_instances(InstanceIds=[EC2_INSTANCE_ID])
-    print(f"[{datetime.now()}] EC2 REBOOT: triggered")
+    """OSハング対応のため reboot_instances（ソフト）ではなく force stop → start（ハード）を使う"""
+    print(f"[{datetime.now()}] EC2 FORCE STOP: {EC2_INSTANCE_ID}")
+    ec2_client.stop_instances(InstanceIds=[EC2_INSTANCE_ID], Force=True)
+    # stopped になるまで待機（最大5分）
+    waiter = ec2_client.get_waiter('instance_stopped')
+    waiter.wait(InstanceIds=[EC2_INSTANCE_ID], WaiterConfig={'Delay': 10, 'MaxAttempts': 30})
+    print(f"[{datetime.now()}] EC2 START: {EC2_INSTANCE_ID}")
+    ec2_client.start_instances(InstanceIds=[EC2_INSTANCE_ID])
+    print(f"[{datetime.now()}] EC2 START: triggered")
 
 
 def restart_rds():
