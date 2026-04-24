@@ -4023,9 +4023,9 @@ def _run_screening_update():
             else:
                 new_codes.append(code)
 
-        _screening_status["total"] = len(codes)
         _screening_status["skipped"] = fresh_count
         fetch_count = len(stale_codes) + len(new_codes)
+        _screening_status["total"] = fetch_count + len(codes)
         candle_data = {}
         batch_size = 100
         done = 0
@@ -4181,7 +4181,7 @@ def _run_screening_update():
                     _screening_status["progress"] = fetch_count + idx
             except Exception: pass
 
-        _screening_status["progress"] = len(codes)
+        _screening_status["progress"] = fetch_count + len(codes)
         conn.close()
         _screening_status.update({"running": False,
                                    "updated_at": _dt3.now().strftime("%Y-%m-%d %H:%M"),
