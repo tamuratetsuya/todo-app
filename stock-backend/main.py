@@ -4124,6 +4124,7 @@ def _run_screening_update():
                     )
                     db_rows = list(reversed(cur.fetchall()))
                 if not db_rows: continue
+                latest_price_date = str(db_rows[-1]["candle_time"])[:10]
                 score = _calc_screening_score(db_rows, vix_latest=vix_latest)
                 if score:
                     s = stock_map.get(code, {})
@@ -4156,27 +4157,27 @@ def _run_screening_update():
                             "INSERT INTO screening_cache "
                             "(code,name,sector,buy_score,sell_score,net_score,close_price,change_pct,"
                             "buy_signals,sell_signals,volume_avg,hv,"
-                            "last_signal_side,last_signal_date,last_signal_buy_score,last_signal_sell_score) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                            "last_signal_side,last_signal_date,last_signal_buy_score,last_signal_sell_score,price_date) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                             "ON DUPLICATE KEY UPDATE name=%s,sector=%s,buy_score=%s,sell_score=%s,net_score=%s,"
                             "close_price=%s,change_pct=%s,buy_signals=%s,sell_signals=%s,"
                             "volume_avg=%s,hv=%s,"
                             "last_signal_side=%s,last_signal_date=%s,"
-                            "last_signal_buy_score=%s,last_signal_sell_score=%s,updated_at=NOW()",
+                            "last_signal_buy_score=%s,last_signal_sell_score=%s,price_date=%s,updated_at=NOW()",
                             (code, s.get("name",""), s.get("sector",""),
                              score["buy_score"], score["sell_score"], score["net_score"],
                              score["close"], score["change_pct"],
                              json.dumps(score["buy_signals"], ensure_ascii=False),
                              json.dumps(score["sell_signals"], ensure_ascii=False),
                              score["volume_avg"], score["hv"],
-                             sig_side, sig_date, last_sig_buy, last_sig_sell,
+                             sig_side, sig_date, last_sig_buy, last_sig_sell, latest_price_date,
                              s.get("name",""), s.get("sector",""),
                              score["buy_score"], score["sell_score"], score["net_score"],
                              score["close"], score["change_pct"],
                              json.dumps(score["buy_signals"], ensure_ascii=False),
                              json.dumps(score["sell_signals"], ensure_ascii=False),
                              score["volume_avg"], score["hv"],
-                             sig_side, sig_date, last_sig_buy, last_sig_sell)
+                             sig_side, sig_date, last_sig_buy, last_sig_sell, latest_price_date)
                         )
                     conn.commit()
                 if idx % 50 == 0:
@@ -4249,6 +4250,7 @@ def get_screening(
             "last_signal_date":       r.get("last_signal_date"),
             "last_signal_buy_score":  r.get("last_signal_buy_score"),
             "last_signal_sell_score": r.get("last_signal_sell_score"),
+            "price_date":             str(r["price_date"]) if r.get("price_date") else None,
         })
 
     results.sort(key=lambda x: (x.get(sort) or 0), reverse=True)

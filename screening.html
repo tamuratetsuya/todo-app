@@ -227,6 +227,7 @@
   .col-vol    { width: 90px; text-align: right; }
   .col-hv     { width: 70px; text-align: right; }
   .col-sigs   { min-width: 180px; }
+  .col-date   { width: 60px; text-align: center; color: var(--text2); font-size: 11px; }
   .col-fav    { width: 36px; text-align: center; }
   .fav-btn {
     background: none;
@@ -402,10 +403,11 @@
         <th class="col-vol" data-col="volume_avg">出来高(万株) <span class="sort-icon">↕</span></th>
         <th class="col-hv"  data-col="hv">HV(%) <span class="sort-icon">↕</span></th>
         <th class="col-sigs">シグナル</th>
+        <th class="col-date" data-col="price_date">株価日付 <span class="sort-icon">↕</span></th>
       </tr>
     </thead>
     <tbody id="screeningBody">
-      <tr><td colspan="11" class="empty-msg">データを読み込み中...</td></tr>
+      <tr><td colspan="12" class="empty-msg">データを読み込み中...</td></tr>
     </tbody>
   </table>
 </div>
@@ -654,6 +656,8 @@ function buildRow(r) {
   const hvStr = r.hv != null ? r.hv.toFixed(1) + '%' : '-';
   const hvClass = r.hv == null ? '' : r.hv >= 50 ? 'chg-neg' : r.hv <= 20 ? 'chg-pos' : '';
 
+  const priceDate = r.price_date ? (() => { const p = r.price_date.slice(0,10); return p.slice(5).replace('-', '/'); })() : '-';
+
   const isFav = favorites.has(code);
   return `<tr class="clickable" onclick="openStock('${code}')">
     <td class="col-fav"><button class="fav-btn${isFav ? ' active' : ''}" data-code="${code}" onclick="event.stopPropagation();toggleFavorite('${code}',this)">${isFav ? '★' : '☆'}</button></td>
@@ -668,6 +672,7 @@ function buildRow(r) {
     <td class="col-vol" style="text-align:right">${volStr}</td>
     <td class="col-hv ${hvClass}" style="text-align:right">${hvStr}</td>
     <td class="col-sigs"><div class="sig-tags">${buySigs}${sellSigs}</div></td>
+    <td class="col-date">${priceDate}</td>
   </tr>`;
 }
 
@@ -680,7 +685,7 @@ function openStock(code) {
 
 function renderEmpty(msg) {
   document.getElementById('screeningBody').innerHTML =
-    `<tr><td colspan="11" class="empty-msg">${escHtml(msg)}</td></tr>`;
+    `<tr><td colspan="12" class="empty-msg">${escHtml(msg)}</td></tr>`;
   document.getElementById('countBadge').style.display = 'none';
 }
 
