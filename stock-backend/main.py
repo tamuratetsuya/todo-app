@@ -4187,7 +4187,7 @@ def _run_screening_update():
         _screening_status["progress"] = fetch_count + len(codes)
         conn.close()
         _screening_status.update({"running": False,
-                                   "updated_at": _dt3.now().strftime("%Y-%m-%d %H:%M"),
+                                   "updated_at": (_dt3.utcnow() + __import__('datetime').timedelta(hours=9)).strftime("%Y-%m-%d %H:%M"),
                                    "error": None})
     except Exception as e:
         _screening_status.update({"running": False, "error": str(e)})
