@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>株式トレード分析ツール 画面仕様書</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+    font-size: 10pt;
+    line-height: 1.6;
+    color: #1a1a2e;
+    background: #fff;
+  }
+
+  /* ===== カバーページ ===== */
+  .cover {
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, #0d1117 0%, #1a2744 50%, #0d1117 100%);
+    color: #e6edf3;
+    page-break-after: always;
+    padding: 60px;
+    text-align: center;
+  }
+  .cover-icon { font-size: 48pt; margin-bottom: 24px; }
+  .cover-title { font-size: 28pt; font-weight: 700; letter-spacing: -1px; margin-bottom: 12px; }
+  .cover-subtitle { font-size: 14pt; color: #8b949e; margin-bottom: 40px; }
+  .cover-meta { font-size: 10pt; color: #58a6ff; border: 1px solid #30363d; padding: 16px 32px; border-radius: 8px; }
+  .cover-meta p { margin: 4px 0; }
+
+  /* ===== 目次 ===== */
+  .toc-page {
+    page-break-after: always;
+    padding: 40px 50px;
+  }
+  .toc-title {
+    font-size: 18pt;
+    font-weight: 700;
+    color: #1a2744;
+    border-bottom: 3px solid #1f6feb;
+    padding-bottom: 8px;
+    margin-bottom: 24px;
+  }
+  .toc-item {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px dotted #ccc;
+    padding: 5px 0;
+    font-size: 10pt;
+  }
+  .toc-item.h1 { font-weight: 700; font-size: 11pt; margin-top: 10px; color: #1f6feb; }
+  .toc-item.h2 { padding-left: 20px; color: #333; }
+  .toc-num { color: #888; white-space: nowrap; }
+
+  /* ===== 本文ページ ===== */
+  .page {
+    padding: 30px 45px;
+    page-break-after: always;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  /* ===== 見出し ===== */
+  h1 {
+    font-size: 18pt;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #1f6feb, #58a6ff);
+    padding: 10px 18px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+  }
+  h1 .chapter { font-size: 10pt; opacity: 0.8; display: block; margin-bottom: 2px; }
+
+  h2 {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #1f6feb;
+    border-left: 4px solid #1f6feb;
+    padding: 4px 12px;
+    margin: 20px 0 12px;
+    background: #f0f7ff;
+  }
+
+  h3 {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #1a2744;
+    border-bottom: 1px solid #dde5f0;
+    padding-bottom: 4px;
+    margin: 16px 0 8px;
+  }
+
+  h4 {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #444;
+    margin: 12px 0 6px;
+  }
+
+  p { margin-bottom: 8px; }
+
+  /* ===== テーブル ===== */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 16px;
+    font-size: 9pt;
+  }
+  th {
+    background: #1a2744;
+    color: #fff;
+    padding: 7px 10px;
+    text-align: left;
+    font-weight: 600;
+    border: 1px solid #334;
+  }
+  td {
+    padding: 6px 10px;
+    border: 1px solid #dde;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f5f8ff; }
+  tr:hover td { background: #e8f0fe; }
+
+  /* ===== リスト ===== */
+  ul, ol {
+    padding-left: 20px;
+    margin: 6px 0 10px;
+  }
+  li { margin-bottom: 3px; }
+  li ul { margin: 3px 0 3px 16px; }
+
+  /* ===== バッジ・タグ ===== */
+  .badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 12px;
+    font-size: 8pt;
+    font-weight: 600;
+    margin: 1px 2px;
+    vertical-align: middle;
+  }
+  .badge-buy  { background: #d4f5df; color: #1a7f37; border: 1px solid #3fb950; }
+  .badge-sell { background: #ffd5d5; color: #b91c1c; border: 1px solid #f85149; }
+  .badge-blue { background: #dbeafe; color: #1d4ed8; border: 1px solid #58a6ff; }
+  .badge-gray { background: #f3f4f6; color: #374151; border: 1px solid #9ca3af; }
+  .badge-purple { background: #f3e8ff; color: #7c3aed; border: 1px solid #a855f7; }
+  .badge-yellow { background: #fffbeb; color: #92400e; border: 1px solid #f59e0b; }
+
+  /* ===== インフォボックス ===== */
+  .info-box {
+    border: 1px solid #58a6ff;
+    background: #f0f7ff;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 10px 0;
+  }
+  .info-box .label {
+    font-weight: 700;
+    color: #1f6feb;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+
+  .warn-box {
+    border: 1px solid #f59e0b;
+    background: #fffbeb;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 10px 0;
+  }
+
+  /* ===== スコアルール表 ===== */
+  .rule-table { margin: 8px 0; }
+  .rule-row {
+    display: flex;
+    align-items: flex-start;
+    padding: 4px 8px;
+    border-bottom: 1px solid #eee;
+    font-size: 9pt;
+  }
+  .rule-row:nth-child(even) { background: #f9faff; }
+  .rule-name { flex: 1; font-weight: 600; }
+  .rule-pt { width: 50px; text-align: center; font-weight: 700; }
+  .rule-pt.buy { color: #1a7f37; }
+  .rule-pt.sell { color: #b91c1c; }
+  .rule-desc { flex: 2; color: #555; }
+
+  /* ===== コード ===== */
+  code {
+    font-family: 'Courier New', monospace;
+    background: #f3f4f6;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 8.5pt;
+    color: #c7254e;
+  }
+
+  /* ===== 区切り ===== */
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 16px 0; }
+
+  /* ===== フッター ===== */
+  @page {
+    size: A4;
+    margin: 15mm 15mm 20mm;
+    @bottom-center {
+      content: "株式トレード分析ツール 画面仕様書  |  " counter(page) " / " counter(pages);
+      font-size: 8pt;
+      color: #888;
+    }
+  }
+
+  /* ===== レイアウト図 ===== */
+  .layout-diagram {
+    border: 2px solid #30363d;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 12px 0;
+    font-size: 8.5pt;
+    font-family: monospace;
+  }
+  .layout-header {
+    background: #1f6feb;
+    color: #fff;
+    padding: 6px 12px;
+    font-weight: 700;
+  }
+  .layout-body { display: flex; height: 160px; }
+  .layout-sidebar { width: 18%; background: #161b22; color: #8b949e; padding: 6px; border-right: 1px solid #30363d; display: flex; flex-direction: column; }
+  .layout-main { flex: 1; background: #0d1117; color: #e6edf3; padding: 6px; display: flex; flex-direction: column; }
+  .layout-chart { flex: 1; background: #0d1117; color: #3fb950; padding: 4px; text-align: center; font-size: 7pt; display: flex; align-items: center; justify-content: center; border: 1px dashed #30363d; margin-bottom: 4px; }
+  .layout-analysis { height: 45px; background: #161b22; color: #8b949e; padding: 4px; font-size: 7pt; border-top: 1px solid #30363d; }
+  .layout-label { font-size: 7pt; text-align: center; color: #aaa; padding: 2px; }
+
+  .two-col { display: flex; gap: 16px; }
+  .two-col > * { flex: 1; }
+
+  .page-header-line {
+    border-top: 3px solid #1f6feb;
+    margin-bottom: 16px;
+    padding-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== カバー ===== -->
+<div class="cover">
+  <div class="cover-icon">📈</div>
+  <div class="cover-title">株式トレード分析ツール</div>
+  <div class="cover-subtitle">画面仕様書 / Screen Specification</div>
+  <div class="cover-meta">
+    <p>対象ファイル: stock.html / stock_backend_main.py / screening.html</p>
+    <p>総行数: 10,590 行 （HTML: 5,855 / Backend: 4,071 / Screening: 664）</p>
+    <p>作成日: 2026年4月24日</p>
+    <p>バックエンド: FastAPI (Python) + LightweightCharts v4.1.3</p>
+  </div>
+</div>
+
+<!-- ===== 目次 ===== -->
+<div class="toc-page">
+  <div class="toc-title">目次</div>
+
+  <div class="toc-item h1"><span>1. システム概要</span><span class="toc-num">2</span></div>
+  <div class="toc-item h2"><span>1.1 画面全体レイアウト</span><span class="toc-num">2</span></div>
+  <div class="toc-item h2"><span>1.2 技術スタック</span><span class="toc-num">2</span></div>
+
+  <div class="toc-item h1"><span>2. ヘッダーエリア</span><span class="toc-num">3</span></div>
+  <div class="toc-item h2"><span>2.1 操作ボタン一覧</span><span class="toc-num">3</span></div>
+  <div class="toc-item h2"><span>2.2 銘柄選択</span><span class="toc-num">3</span></div>
+
+  <div class="toc-item h1"><span>3. メインチャートエリア</span><span class="toc-num">4</span></div>
+  <div class="toc-item h2"><span>3.1 ローソク足チャート</span><span class="toc-num">4</span></div>
+  <div class="toc-item h2"><span>3.2 サブチャート</span><span class="toc-num">4</span></div>
+  <div class="toc-item h2"><span>3.3 インジケーター</span><span class="toc-num">4</span></div>
+  <div class="toc-item h2"><span>3.4 イベントマーカー</span><span class="toc-num">5</span></div>
+
+  <div class="toc-item h1"><span>4. シグナルシステム</span><span class="toc-num">5</span></div>
+  <div class="toc-item h2"><span>4.1 買いシグナルルール</span><span class="toc-num">5</span></div>
+  <div class="toc-item h2"><span>4.2 売りシグナルルール</span><span class="toc-num">6</span></div>
+  <div class="toc-item h2"><span>4.3 シグナル発生ロジック</span><span class="toc-num">6</span></div>
+  <div class="toc-item h2"><span>4.4 スコアバー表示</span><span class="toc-num">7</span></div>
+
+  <div class="toc-item h1"><span>5. トレンドライン機能</span><span class="toc-num">7</span></div>
+  <div class="toc-item h2"><span>5.1 描画フロー</span><span class="toc-num">7</span></div>
+  <div class="toc-item h2"><span>5.2 編集・削除</span><span class="toc-num">7</span></div>
+  <div class="toc-item h2"><span>5.3 スコアへの影響</span><span class="toc-num">8</span></div>
+
+  <div class="toc-item h1"><span>6. サイドバー（左パネル）</span><span class="toc-num">8</span></div>
+  <div class="toc-item h2"><span>6.1 損益サマリー</span><span class="toc-num">8</span></div>
+  <div class="toc-item h2"><span>6.2 約定履歴</span><span class="toc-num">8</span></div>
+
+  <div class="toc-item h1"><span>7. 分析パネル（下部タブ）</span><span class="toc-num">9</span></div>
+  <div class="toc-item h2"><span>7.1 観点タブ</span><span class="toc-num">9</span></div>
+  <div class="toc-item h2"><span>7.2 最新ニュースタブ</span><span class="toc-num">9</span></div>
+  <div class="toc-item h2"><span>7.3 X投稿タブ</span><span class="toc-num">10</span></div>
+  <div class="toc-item h2"><span>7.4 機関投資家タブ</span><span class="toc-num">10</span></div>
+  <div class="toc-item h2"><span>7.5 信用残高タブ</span><span class="toc-num">10</span></div>
+  <div class="toc-item h2"><span>7.6 財務タブ</span><span class="toc-num">11</span></div>
+  <div class="toc-item h2"><span>7.7 アナリスト予想タブ</span><span class="toc-num">11</span></div>
+  <div class="toc-item h2"><span>7.8 AIチャットタブ</span><span class="toc-num">11</span></div>
+  <div class="toc-item h2"><span>7.9 メモタブ</span><span class="toc-num">12</span></div>
+
+  <div class="toc-item h1"><span>8. CSVインポート</span><span class="toc-num">12</span></div>
+  <div class="toc-item h1"><span>9. データ管理・永続化</span><span class="toc-num">12</span></div>
+  <div class="toc-item h1"><span>10. スクリーニング連携</span><span class="toc-num">13</span></div>
+  <div class="toc-item h1"><span>11. API エンドポイント一覧</span><span class="toc-num">13</span></div>
+  <div class="toc-item h1"><span>12. カラー・デザイン仕様</span><span class="toc-num">14</span></div>
+</div>
+
+
+<!-- ===== 1. システム概要 ===== -->
+<div class="page">
+  <h1><span class="chapter">第1章</span>システム概要</h1>
+
+  <h2>1.1 画面全体レイアウト</h2>
+  <p>3ペイン構成（ヘッダー固定 + サイドバー + メインコンテンツ）。メインコンテンツはチャートエリアと分析パネルに縦分割。</p>
+
+  <div class="layout-diagram">
+    <div class="layout-header">ヘッダー（52px固定）― ロゴ / CSV取込 / 銘柄選択 / 時間足 / TL / インジケーター / スクリーニング</div>
+    <div class="layout-body">
+      <div class="layout-sidebar">
+        <div class="layout-label">サイドバー<br>（損益<br>サマリー）</div>
+        <div style="flex:1;"></div>
+        <div class="layout-label">──────<br>約定履歴</div>
+      </div>
+      <div class="layout-main">
+        <div class="layout-chart">ローソク足チャート + 出来高 + インジケーター + シグナルマーカー + トレンドライン</div>
+        <div class="layout-analysis">分析パネル（観点 / ニュース / X / 機関投資家 / 信用残高 / 財務 / アナリスト / AIチャット / メモ）</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>1.2 技術スタック</h2>
+  <table>
+    <tr><th>コンポーネント</th><th>技術</th><th>詳細</th></tr>
+    <tr><td>フロントエンド</td><td>Vanilla JavaScript (ES2020+)</td><td>フレームワーク不使用、HTML単一ファイル構成</td></tr>
+    <tr><td>チャートライブラリ</td><td>LightweightCharts v4.1.3</td><td>TradingViewオープンソース、Canvas描画</td></tr>
+    <tr><td>バックエンド</td><td>FastAPI (Python)</td><td>ポート8020、uvicorn実行</td></tr>
+    <tr><td>データベース</td><td>MySQL (Amazon RDS)</td><td>stockdb、CanvasデータはRDSキャッシュ</td></tr>
+    <tr><td>ホスティング</td><td>Amazon EC2 + nginx</td><td>IP: 57.182.38.255、nginx proxy /api/stock/ → :8020</td></tr>
+    <tr><td>外部データ</td><td>yfinance / irbank / minkabu / X API</td><td>株価・信用残高・財務・SNSデータ取得</td></tr>
+  </table>
+</div>
+
+
+<!-- ===== 2. ヘッダー ===== -->
+<div class="page">
+  <h1><span class="chapter">第2章</span>ヘッダーエリア</h1>
+
+  <h2>2.1 操作ボタン一覧</h2>
+  <table>
+    <tr><th>ボタン名</th><th>位置</th><th>動作</th><th>状態</th></tr>
+    <tr><td><strong>CSV取込</strong></td><td>ロゴ右</td><td>ファイル選択ダイアログ（複数可）→ 取引履歴インポート</td><td>ファイルドラッグ&amp;ドロップも対応</td></tr>
+    <tr><td><strong>データクリア</strong></td><td>CSV右</td><td>全トレードデータをDB削除、画面リセット</td><td>確認ダイアログあり</td></tr>
+    <tr><td><strong>時間足（週足/日足/1時間足）</strong></td><td>中央</td><td>チャート時間足を切替（1wk / 1d / 1h）</td><td>選択中: 青ハイライト</td></tr>
+    <tr><td><strong>TLボタン</strong></td><td>中央</td><td>トレンドライン描画モード ON/OFF</td><td>ON: 黄色、待機中: オレンジ点滅</td></tr>
+    <tr><td><strong>インジケーター</strong></td><td>中央右</td><td>インジケーター選択パネルを表示/非表示</td><td>選択中アイテムありで強調</td></tr>
+    <tr><td><strong>スクリーニング</strong></td><td>右端</td><td>screening.html を新ウィンドウで開く</td><td>常時表示</td></tr>
+    <tr><td><strong>更新バッジ</strong></td><td>右端</td><td>最終自動更新時刻を表示（「更新 HH:MM:SS」）</td><td>自動更新時に更新</td></tr>
+  </table>
+
+  <h2>2.2 銘柄選択</h2>
+  <p><strong>ドロップダウン:</strong> グループ分け表示</p>
+  <ul>
+    <li><strong>トレード履歴あり</strong>: CSVインポート済みの銘柄</li>
+    <li><strong>ウォッチリスト</strong>: 手動追加した銘柄（localStorage保存）</li>
+  </ul>
+
+  <p><strong>銘柄追加モーダル:</strong> ヘッダー右の「+」ボタンから開く</p>
+  <table>
+    <tr><th>項目</th><th>内容</th></tr>
+    <tr><td>銘柄コード</td><td>必須。例: <code>7203.T</code>、<code>AAPL</code>。Enter で次フィールドへ</td></tr>
+    <tr><td>表示名</td><td>任意。例: トヨタ自動車。Enter で追加実行</td></tr>
+    <tr><td>登録済みリスト</td><td>現在のウォッチリストを表示、各行に削除ボタン</td></tr>
+  </table>
+
+  <div class="info-box">
+    <div class="label">URLパラメータ連携</div>
+    スクリーニングページからのリンクは <code>?code=7203&amp;name=トヨタ</code> パラメータで自動銘柄選択。
+  </div>
+
+  <h2>2.3 インジケーターパネル</h2>
+  <p>ヘッダーボタン直下に fixed 表示されるチェックボックスパネル。</p>
+  <table>
+    <tr><th>インジケーター</th><th>詳細</th></tr>
+    <tr><td>MA 5/25/75</td><td>5日（オレンジ）、25日（赤）、75日（青）の単純移動平均線</td></tr>
+    <tr><td>ボリンジャーバンド</td><td>25日MA ± 2σ（紫）、スクイーズ/拡張を視覚化</td></tr>
+    <tr><td>一目均衡表</td><td>転換線(9日・赤)、基準線(26日・青)、遅行線(紫)、雲（先行スパン1/2）</td></tr>
+    <tr><td>支持線 / 抵抗線</td><td>ピボット安値/高値のクラスタリングによる水平ライン</td></tr>
+    <tr><td>トレンドライン</td><td>自動検出TL（上昇グリーン/下降レッド）+ ダブルボトム/トップ（黄破線）</td></tr>
+  </table>
+</div>
+
+
+<!-- ===== 3. メインチャート ===== -->
+<div class="page">
+  <h1><span class="chapter">第3章</span>メインチャートエリア</h1>
+
+  <h2>3.1 ローソク足チャート</h2>
+  <div class="two-col">
+    <div>
+      <h4>基本表示</h4>
+      <ul>
+        <li>上昇足: 緑 <code>#3fb950</code></li>
+        <li>下降足: 赤 <code>#f85149</code></li>
+        <li>出来高ヒストグラム（チャート下部、同色）</li>
+        <li>ローソク足レジェンド: O/H/L/C + 前日比%（左上）</li>
+        <li>シグナルレジェンド: 買い+Npt / 売り-Npt（右上）</li>
+      </ul>
+    </div>
+    <div>
+      <h4>操作</h4>
+      <ul>
+        <li>ドラッグ: 時間軸スクロール</li>
+        <li>ホイール: ズームイン/アウト</li>
+        <li>ダブルクリック: 最近データにスクロール</li>
+        <li>時間足切替: 週足/日足/1時間足</li>
+        <li>日本語タイムフォーマッター（年月日/月日/時刻）</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>3.2 サブチャート（チャート下部ボタン切替）</h2>
+  <table>
+    <tr><th>種別</th><th>表示内容</th><th>詳細</th></tr>
+    <tr><td>出来高（デフォルト）</td><td>ヒストグラム</td><td>買い時グリーン/売り時レッド、透過度40%</td></tr>
+    <tr><td>MACD</td><td>MACD線・シグナル線・ヒストグラム</td><td>EMA(12) - EMA(26)、Signal: EMA(9)</td></tr>
+    <tr><td>HV</td><td>20日ヒストリカルボラティリティ（年率%）</td><td>log収益率の標準偏差 × √252 × 100</td></tr>
+    <tr><td>RSI</td><td>RSI(14) + 70/30参照ライン（破線）</td><td>過買い≥70（赤）、過売り≤30（緑）</td></tr>
+  </table>
+
+  <h2>3.3 インジケーター詳細</h2>
+
+  <h3>移動平均線 (MA)</h3>
+  <table>
+    <tr><th>期間</th><th>色</th><th>検出</th></tr>
+    <tr><td>5日</td><td>オレンジ <code>#f59e0b</code></td><td>ゴールデンクロス/デッドクロス（MA5 ↔ MA25）</td></tr>
+    <tr><td>25日</td><td>レッド <code>#ef4444</code></td><td>ゴールデンクロス/デッドクロス（MA5 ↔ MA25）</td></tr>
+    <tr><td>75日</td><td>ブルー <code>#3b82f6</code></td><td>長期トレンド判断</td></tr>
+  </table>
+
+  <h3>一目均衡表</h3>
+  <table>
+    <tr><th>要素</th><th>期間</th><th>色</th></tr>
+    <tr><td>転換線</td><td>(高値+安値)/2 × 9日</td><td>赤 <code>#e11d48</code></td></tr>
+    <tr><td>基準線</td><td>(高値+安値)/2 × 26日</td><td>青 <code>#2563eb</code></td></tr>
+    <tr><td>遅行線</td><td>終値を26日前にシフト</td><td>紫 <code>#7c3aed</code></td></tr>
+    <tr><td>雲（SpanA > SpanB）</td><td>先行スパン1/2</td><td>グリーン半透明</td></tr>
+    <tr><td>雲（SpanA &lt; SpanB）</td><td>先行スパン1/2</td><td>レッド半透明</td></tr>
+  </table>
+
+  <h3>チャートパターン自動検出</h3>
+  <div class="two-col">
+    <div>
+      <h4>買いパターン <span class="badge badge-buy">+2pt</span></h4>
+      <ul>
+        <li>ハンマー、逆ハンマー</li>
+        <li>陽の包み足、三白兵</li>
+        <li>ダブルボトム(W字)</li>
+        <li>逆ヘッド&amp;ショルダー</li>
+        <li>上昇フラッグ、下降ウェッジ</li>
+        <li>上昇三角形、対称三角形↑</li>
+        <li>レクタングル上抜け</li>
+        <li>カップ&amp;ハンドル</li>
+        <li>急騰+4%</li>
+      </ul>
+    </div>
+    <div>
+      <h4>売りパターン <span class="badge badge-sell">-2pt</span></h4>
+      <ul>
+        <li>トンカチ、陰の包み足、三羽烏</li>
+        <li>ダブルトップ(M字)</li>
+        <li>ヘッド&amp;ショルダー</li>
+        <li>下降フラッグ、上昇ウェッジ</li>
+        <li>下降三角形、対称三角形↓</li>
+        <li>レクタングル下抜け</li>
+        <li>BBバンドウォーク下落</li>
+        <li>急落-4%</li>
+        <li>雲下抜け</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>3.4 イベントマーカー</h2>
+  <table>
+    <tr><th>種別</th><th>色</th><th>データソース</th></tr>
+    <tr><td>企業イベント（決算等）</td><td>紫 <code>#818cf8</code></td><td>バックエンドAPI</td></tr>
+    <tr><td>日銀（BOJ）会合</td><td>赤 <code>#f85149</code></td><td>バックエンドAPI</td></tr>
+    <tr><td>米国経済指標</td><td>グリーン <code>#3fb950</code></td><td>バックエンドAPI</td></tr>
+    <tr><td>ニュース</td><td>オレンジ <code>#f59e0b</code></td><td>バックエンドAPI</td></tr>
+  </table>
+  <p>チャート上でマーカーにカーソルを合わせると、タイトル・詳細・結果・外部リンクがツールチップ表示される。</p>
+</div>
+
+
+<!-- ===== 4. シグナルシステム ===== -->
+<div class="page">
+  <h1><span class="chapter">第4章</span>シグナルシステム</h1>
+
+  <div class="info-box">
+    <div class="label">シグナル計算の概要</div>
+    バックエンド（ルールベース）のスコア + フロントエンドのチャートパターンスコア + ユーザー描画トレンドライン(TL)スコアを合算してシグナル矢印を表示する。
+    スコアバーも同じ合算値を表示。
+  </div>
+
+  <h2>4.1 買いシグナルルール（+pt）</h2>
+  <div class="rule-table">
+    <div class="rule-row" style="background:#f0f7ff;font-weight:700;">
+      <div class="rule-name">シグナル名</div>
+      <div class="rule-pt">ポイント</div>
+      <div class="rule-desc">発生条件</div>
+    </div>
+    <div class="rule-row"><div class="rule-name">TL（トレンドライン近傍）</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">自動検出上昇TLの±2%以内に価格がある</div></div>
+    <div class="rule-row"><div class="rule-name">支持線近傍</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">ピボット安値クラスター支持線が現在値の2%以内の下</div></div>
+    <div class="rule-row"><div class="rule-name">TL下支持</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">上昇TLが現在値の2%以内の下で支持機能</div></div>
+    <div class="rule-row"><div class="rule-name">GC（ゴールデンクロス）</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">MA5がMA25を上抜け（前日: MA5≤MA25 → 当日: MA5&gt;MA25）</div></div>
+    <div class="rule-row"><div class="rule-name">IK3（一目三役好転）</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">転換線&gt;基準線 AND 終値&gt;雲上限 AND 遅行線&gt;26本前終値</div></div>
+    <div class="rule-row"><div class="rule-name">BB反転</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">BB%≤30 かつ 当日終値&gt;前日終値。ただし雲下かつ下降トレンド時は除外</div></div>
+    <div class="rule-row"><div class="rule-name">BBウォーク（上昇）</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">BB%≥80を直近3本以上継続（バンドウォーク上昇中）</div></div>
+    <div class="rule-row"><div class="rule-name">抵抗ブレイク</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">直近20本高値を終値が上回る</div></div>
+    <div class="rule-row"><div class="rule-name">支持反転</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">直近20本安値±1.5%で当日終値&gt;前日終値。雲下かつ下降トレンド時は除外</div></div>
+    <div class="rule-row"><div class="rule-name">IK↑（転換線↑）</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">一目転換線が基準線を上抜け</div></div>
+    <div class="rule-row"><div class="rule-name">MACD↑</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">MACD線(12,26)がシグナル線(9)を上抜け</div></div>
+    <div class="rule-row"><div class="rule-name">VIX低</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">VIX恐怖指数≤17（リスクオン環境）</div></div>
+    <div class="rule-row"><div class="rule-name">RSI低</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">RSI(14)≤40（売られすぎ水準）</div></div>
+    <div class="rule-row"><div class="rule-name">急騰+2%</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">前日比+2%以上+4%未満</div></div>
+    <div class="rule-row"><div class="rule-name">急騰+4%</div><div class="rule-pt buy">+2pt</div><div class="rule-desc">前日比+4%以上</div></div>
+    <div class="rule-row"><div class="rule-name">チャートパターン各種</div><div class="rule-pt buy">+2pt</div><div class="rule-desc">ハンマー/陽の包み足/三白兵/ダブルボトム/逆H&amp;S/フラッグ等（フロントエンド検出）</div></div>
+    <div class="rule-row"><div class="rule-name">ユーザー描画TL（上方）</div><div class="rule-pt buy">+1pt</div><div class="rule-desc">描画TLより価格が上にある各バーに+1pt（calcTLScores）</div></div>
+  </div>
+
+  <h2>4.2 売りシグナルルール（-pt）</h2>
+  <div class="rule-table">
+    <div class="rule-row" style="background:#fff0f0;font-weight:700;">
+      <div class="rule-name">シグナル名</div>
+      <div class="rule-pt">ポイント</div>
+      <div class="rule-desc">発生条件</div>
+    </div>
+    <div class="rule-row"><div class="rule-name">DC（デッドクロス）</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">MA5がMA25を下抜け</div></div>
+    <div class="rule-row"><div class="rule-name">IK↓（転換線↓）</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">一目転換線が基準線を下抜け</div></div>
+    <div class="rule-row"><div class="rule-name">抵抗手前</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">直近20本高値の-2%以内に価格が接近（ブレイク未達）</div></div>
+    <div class="rule-row"><div class="rule-name">支持下抜け</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">直近20本安値を終値が下回る（前日は安値以上）</div></div>
+    <div class="rule-row"><div class="rule-name">VIX高</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">VIX≥20（リスクオフ環境）</div></div>
+    <div class="rule-row"><div class="rule-name">RSI高</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">RSI(14)≥70（買われすぎ水準）</div></div>
+    <div class="rule-row"><div class="rule-name">MACD↓</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">MACD線がシグナル線を下抜け</div></div>
+    <div class="rule-row"><div class="rule-name">雲侵入</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">一目雲に上から下向きに侵入（雲の中に入る）</div></div>
+    <div class="rule-row"><div class="rule-name">雲下抜け</div><div class="rule-pt sell">-2pt</div><div class="rule-desc">一目雲を完全に下抜け</div></div>
+    <div class="rule-row"><div class="rule-name">急落-2%</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">前日比-2%以下-4%超</div></div>
+    <div class="rule-row"><div class="rule-name">急落-4%</div><div class="rule-pt sell">-2pt</div><div class="rule-desc">前日比-4%以下</div></div>
+    <div class="rule-row"><div class="rule-name">BBウォーク↓（下落）</div><div class="rule-pt sell">-2pt</div><div class="rule-desc">BB%≤20を直近3本以上継続（バンドウォーク下落中）</div></div>
+    <div class="rule-row"><div class="rule-name">抵抗線近傍</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">ピボット高値クラスター抵抗線が現在値の2%以内の上</div></div>
+    <div class="rule-row"><div class="rule-name">TL上抵抗</div><div class="rule-pt sell">-1pt</div><div class="rule-desc">上昇TLが価格を上抜けて抵抗として機能（価格の2%以内の上）</div></div>
+    <div class="rule-row"><div class="rule-name">チャートパターン各種</div><div class="rule-pt sell">-2pt</div><div class="rule-desc">トンカチ/陰の包み足/三羽烏/ダブルトップ/H&amp;S/フラッグ等（フロントエンド検出）</div></div>
+    <div class="rule-row"><div class="rule-name">ユーザー描画TL（下方）</div><div class="rule-pt sell">-2pt</div><div class="rule-desc">描画TLを価格が下抜けたバーに-2pt（calcTLScores）</div></div>
+  </div>
+</div>
+
+
+<!-- ===== 4続き: シグナル発生ロジック ===== -->
+<div class="page">
+  <h1><span class="chapter">第4章続き</span>シグナル発生ロジック</h1>
+
+  <h2>4.3 シグナル発生ロジック（矢印表示）</h2>
+
+  <div class="info-box">
+    <div class="label">ネットスコア方式</div>
+    買い矢印・売り矢印は「買いpt合計 - 売りpt合計」のネットスコアで判定する。<br>
+    <strong>買い矢印</strong>: net_buy（= 買いpt - 売りpt）≥ 2 かつ リセット状態<br>
+    <strong>売り矢印</strong>: net_sell（= 売りpt - 買いpt）≥ 2 かつ リセット状態
+  </div>
+
+  <h3>リセット条件</h3>
+  <ul>
+    <li>net_buy ≤ 0 → 買いリセット（次の買いシグナル発生可能）</li>
+    <li>net_sell ≤ 0 → 売りリセット（次の売りシグナル発生可能）</li>
+    <li>売りシグナル発生時 → 買いリセットも同時にセット</li>
+  </ul>
+
+  <h3>スコア合算対象</h3>
+  <table>
+    <tr><th>スコース</th><th>変数</th><th>内容</th></tr>
+    <tr><td>バックエンドスコア</td><td><code>_backendScores[k]</code></td><td>APIから取得したルールベーススコア（買い/売り各pt）</td></tr>
+    <tr><td>チャートパターン</td><td><code>patScores[k]</code></td><td>フロントエンドで自動検出（各2pt）</td></tr>
+    <tr><td>描画トレンドライン</td><td><code>tlScores[k]</code></td><td>ユーザー描画TLのスコア（上方+1pt/下抜け-2pt）</td></tr>
+  </table>
+
+  <h2>4.4 スコアバー表示</h2>
+  <p>チャート右上に表示。カーソルを合わせたローソク足の合算スコアをリアルタイム表示。</p>
+  <ul>
+    <li><span class="badge badge-buy">買い +Npt</span> 緑色で表示</li>
+    <li><span class="badge badge-sell">売り -Npt</span> 赤色で表示</li>
+  </ul>
+
+  <h2>4.5 シグナルマーカー種別</h2>
+  <table>
+    <tr><th>種別</th><th>表示位置</th><th>色</th><th>内容</th></tr>
+    <tr><td>実トレード買い</td><td>ローソク下方</td><td>黄 #fbbf24 ↑</td><td>「買 ¥価格 ×数量」</td></tr>
+    <tr><td>実トレード売り</td><td>ローソク上方</td><td>黄 #fbbf24 ↓</td><td>「売 ¥価格 ×数量」</td></tr>
+    <tr><td>AIシグナル買い</td><td>ローソク下方</td><td>インジゴ #818cf8 ↑</td><td>発生理由 + 損切り価格</td></tr>
+    <tr><td>AIシグナル売り</td><td>ローソク上方</td><td>パープル #c084fc ↓</td><td>発生理由</td></tr>
+    <tr><td>チャートパターン買い</td><td>ローソク下方</td><td>シアン #2dd4bf ●</td><td>パターン名</td></tr>
+    <tr><td>チャートパターン売り</td><td>ローソク上方</td><td>オレンジ #fb923c ●</td><td>パターン名</td></tr>
+  </table>
+  <p><strong>損切りライン:</strong> 買いシグナルの損切り価格から次の売りシグナルまで赤破線で表示。</p>
+  <p><strong>ツールチップ:</strong> マーカーにカーソルを合わせると、種別・理由・損切り価格を表示（ウィンドウ端で反転）。</p>
+</div>
+
+
+<!-- ===== 5. トレンドライン ===== -->
+<div class="page">
+  <h1><span class="chapter">第5章</span>トレンドライン機能</h1>
+
+  <h2>5.1 描画フロー</h2>
+  <ol>
+    <li>ヘッダーの「TL」ボタンをクリック → 描画モード開始（ボタン黄色、カーソルが十字）</li>
+    <li>チャート上で第1点をクリック → ボタンが「待機中」表示に変わる</li>
+    <li>第2点にマウスを移動 → 破線プレビューがリアルタイム表示</li>
+    <li>第2点をクリック → ラインが確定、DBに自動保存（API: <code>POST /trendlines</code>）</li>
+    <li>描画モードは自動解除される</li>
+  </ol>
+
+  <div class="warn-box">
+    <strong>注意:</strong> TLボタンを再クリックすると描画モードをキャンセルできる。描画中にESCキーは未対応。
+  </div>
+
+  <h2>5.2 編集・削除</h2>
+  <table>
+    <tr><th>操作</th><th>方法</th><th>動作</th></tr>
+    <tr><td>ホバーハイライト</td><td>ライン近傍にマウスを移動</td><td>ラインが黄色に強調表示</td></tr>
+    <tr><td>選択</td><td>ライン近傍をクリック</td><td>ラインが赤に変わり選択状態</td></tr>
+    <tr><td>削除</td><td>選択状態で中点の「×」をクリック</td><td>DB削除（API: <code>DELETE /trendlines/{id}</code>）</td></tr>
+    <tr><td>全削除</td><td>分析パネルの「全削除」ボタン</td><td>当銘柄・時間足の全TL削除（API: <code>DELETE /trendlines</code>）</td></tr>
+    <tr><td>Y方向移動</td><td>選択状態でドラッグ</td><td>両端点を並行移動、マウスアップ時にDB更新</td></tr>
+  </table>
+
+  <h2>5.3 スコアへの影響（TLスコア計算）</h2>
+  <p>各ローソク足に対してユーザー描画TLのスコアを計算（<code>calcTLScores()</code>）:</p>
+  <ul>
+    <li><strong>終値がTLより上</strong>: +1pt（支持として機能）</li>
+    <li><strong>前日終値≥TL かつ 当日終値&lt;TL（下抜け）</strong>: -2pt（ブレイクアウト下向き）</li>
+  </ul>
+  <p>このTLスコアはバックエンドスコア・チャートパターンスコアと合算してシグナル判定に使用される。</p>
+
+  <h2>5.4 DB保存仕様</h2>
+  <table>
+    <tr><th>項目</th><th>値</th></tr>
+    <tr><td>テーブル</td><td><code>trend_lines</code></td></tr>
+    <tr><td>キー</td><td>symbol + interval_type</td></tr>
+    <tr><td>P1/P2</td><td>時刻（date文字列 or UNIXタイムスタンプ）+ 価格（FLOAT）</td></tr>
+    <tr><td>スコープ</td><td>銘柄 × 時間足ごとに独立</td></tr>
+  </table>
+</div>
+
+
+<!-- ===== 6. サイドバー ===== -->
+<div class="page">
+  <h1><span class="chapter">第6章</span>サイドバー（左パネル）</h1>
+
+  <h2>6.1 損益サマリー（上部）</h2>
+  <p>インポートされた全銘柄の損益を一覧表示。上部領域（デフォルト約70%）。</p>
+  <table>
+    <tr><th>要素</th><th>詳細</th></tr>
+    <tr><td>タイトル行</td><td>「損益サマリー」+ 合計P&amp;L金額（利益: グリーン、損失: レッド）</td></tr>
+    <tr><td>お気に入り星</td><td>★でDBお気に入り登録、☆で未登録。クリックでトグル</td></tr>
+    <tr><td>銘柄名/コード</td><td>クリックでチャートに銘柄切替</td></tr>
+    <tr><td>P&amp;L金額</td><td>利益: グリーン、損失: レッド</td></tr>
+    <tr><td>ウォッチタグ</td><td>ウォッチリスト銘柄に「ウォッチ」グレータグ表示</td></tr>
+    <tr><td>部分保有タグ</td><td>一部のみ売却済の場合「(一部保有中)」表示</td></tr>
+    <tr><td>選択行</td><td>現在チャート表示中の銘柄を青背景でハイライト</td></tr>
+  </table>
+
+  <h3>P&amp;L計算ロジック</h3>
+  <ul>
+    <li>買い: 全約定の加重平均コスト計算</li>
+    <li>売り: コスト基準 = 買コスト × (売数量 / 買数量)</li>
+    <li>P&amp;L = 売上金 - コスト基準</li>
+    <li>保有中は「保有中」タグのみ表示（P&amp;L非表示）</li>
+  </ul>
+
+  <h3>リサイズハンドル</h3>
+  <p>損益サマリーと約定履歴の境界をドラッグ（最小60px）で比率変更可能。</p>
+
+  <h2>6.2 約定履歴（下部）</h2>
+  <p>現在選択中の銘柄の全約定を表示。</p>
+  <table>
+    <tr><th>表示項目</th><th>内容</th></tr>
+    <tr><td>日付</td><td>約定日（小フォント）</td></tr>
+    <tr><td>売買タグ</td><td>「買」グリーン背景 / 「売」レッド背景</td></tr>
+    <tr><td>詳細</td><td>¥価格 × 数量株</td></tr>
+    <tr><td>決済金額（売のみ）</td><td>利益: グリーン / 損失: レッド</td></tr>
+  </table>
+</div>
+
+
+<!-- ===== 7. 分析パネル ===== -->
+<div class="page">
+  <h1><span class="chapter">第7章</span>分析パネル（下部タブ）</h1>
+
+  <p>画面下部に固定。上端ドラッグでパネル高さを変更可能（最小80px）。タブ切替で各種分析情報を表示。</p>
+
+  <h2>7.1 観点タブ（デフォルト）</h2>
+  <p>シグナルルール、チャートパターン、トレンドライン状態を表示する主要タブ。</p>
+
+  <h3>表示コンテンツ</h3>
+  <ul>
+    <li><strong>買いシグナルルール一覧</strong>: 各ルール名 + ポイント（+1pt / +2pt）</li>
+    <li><strong>除外条件</strong>: 一目雲下かつ下降トレンド時の除外説明</li>
+    <li><strong>売りシグナルルール一覧</strong>: 各ルール名 + ポイント（-1pt / -2pt）</li>
+    <li><strong>チャートパターン検出セクション</strong>: 買い/売りパターン名と状態</li>
+    <li><strong>トレンドライン状態</strong>: 現在値の位置（何本の上/下）、各TL詳細</li>
+  </ul>
+
+  <h3>観点タグ</h3>
+  <table>
+    <tr><th>種別</th><th>色</th><th>削除</th><th>内容</th></tr>
+    <tr><td>auto-win（勝ちパターン）</td><td>グリーンボーダー</td><td>不可</td><td>自動付与される勝ちパターンタグ</td></tr>
+    <tr><td>auto-lose（負けパターン）</td><td>レッドボーダー</td><td>不可</td><td>自動付与される負けパターンタグ</td></tr>
+    <tr><td>auto-trend（トレンド）</td><td>イエローボーダー</td><td>不可</td><td>自動付与されるトレンドタグ</td></tr>
+    <tr><td>カスタムタグ</td><td>ブルーボーダー</td><td>可（×ボタン）</td><td>ユーザーが自由に追加</td></tr>
+  </table>
+  <p>タグはlocalStorageに保存。タグ追加フォーム（テキスト入力 + 追加ボタン）から追加。</p>
+
+  <h3>保存バー</h3>
+  <p>「履歴に保存」ボタンで現在の分析テキストとシグナルをDBに保存。</p>
+  <ul>
+    <li>未保存: グレー「履歴に保存」ボタン</li>
+    <li>保存済: グリーンチェック「保存済み」</li>
+  </ul>
+
+  <h2>7.2 最新ニュースタブ</h2>
+  <p>選択銘柄の関連ニュースを表示（APIデータ）。</p>
+  <table>
+    <tr><th>項目</th><th>内容</th></tr>
+    <tr><td>タイトル</td><td>日本語自動翻訳済み（title_ja）</td></tr>
+    <tr><td>概要</td><td>日本語サマリー（summary_ja）</td></tr>
+    <tr><td>ソース / 日時</td><td>出典メディア名と公開日時</td></tr>
+    <tr><td>クリック</td><td>詳細展開（原文タイトル + リンク）</td></tr>
+  </table>
+
+  <h2>7.3 X投稿タブ</h2>
+  <p>みんかぶ株価予想 + X(Twitter)投稿を表示。</p>
+  <div class="two-col">
+    <div>
+      <h4>みんかぶ株価予想</h4>
+      <ul>
+        <li>買い予想: グリーン背景タグ</li>
+        <li>売り予想: レッド背景タグ</li>
+        <li>中立: グレー背景タグ</li>
+        <li>テキスト + 著者 + 日時</li>
+      </ul>
+    </div>
+    <div>
+      <h4>X(Twitter)投稿</h4>
+      <ul>
+        <li>アバター（24px丸型）</li>
+        <li>ユーザー名 + @ID</li>
+        <li>投稿テキスト</li>
+        <li>❤️いいね / 🔁RT / 💬返信 数</li>
+        <li>投稿日時</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+<div class="page">
+  <h1><span class="chapter">第7章続き</span>分析パネル各タブ</h1>
+
+  <h2>7.4 機関投資家タブ</h2>
+  <p>機関投資家・ミューチュアルファンドの保有状況を表示。</p>
+  <table>
+    <tr><th>表示項目</th><th>内容</th></tr>
+    <tr><td>機関数</td><td>「▲買N ▼売N」形式で増減表示</td></tr>
+    <tr><td>持株総数</td><td>全機関合計保有株数</td></tr>
+    <tr><td>持株比率</td><td>全体に占める割合（%）</td></tr>
+    <tr><td>投資家テーブル</td><td>保有者名 / 株数 / 比率（プログレスバー）/ 変動率 / 報告日</td></tr>
+  </table>
+
+  <h2>7.5 信用残高タブ</h2>
+  <p>irbank.netから取得した週次の信用取引残高を表示。一般信用・制度信用を分別。</p>
+
+  <h3>サマリー表</h3>
+  <table>
+    <tr><th>項目</th><th>一般信用</th><th>制度信用</th><th>合計</th></tr>
+    <tr><td>買残（万株）</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>売残（万株）</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>差引（万株）</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>前週比</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>信用倍率</td><td>✓</td><td>✓</td><td>✓</td></tr>
+  </table>
+
+  <h3>グラフ表示</h3>
+  <p>一般信用・制度信用それぞれのSVGライングラフ（買残: 緑、売残: 赤）。X軸は「YY/MM/DD」形式（最大5ラベル）、各点に円マーカー付き。</p>
+
+  <h2>7.6 財務タブ</h2>
+  <p>四半期・年次の財務データをSVG棒グラフで表示。</p>
+  <table>
+    <tr><th>項目</th><th>内容</th></tr>
+    <tr><td>売上高</td><td>前々期・前期・当期の棒グラフ（各色）</td></tr>
+    <tr><td>営業利益</td><td>同上</td></tr>
+    <tr><td>純利益</td><td>同上</td></tr>
+    <tr><td>予想マーカー</td><td>会社当初予想・最新予想・アナリスト予想を線マーカーで表示</td></tr>
+    <tr><td>予想時点</td><td>「会社予想時点: YYYY年Q期」表示</td></tr>
+  </table>
+
+  <h2>7.7 アナリスト予想タブ</h2>
+  <p>複数ソースの目標株価・レーティング情報を表示。</p>
+  <table>
+    <tr><th>ソース</th><th>表示内容</th></tr>
+    <tr><td>コンセンサス</td><td>評価（Strong Buy/Buy/Hold/Sell）、目標株価、現在値との乖離</td></tr>
+    <tr><td>内訳バー</td><td>買い/中立/売り比率の水平バー</td></tr>
+    <tr><td>株予報Pro</td><td>対前週変化率、対株価乖離</td></tr>
+    <tr><td>目標株価まとめ</td><td>証券会社名 / レーティング / 目標株価 / 前回目標 / 変更日</td></tr>
+  </table>
+
+  <h2>7.8 AIチャットタブ</h2>
+  <p>選択銘柄について自由にAIに質問できる対話型インターフェース。</p>
+  <table>
+    <tr><th>項目</th><th>仕様</th></tr>
+    <tr><td>履歴復元</td><td>銘柄選択時にDB（<code>chat_history</code>テーブル）から自動復元</td></tr>
+    <tr><td>送信方法</td><td>テキスト入力後 Enter キー（Shift+Enterは改行）</td></tr>
+    <tr><td>ユーザーメッセージ</td><td>右寄せ、青背景 <code>#1f6feb</code></td></tr>
+    <tr><td>AIメッセージ</td><td>左寄せ、ダークグレー背景</td></tr>
+    <tr><td>ローディング</td><td>「...」表示中</td></tr>
+    <tr><td>履歴削除</td><td>「履歴を消す」ボタンで全削除（API: <code>DELETE /chat/history</code>）</td></tr>
+  </table>
+
+  <h2>7.9 メモタブ</h2>
+  <p>銘柄ごとのフリーテキストメモ（DBに保存）。</p>
+  <ul>
+    <li>テキストエリア（全高フレックス）</li>
+    <li>保存ボタン: 「保存 HH:MM」タイムスタンプ付き</li>
+    <li>保存済み状態: 「保存済み」グリーン表示</li>
+    <li>API: <code>PUT /memos/{symbol}</code></li>
+  </ul>
+</div>
+
+
+<!-- ===== 8. CSV / 9. データ管理 ===== -->
+<div class="page">
+  <h1><span class="chapter">第8章</span>CSVインポート</h1>
+
+  <h2>8.1 対応フォーマット</h2>
+  <p>証券会社の約定履歴CSVファイルに対応。</p>
+  <table>
+    <tr><th>列名（CSVヘッダー）</th><th>データ型</th><th>備考</th></tr>
+    <tr><td>約定日</td><td>date</td><td>「YYYY/MM/DD」または「YYYY-MM-DD」</td></tr>
+    <tr><td>銘柄コード</td><td>string</td><td>数字4桁 or <code>XXXX.T</code> 形式</td></tr>
+    <tr><td>銘柄名</td><td>string</td><td>日本語銘柄名</td></tr>
+    <tr><td>売買区分</td><td>string</td><td>「買」「売」「買付」「売付」等</td></tr>
+    <tr><td>数量</td><td>number</td><td>取引株数</td></tr>
+    <tr><td>単価</td><td>number</td><td>約定単価（円）</td></tr>
+    <tr><td>手数料</td><td>number</td><td>任意</td></tr>
+    <tr><td>税金</td><td>number</td><td>任意</td></tr>
+    <tr><td>受渡金額</td><td>number</td><td>受渡金額（売却時の実現額）</td></tr>
+  </table>
+
+  <h2>8.2 処理仕様</h2>
+  <ul>
+    <li><strong>エンコーディング:</strong> UTF-8 → Shift-JIS → UTF-8 (fallback) の順で自動判定</li>
+    <li><strong>複数ファイル:</strong> 同時に複数ファイルを選択可能（ドラッグ&amp;ドロップ対応）</li>
+    <li><strong>集約:</strong> 同日・同銘柄・同売買方向は1レコードに集計（加重平均単価）</li>
+    <li><strong>重複除外:</strong> サーバー側 UNIQUE KEY で二重インポートを防止</li>
+    <li><strong>銘柄自動登録:</strong> 未登録銘柄はウォッチリストに自動追加</li>
+  </ul>
+
+  <h1><span class="chapter">第9章</span>データ管理・永続化</h1>
+
+  <h2>9.1 DBテーブル一覧（MySQL / RDS）</h2>
+  <table>
+    <tr><th>テーブル名</th><th>用途</th><th>キー</th></tr>
+    <tr><td><code>trades</code></td><td>CSVインポートした約定履歴</td><td>trade_key (UNIQUE)</td></tr>
+    <tr><td><code>candles</code></td><td>株価ローソク足キャッシュ</td><td>symbol + interval_type + candle_time</td></tr>
+    <tr><td><code>trend_lines</code></td><td>ユーザー描画トレンドライン</td><td>symbol + interval_type</td></tr>
+    <tr><td><code>favorites</code></td><td>お気に入り銘柄リスト</td><td>symbol (UNIQUE)</td></tr>
+    <tr><td><code>stock_memos</code></td><td>銘柄メモ</td><td>symbol (UNIQUE)</td></tr>
+    <tr><td><code>chat_history</code></td><td>AIチャット履歴</td><td>symbol + created_at</td></tr>
+    <tr><td><code>analysis_history</code></td><td>保存した分析テキスト</td><td>id</td></tr>
+    <tr><td><code>signal_history</code></td><td>保存した分析に紐づくシグナル</td><td>analysis_id + symbol</td></tr>
+    <tr><td><code>screening_cache</code></td><td>スクリーニングスコアキャッシュ</td><td>code (PRIMARY)</td></tr>
+    <tr><td><code>prime_stocks</code></td><td>プライム市場銘柄マスター</td><td>code (PRIMARY)</td></tr>
+    <tr><td><code>financials_cache</code></td><td>財務データキャッシュ</td><td>symbol (UNIQUE)</td></tr>
+    <tr><td><code>holders_cache</code></td><td>機関投資家データキャッシュ</td><td>symbol (UNIQUE)</td></tr>
+    <tr><td><code>analyst_cache</code></td><td>アナリスト予想キャッシュ</td><td>symbol (UNIQUE)</td></tr>
+    <tr><td><code>news_cache</code></td><td>ニュースキャッシュ</td><td>symbol + url</td></tr>
+  </table>
+
+  <h2>9.2 ローカルストレージ</h2>
+  <table>
+    <tr><th>キー</th><th>内容</th></tr>
+    <tr><td><code>stockWatchList</code></td><td>ウォッチリスト銘柄のJSON配列（<code>[{code, name}, ...]</code>）</td></tr>
+    <tr><td><code>stockAnalysisViewpoints</code></td><td>カスタム観点タグの配列</td></tr>
+  </table>
+
+  <h2>9.3 自動更新（オートリフレッシュ）</h2>
+  <table>
+    <tr><th>条件</th><th>間隔</th></tr>
+    <tr><td>市場中（平日 9:00〜15:30 JST）</td><td>30秒ごと</td></tr>
+    <tr><td>市場外</td><td>5分ごと</td></tr>
+  </table>
+  <p>新しい足追加時はインジケーター全再計算。足更新のみの場合は軽量 <code>update()</code> で描画（フラッシュなし）。</p>
+</div>
+
+
+<!-- ===== 10. スクリーニング / 11. API ===== -->
+<div class="page">
+  <h1><span class="chapter">第10章</span>スクリーニング連携</h1>
+
+  <h2>10.1 概要</h2>
+  <p>ヘッダーの「スクリーニング」ボタンから <code>screening.html</code> を別ウィンドウで開く。スクリーニングページで銘柄名をクリックすると <code>stock.html?code=XXXX&amp;name=銘柄名</code> のURLで自動遷移する。</p>
+
+  <h2>10.2 スクリーニング画面仕様</h2>
+  <table>
+    <tr><th>機能</th><th>内容</th></tr>
+    <tr><td>銘柄数</td><td>プライム市場全銘柄（約1,800社）</td></tr>
+    <tr><td>スコア計算</td><td>バックエンド自動計算（定期バッチ更新）、チャートと同一ルール</td></tr>
+    <tr><td>フィルター</td><td>最小スコア（スライダー）、セクター（ドロップダウン）</td></tr>
+    <tr><td>ソート</td><td>総合スコア / 買いスコア / 騰落率 / 終値</td></tr>
+    <tr><td>表示列</td><td>コード / 銘柄名 / セクター / 買い / 売り / 総合 / 終値 / 騰落率 / 出来高 / HV / シグナル</td></tr>
+    <tr><td>更新トリガー</td><td>「データ更新」ボタンで手動更新（バックグラウンド実行）</td></tr>
+  </table>
+
+  <h2>10.3 お気に入り機能</h2>
+  <ul>
+    <li>サイドバーの★でお気に入り登録（API: <code>POST /favorites/{symbol}</code>）</li>
+    <li>スクリーニングページでもお気に入りの銘柄を優先表示可能</li>
+    <li>stock.html とスクリーニングページでお気に入り状態を共有（DB経由）</li>
+  </ul>
+
+  <h1><span class="chapter">第11章</span>APIエンドポイント一覧</h1>
+
+  <h2>11.1 主要エンドポイント（ベースURL: <code>/api/stock</code>）</h2>
+  <table>
+    <tr><th>メソッド</th><th>パス</th><th>用途</th></tr>
+    <tr><td>GET</td><td><code>/candles</code></td><td>ローソク足データ取得（?symbol&amp;interval）</td></tr>
+    <tr><td>GET</td><td><code>/signals</code></td><td>ルールベースシグナル + スコア取得</td></tr>
+    <tr><td>GET</td><td><code>/financials</code></td><td>財務データ取得</td></tr>
+    <tr><td>GET</td><td><code>/holders</code></td><td>機関投資家データ取得</td></tr>
+    <tr><td>GET</td><td><code>/news</code></td><td>最新ニュース取得</td></tr>
+    <tr><td>GET</td><td><code>/analyst</code></td><td>アナリスト予想取得</td></tr>
+    <tr><td>GET</td><td><code>/margin_balance</code></td><td>信用残高取得（irbank.net）</td></tr>
+    <tr><td>GET</td><td><code>/events</code></td><td>イベントマーカー取得</td></tr>
+    <tr><td>GET/POST/DELETE</td><td><code>/favorites</code></td><td>お気に入り管理</td></tr>
+    <tr><td>GET/PUT</td><td><code>/memos/{symbol}</code></td><td>メモ取得・保存</td></tr>
+    <tr><td>GET/POST/DELETE</td><td><code>/trendlines</code></td><td>トレンドライン管理</td></tr>
+    <tr><td>GET/POST/DELETE</td><td><code>/chat</code></td><td>AIチャット</td></tr>
+    <tr><td>POST</td><td><code>/trades</code></td><td>約定履歴インポート</td></tr>
+    <tr><td>GET</td><td><code>/screening</code></td><td>スクリーニング結果取得</td></tr>
+    <tr><td>POST</td><td><code>/screening/update</code></td><td>スクリーニングデータ更新開始</td></tr>
+    <tr><td>GET</td><td><code>/screening/status</code></td><td>更新進捗確認</td></tr>
+    <tr><td>GET</td><td><code>/history/signals/{id}</code></td><td>保存済みシグナル読込</td></tr>
+    <tr><td>POST</td><td><code>/history/analysis</code></td><td>分析を履歴に保存</td></tr>
+  </table>
+</div>
+
+
+<!-- ===== 12. カラー・デザイン ===== -->
+<div class="page">
+  <h1><span class="chapter">第12章</span>カラー・デザイン仕様</h1>
+
+  <h2>12.1 カラーパレット（CSS変数）</h2>
+  <table>
+    <tr><th>変数名</th><th>値</th><th>用途</th></tr>
+    <tr><td><code>--bg</code></td><td><code>#0d1117</code></td><td>ページ背景（最暗）</td></tr>
+    <tr><td><code>--bg2</code></td><td><code>#161b22</code></td><td>パネル・ヘッダー背景</td></tr>
+    <tr><td><code>--bg3</code></td><td><code>#21262d</code></td><td>入力フィールド・カード背景</td></tr>
+    <tr><td><code>--border</code></td><td><code>#30363d</code></td><td>ボーダー・区切り線</td></tr>
+    <tr><td><code>--text</code></td><td><code>#e6edf3</code></td><td>本文テキスト</td></tr>
+    <tr><td><code>--text2</code></td><td><code>#8b949e</code></td><td>サブテキスト・ラベル</td></tr>
+    <tr><td><code>--green</code></td><td><code>#3fb950</code></td><td>買い・利益・上昇</td></tr>
+    <tr><td><code>--red</code></td><td><code>#f85149</code></td><td>売り・損失・下降</td></tr>
+    <tr><td><code>--blue</code></td><td><code>#58a6ff</code></td><td>リンク・重要要素</td></tr>
+    <tr><td><code>--accent</code></td><td><code>#1f6feb</code></td><td>プライマリボタン</td></tr>
+  </table>
+
+  <h2>12.2 フォント</h2>
+  <ul>
+    <li>本文: <code>-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans JP', sans-serif</code></li>
+    <li>基本フォントサイズ: 13px</li>
+    <li>テーマ: GitHub Dark インスパイア、高コントラスト</li>
+  </ul>
+
+  <h2>12.3 チャート配色</h2>
+  <table>
+    <tr><th>要素</th><th>色コード</th></tr>
+    <tr><td>上昇ローソク足</td><td><code>#3fb950</code> (グリーン)</td></tr>
+    <tr><td>下降ローソク足</td><td><code>#f85149</code> (レッド)</td></tr>
+    <tr><td>MA5</td><td><code>#f59e0b</code> (オレンジ)</td></tr>
+    <tr><td>MA25</td><td><code>#ef4444</code> (レッド)</td></tr>
+    <tr><td>MA75</td><td><code>#3b82f6</code> (ブルー)</td></tr>
+    <tr><td>ボリンジャーバンド</td><td><code>#a855f7</code> (パープル)</td></tr>
+    <tr><td>一目転換線</td><td><code>#e11d48</code> (ローズ)</td></tr>
+    <tr><td>一目基準線</td><td><code>#2563eb</code> (ブルー)</td></tr>
+    <tr><td>一目遅行線</td><td><code>#7c3aed</code> (バイオレット)</td></tr>
+    <tr><td>支持線</td><td><code>#22c55e</code> (グリーン破線)</td></tr>
+    <tr><td>抵抗線</td><td><code>#ef4444</code> (レッド破線)</td></tr>
+    <tr><td>トレンドライン（通常）</td><td><code>#fbbf24</code> (アンバー)</td></tr>
+    <tr><td>トレンドライン（選択）</td><td><code>#f87171</code> (ライトレッド)</td></tr>
+    <tr><td>AIシグナル買い矢印</td><td><code>#818cf8</code> (インジゴ)</td></tr>
+    <tr><td>AIシグナル売り矢印</td><td><code>#c084fc</code> (パープル)</td></tr>
+    <tr><td>実トレード矢印</td><td><code>#fbbf24</code> (アンバー)</td></tr>
+    <tr><td>チャートパターン買い</td><td><code>#2dd4bf</code> (ティール)</td></tr>
+    <tr><td>チャートパターン売り</td><td><code>#fb923c</code> (オレンジ)</td></tr>
+  </table>
+
+  <h2>12.4 レスポンシブ・リサイズ対応</h2>
+  <ul>
+    <li>サイドバー上下分割: ドラッグで比率変更（最小60px）</li>
+    <li>分析パネル: 上端ドラッグで高さ変更（最小80px）</li>
+    <li>チャートエリア: <code>ResizeObserver</code> による自動リサイズ</li>
+    <li>トレンドラインマーカー: スクロール・ズーム時に位置を自動更新</li>
+  </ul>
+
+  <hr>
+  <div style="text-align:center; color:#888; font-size:9pt; margin-top: 20px;">
+    以上 — 株式トレード分析ツール 画面仕様書 (2026年4月24日)
+  </div>
+</div>
+
+</body>
+</html>

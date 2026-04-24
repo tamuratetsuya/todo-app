@@ -5828,7 +5828,9 @@ async function sendAiChat() {
 
   // URLパラメータで銘柄指定（スクリーニングページから遷移）
   const _urlParams = new URLSearchParams(location.search);
-  const _urlCode = _urlParams.get('code');
+  const _urlCodeRaw = _urlParams.get('code');
+  // 4桁数字はJP株として.Tを付与（スクリーニングページからの遷移対応）
+  const _urlCode = _urlCodeRaw && /^\d{4}$/.test(_urlCodeRaw) ? _urlCodeRaw + '.T' : _urlCodeRaw;
   if (_urlCode) {
     const _urlName = _urlParams.get('name') || _urlCode;
     if (!trades[_urlCode]) trades[_urlCode] = [];
