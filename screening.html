@@ -313,8 +313,8 @@
   </div>
 
   <div class="filter-group">
-    <span class="filter-label">最低売りスコア</span>
-    <input type="number" id="minSellScore" class="filter-input" value="" min="0" max="20" placeholder="0">
+    <span class="filter-label">売りスコア上限</span>
+    <input type="number" id="maxSellScore" class="filter-input" value="" min="0" max="20" placeholder="上限なし">
   </div>
 
   <div class="filter-group">
@@ -340,10 +340,9 @@
   <div class="filter-group">
     <span class="filter-label">並び替え</span>
     <select id="sortSelect" class="filter-select">
-      <option value="last_signal_net">総合スコア(シグナル日)</option>
-      <option value="last_signal_buy_score">買いスコア(シグナル日)</option>
-      <option value="last_signal_sell_score">売りスコア(シグナル日)</option>
-      <option value="net_score">総合スコア(最新日)</option>
+      <option value="net_score">総合スコア</option>
+      <option value="buy_score">買いスコア</option>
+      <option value="sell_score">売りスコア</option>
       <option value="change_pct">騰落率</option>
       <option value="close">終値</option>
       <option value="volume_avg">出来高</option>
@@ -381,9 +380,9 @@
         <th class="col-code" data-col="code">コード <span class="sort-icon">↕</span></th>
         <th class="col-name" data-col="name">銘柄名 <span class="sort-icon">↕</span></th>
         <th class="col-sector" data-col="sector">セクター <span class="sort-icon">↕</span></th>
-        <th class="col-buy" data-col="last_signal_buy_score">買い <span class="sort-icon">↕</span></th>
-        <th class="col-sell" data-col="last_signal_sell_score">売り <span class="sort-icon">↕</span></th>
-        <th class="col-net" data-col="last_signal_net">総合 <span class="sort-icon">↕</span></th>
+        <th class="col-buy" data-col="buy_score">買い <span class="sort-icon">↕</span></th>
+        <th class="col-sell" data-col="sell_score">売り <span class="sort-icon">↕</span></th>
+        <th class="col-net" data-col="net_score">総合 <span class="sort-icon">↕</span></th>
         <th class="col-close" data-col="close">終値 <span class="sort-icon">↕</span></th>
         <th class="col-chg" data-col="change_pct">騰落率 <span class="sort-icon">↕</span></th>
         <th class="col-vol" data-col="volume_avg">出来高(万株) <span class="sort-icon">↕</span></th>
@@ -443,12 +442,6 @@ async function loadScreening() {
     const res = await fetch(`${API}/screening?${params}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     allData = await res.json();
-    // ソート用に last_signal_net を計算しておく
-    allData.forEach(r => {
-      const b = r.last_signal_buy_score  != null ? r.last_signal_buy_score  : (r.buy_score  || 0);
-      const s = r.last_signal_sell_score != null ? r.last_signal_sell_score : (r.sell_score || 0);
-      r.last_signal_net = b - s;
-    });
     sortCol = sort;
     sortAsc = false;
     applyFilters();
@@ -464,7 +457,7 @@ function applyFilters() {
   const minHv  = parseFloat(document.getElementById('minHv').value);
   const maxHv  = parseFloat(document.getElementById('maxHv').value);
 
-  const minSellScore = parseInt(document.getElementById('minSellScore').value);
+  const maxSellScore = parseInt(document.getElementById('maxSellScore').value);
 
   filteredData = allData.filter(r => {
     if (!isNaN(minVol) && minVol > 0) {
@@ -473,7 +466,7 @@ function applyFilters() {
     }
     if (!isNaN(minHv) && minHv > 0 && (r.hv == null || r.hv < minHv)) return false;
     if (!isNaN(maxHv) && maxHv > 0 && (r.hv == null || r.hv > maxHv)) return false;
-    if (!isNaN(minSellScore) && minSellScore > 0 && (r.sell_score || 0) < minSellScore) return false;
+    if (!isNaN(maxSellScore) && maxSellScore >= 0 && (r.sell_score || 0) > maxSellScore) return false;
     return true;
   });
 
@@ -584,20 +577,9 @@ function buildRow(r) {
   const name = escHtml(r.name || '');
   const sector = escHtml(r.sector || '');
 
-  // 最終シグナルトリガー日のスコアを使用（未取得時は当日スコアにフォールバック）
-  const hasSig = r.last_signal_date != null;
-  const buy  = hasSig ? (r.last_signal_buy_score  || 0) : (r.buy_score  || 0);
-  const sell = hasSig ? (r.last_signal_sell_score || 0) : (r.sell_score || 0);
-  const net  = buy - sell;
-
-  // シグナル日バッジ（MM/DD 買い or 売り）
-  let sigDateStr = '';
-  if (hasSig) {
-    const d = r.last_signal_date.slice(5).replace('-', '/'); // MM/DD
-    const sideLabel = r.last_signal_side === 'buy' ? '買' : '売';
-    const sideColor = r.last_signal_side === 'buy' ? 'var(--green)' : 'var(--red)';
-    sigDateStr = `<span class="sig-date-badge" style="color:${sideColor}">${d} ${sideLabel}シグナル</span>`;
-  }
+  const buy  = r.buy_score  || 0;
+  const sell = r.sell_score || 0;
+  const net  = r.net_score  || 0;
 
   const close = r.close != null ? Number(r.close).toLocaleString('ja-JP', {minimumFractionDigits: 0, maximumFractionDigits: 1}) : '-';
   const chgPct = r.change_pct != null ? r.change_pct.toFixed(2) : null;
@@ -622,9 +604,9 @@ function buildRow(r) {
     <td class="col-code"><a class="code-link" onclick="event.stopPropagation();openStock('${code}')">${codeBase}</a></td>
     <td class="col-name">${name}</td>
     <td class="col-sector">${sector}</td>
-    <td class="col-buy" style="text-align:center"><span class="score-badge score-buy">${buy}</span>${sigDateStr}</td>
+    <td class="col-buy" style="text-align:center"><span class="score-badge score-buy">${buy}</span></td>
     <td class="col-sell" style="text-align:center"><span class="score-badge score-sell">${sell}</span></td>
-    <td class="col-net" style="text-align:center"><span class="score-badge ${netClass}">${net > 0 ? '+' : ''}${net}</span></td>
+    <td class="col-net" style="text-align:center"><span class="score-badge ${netClass}">${net}</span></td>
     <td class="col-close" style="text-align:right">${close}</td>
     <td class="col-chg ${chgClass}" style="text-align:right">${chgStr}</td>
     <td class="col-vol" style="text-align:right">${volStr}</td>
