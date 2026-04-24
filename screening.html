@@ -313,8 +313,8 @@
   </div>
 
   <div class="filter-group">
-    <span class="filter-label">売りスコア上限</span>
-    <input type="number" id="maxSellScore" class="filter-input" value="" min="0" max="20" placeholder="上限なし">
+    <span class="filter-label">売りスコア下限</span>
+    <input type="number" id="maxSellScore" class="filter-input" value="" min="0" max="20" placeholder="下限なし">
   </div>
 
   <div class="filter-group">
@@ -466,7 +466,7 @@ function applyFilters() {
     }
     if (!isNaN(minHv) && minHv > 0 && (r.hv == null || r.hv < minHv)) return false;
     if (!isNaN(maxHv) && maxHv > 0 && (r.hv == null || r.hv > maxHv)) return false;
-    if (!isNaN(maxSellScore) && maxSellScore >= 0 && (r.sell_score || 0) > maxSellScore) return false;
+    if (!isNaN(maxSellScore) && maxSellScore > 0 && (r.sell_score || 0) < maxSellScore) return false;
     return true;
   });
 
