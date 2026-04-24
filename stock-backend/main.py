@@ -1343,7 +1343,7 @@ def generate_rule_signals(symbol: str, interval: str, _candles=None, _vix_by_dat
 
             # 全日付のポイントを記録（パターンは2pt）
             buy_pt = sum(2 if t in _pattern_buy else 1 for t in buy_tags)
-            scores[date_key] = {"buy": buy_pt, "sell": sell_pts}
+            scores[date_key] = {"buy": buy_pt, "sell": sell_pts, "buy_tags": buy_tags, "sell_tags": sell_tags}
 
             # 買いシグナル: 買いpt - 売りpt の合計が BUY_THRESHOLD 以上
             net_buy_pt = buy_pt - sell_pts
@@ -4120,67 +4120,89 @@ def _run_screening_update():
                     cur.execute(
                         "SELECT candle_time,open,high,low,close,volume FROM candles "
                         "WHERE symbol=%s AND interval_type='1d' "
-                        "ORDER BY candle_time DESC LIMIT 65",
+                        "ORDER BY candle_time DESC LIMIT 200",
                         (f"{code}.T",)
                     )
                     db_rows = list(reversed(cur.fetchall()))
                 if not db_rows: continue
                 latest_price_date = str(db_rows[-1]["candle_time"])[:10]
-                score = _calc_screening_score(db_rows, vix_latest=vix_latest)
-                if score:
-                    s = stock_map.get(code, {})
 
-                    # 最終シグナルトリガー日のスコアを取得
-                    candles_for_sig = [
-                        {"time": r["candle_time"], "open": float(r["open"] or 0),
-                         "high": float(r["high"] or 0), "low": float(r["low"] or 0),
-                         "close": float(r["close"] or 0), "volume": r["volume"] or 0}
-                        for r in db_rows
-                    ]
-                    sig_result = generate_rule_signals(
-                        f"{code}.T", "1d",
-                        _candles=candles_for_sig,
-                        _vix_by_date=vix_by_date_screen
+                candles_for_sig = [
+                    {"time": r["candle_time"], "open": float(r["open"] or 0),
+                     "high": float(r["high"] or 0), "low": float(r["low"] or 0),
+                     "close": float(r["close"] or 0), "volume": r["volume"] or 0}
+                    for r in db_rows
+                ]
+                sig_result = generate_rule_signals(
+                    f"{code}.T", "1d",
+                    _candles=candles_for_sig,
+                    _vix_by_date=vix_by_date_screen
+                )
+
+                all_scores = sig_result.get("scores", {})
+                if not all_scores: continue
+                latest_date_key = max(all_scores.keys())
+                latest_day = all_scores[latest_date_key]
+                buy_score  = latest_day.get("buy", 0)
+                sell_score = latest_day.get("sell", 0)
+                net_score  = buy_score - sell_score
+                buy_sigs   = latest_day.get("buy_tags", [])
+                sell_sigs  = latest_day.get("sell_tags", [])
+
+                closes_list = [float(r["close"] or 0) for r in db_rows]
+                close_price = closes_list[-1]
+                change_pct  = (closes_list[-1] - closes_list[-2]) / closes_list[-2] * 100 if len(closes_list) >= 2 else 0
+                volumes     = [float(r.get("volume") or 0) for r in db_rows]
+                volume_avg  = int(sum(volumes[-5:]) / min(5, len(volumes))) if volumes else 0
+                hv = None
+                if len(closes_list) >= 21:
+                    log_rets = [_math.log(closes_list[j] / closes_list[j-1]) for j in range(len(closes_list)-20, len(closes_list)) if closes_list[j-1] > 0]
+                    if len(log_rets) >= 2:
+                        mean_r = sum(log_rets) / len(log_rets)
+                        var_r  = sum((x - mean_r)**2 for x in log_rets) / (len(log_rets) - 1)
+                        hv = round(_math.sqrt(var_r * 252) * 100, 1)
+
+                s = stock_map.get(code, {})
+
+                last_sig = sig_result.get("signals", [])[-1] if sig_result.get("signals") else None
+                if last_sig:
+                    sig_date  = str(last_sig["time"])[:10]
+                    sig_side  = last_sig["side"]
+                    day_sc    = all_scores.get(sig_date, {})
+                    last_sig_buy  = day_sc.get("buy",  0)
+                    last_sig_sell = day_sc.get("sell", 0)
+                else:
+                    sig_date = sig_side = None
+                    last_sig_buy = last_sig_sell = None
+
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO screening_cache "
+                        "(code,name,sector,buy_score,sell_score,net_score,close_price,change_pct,"
+                        "buy_signals,sell_signals,volume_avg,hv,"
+                        "last_signal_side,last_signal_date,last_signal_buy_score,last_signal_sell_score,price_date) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                        "ON DUPLICATE KEY UPDATE name=%s,sector=%s,buy_score=%s,sell_score=%s,net_score=%s,"
+                        "close_price=%s,change_pct=%s,buy_signals=%s,sell_signals=%s,"
+                        "volume_avg=%s,hv=%s,"
+                        "last_signal_side=%s,last_signal_date=%s,"
+                        "last_signal_buy_score=%s,last_signal_sell_score=%s,price_date=%s,updated_at=NOW()",
+                        (code, s.get("name",""), s.get("sector",""),
+                         buy_score, sell_score, net_score,
+                         close_price, change_pct,
+                         json.dumps(buy_sigs, ensure_ascii=False),
+                         json.dumps(sell_sigs, ensure_ascii=False),
+                         volume_avg, hv,
+                         sig_side, sig_date, last_sig_buy, last_sig_sell, latest_price_date,
+                         s.get("name",""), s.get("sector",""),
+                         buy_score, sell_score, net_score,
+                         close_price, change_pct,
+                         json.dumps(buy_sigs, ensure_ascii=False),
+                         json.dumps(sell_sigs, ensure_ascii=False),
+                         volume_avg, hv,
+                         sig_side, sig_date, last_sig_buy, last_sig_sell, latest_price_date)
                     )
-                    last_sig = sig_result.get("signals", [])[-1] if sig_result.get("signals") else None
-                    if last_sig:
-                        sig_date   = str(last_sig["time"])[:10]
-                        sig_side   = last_sig["side"]
-                        day_scores = sig_result.get("scores", {}).get(sig_date, {})
-                        last_sig_buy  = day_scores.get("buy",  0)
-                        last_sig_sell = day_scores.get("sell", 0)
-                    else:
-                        sig_date = sig_side = None
-                        last_sig_buy = last_sig_sell = None
-
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "INSERT INTO screening_cache "
-                            "(code,name,sector,buy_score,sell_score,net_score,close_price,change_pct,"
-                            "buy_signals,sell_signals,volume_avg,hv,"
-                            "last_signal_side,last_signal_date,last_signal_buy_score,last_signal_sell_score,price_date) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                            "ON DUPLICATE KEY UPDATE name=%s,sector=%s,buy_score=%s,sell_score=%s,net_score=%s,"
-                            "close_price=%s,change_pct=%s,buy_signals=%s,sell_signals=%s,"
-                            "volume_avg=%s,hv=%s,"
-                            "last_signal_side=%s,last_signal_date=%s,"
-                            "last_signal_buy_score=%s,last_signal_sell_score=%s,price_date=%s,updated_at=NOW()",
-                            (code, s.get("name",""), s.get("sector",""),
-                             score["buy_score"], score["sell_score"], score["net_score"],
-                             score["close"], score["change_pct"],
-                             json.dumps(score["buy_signals"], ensure_ascii=False),
-                             json.dumps(score["sell_signals"], ensure_ascii=False),
-                             score["volume_avg"], score["hv"],
-                             sig_side, sig_date, last_sig_buy, last_sig_sell, latest_price_date,
-                             s.get("name",""), s.get("sector",""),
-                             score["buy_score"], score["sell_score"], score["net_score"],
-                             score["close"], score["change_pct"],
-                             json.dumps(score["buy_signals"], ensure_ascii=False),
-                             json.dumps(score["sell_signals"], ensure_ascii=False),
-                             score["volume_avg"], score["hv"],
-                             sig_side, sig_date, last_sig_buy, last_sig_sell, latest_price_date)
-                        )
-                    conn.commit()
+                conn.commit()
                 if idx % 50 == 0:
                     _screening_status["progress"] = fetch_count + idx
             except Exception: pass
