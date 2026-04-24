@@ -692,21 +692,26 @@ def build_candle_summary(symbol: str, interval: str) -> str:
         return ""
 
 
-def generate_rule_signals(symbol: str, interval: str) -> list:
+def generate_rule_signals(symbol: str, interval: str, _candles=None, _vix_by_date=None) -> list:
     """ポイントスコアリング式ルールベースシグナル生成
     買い観点（各1pt）:
       TL=トレンドライン近傍, GC=ゴールデンクロス, IK3=一目三役好転,
       BB反転=BB下限から反転上昇, BBウォーク=BBバンドウォーク,
       抵抗ブレイク=直近高値ブレイク, 支持反転=直近安値で反転
     売り観点: DC=デッドクロス, BB↑=BB上限到達, IK↓=一目下抜け
+    _candles: 事前取得済みのローソク足データ（省略時はDBから取得）
+    _vix_by_date: 事前取得済みのVIX辞書 date->value（省略時はyfinanceから取得）
     """
     try:
         from datetime import datetime as _dt, timezone, timedelta
-        conn = get_conn()
-        candles = load_candles_from_db(conn, symbol, interval)
-        conn.close()
+        if _candles is not None:
+            candles = _candles
+        else:
+            conn = get_conn()
+            candles = load_candles_from_db(conn, symbol, interval)
+            conn.close()
         if len(candles) < 30:
-            return []
+            return {"signals": [], "scores": {}}
 
         closes  = [c['close'] for c in candles]
         highs   = [c.get('high', c['close']) for c in candles]
@@ -718,18 +723,21 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if isinstance(t, str): return t[:10]
             return _dt.fromtimestamp(int(t), tz=timezone.utc).strftime('%Y-%m-%d')
 
-        # VIXデータ取得
-        vix_by_date = {}
-        try:
-            first_date = get_date(candles[0])
-            last_date  = get_date(candles[-1])
-            end_dt = (_dt.strptime(last_date, '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
-            vix_df = yf.Ticker("^VIX").history(start=first_date, end=end_dt)
-            if not vix_df.empty:
-                for idx, row in vix_df.iterrows():
-                    vix_by_date[str(idx)[:10]] = round(float(row['Close']), 1)
-        except Exception:
-            pass
+        # VIXデータ取得（事前取得済みがあればそれを使用）
+        if _vix_by_date is not None:
+            vix_by_date = _vix_by_date
+        else:
+            vix_by_date = {}
+            try:
+                first_date = get_date(candles[0])
+                last_date  = get_date(candles[-1])
+                end_dt = (_dt.strptime(last_date, '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
+                vix_df = yf.Ticker("^VIX").history(start=first_date, end=end_dt)
+                if not vix_df.empty:
+                    for idx, row in vix_df.iterrows():
+                        vix_by_date[str(idx)[:10]] = round(float(row['Close']), 1)
+            except Exception:
+                pass
 
         def get_vix(date_key):
             v = vix_by_date.get(date_key)
@@ -4068,11 +4076,16 @@ def _run_screening_update():
             _screening_status["progress"] = done
 
         vix_latest = None
-        try:
-            vix_df = yf.Ticker("^VIX").history(period="5d")
-            if not vix_df.empty:
-                vix_latest = float(vix_df["Close"].iloc[-1])
-        except Exception: pass
+        vix_by_date_screen = {}
+        for _vix_attempt in range(3):
+            try:
+                vix_df = yf.Ticker("^VIX").history(period="6mo")
+                if not vix_df.empty:
+                    vix_latest = float(vix_df["Close"].iloc[-1])
+                    for _vi, _vr in vix_df.iterrows():
+                        vix_by_date_screen[str(_vi)[:10]] = round(float(_vr['Close']), 1)
+                    break
+            except Exception: pass
 
         conn = get_conn()
         for code, new_rows in candle_data.items():
@@ -4106,27 +4119,56 @@ def _run_screening_update():
                 score = _calc_screening_score(db_rows, vix_latest=vix_latest)
                 if score:
                     s = stock_map.get(code, {})
+
+                    # 最終シグナルトリガー日のスコアを取得
+                    candles_for_sig = [
+                        {"time": r["candle_time"], "open": float(r["open"] or 0),
+                         "high": float(r["high"] or 0), "low": float(r["low"] or 0),
+                         "close": float(r["close"] or 0), "volume": r["volume"] or 0}
+                        for r in db_rows
+                    ]
+                    sig_result = generate_rule_signals(
+                        f"{code}.T", "1d",
+                        _candles=candles_for_sig,
+                        _vix_by_date=vix_by_date_screen
+                    )
+                    last_sig = sig_result.get("signals", [])[-1] if sig_result.get("signals") else None
+                    if last_sig:
+                        sig_date   = str(last_sig["time"])[:10]
+                        sig_side   = last_sig["side"]
+                        day_scores = sig_result.get("scores", {}).get(sig_date, {})
+                        last_sig_buy  = day_scores.get("buy",  0)
+                        last_sig_sell = day_scores.get("sell", 0)
+                    else:
+                        sig_date = sig_side = None
+                        last_sig_buy = last_sig_sell = None
+
                     with conn.cursor() as cur:
                         cur.execute(
                             "INSERT INTO screening_cache "
                             "(code,name,sector,buy_score,sell_score,net_score,close_price,change_pct,"
-                            "buy_signals,sell_signals,volume_avg,hv) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                            "buy_signals,sell_signals,volume_avg,hv,"
+                            "last_signal_side,last_signal_date,last_signal_buy_score,last_signal_sell_score) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                             "ON DUPLICATE KEY UPDATE name=%s,sector=%s,buy_score=%s,sell_score=%s,net_score=%s,"
                             "close_price=%s,change_pct=%s,buy_signals=%s,sell_signals=%s,"
-                            "volume_avg=%s,hv=%s,updated_at=NOW()",
+                            "volume_avg=%s,hv=%s,"
+                            "last_signal_side=%s,last_signal_date=%s,"
+                            "last_signal_buy_score=%s,last_signal_sell_score=%s,updated_at=NOW()",
                             (code, s.get("name",""), s.get("sector",""),
                              score["buy_score"], score["sell_score"], score["net_score"],
                              score["close"], score["change_pct"],
                              json.dumps(score["buy_signals"], ensure_ascii=False),
                              json.dumps(score["sell_signals"], ensure_ascii=False),
                              score["volume_avg"], score["hv"],
+                             sig_side, sig_date, last_sig_buy, last_sig_sell,
                              s.get("name",""), s.get("sector",""),
                              score["buy_score"], score["sell_score"], score["net_score"],
                              score["close"], score["change_pct"],
                              json.dumps(score["buy_signals"], ensure_ascii=False),
                              json.dumps(score["sell_signals"], ensure_ascii=False),
-                             score["volume_avg"], score["hv"])
+                             score["volume_avg"], score["hv"],
+                             sig_side, sig_date, last_sig_buy, last_sig_sell)
                         )
                     conn.commit()
                 if idx % 50 == 0:
@@ -4195,6 +4237,10 @@ def get_screening(
             "volume_avg":  r.get("volume_avg"),
             "hv":          r.get("hv"),
             "updated_at":  str(r["updated_at"]),
+            "last_signal_side":       r.get("last_signal_side"),
+            "last_signal_date":       r.get("last_signal_date"),
+            "last_signal_buy_score":  r.get("last_signal_buy_score"),
+            "last_signal_sell_score": r.get("last_signal_sell_score"),
         })
 
     results.sort(key=lambda x: (x.get(sort) or 0), reverse=True)
