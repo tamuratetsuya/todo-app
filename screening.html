@@ -426,7 +426,15 @@ async function loadFavorites() {
     const res = await fetch(`${API}/favorites`);
     if (res.ok) {
       const list = await res.json();
-      favorites = new Set(list);
+      // [{code,name}] 形式に対応（旧string[]も互換）
+      favorites = new Set(list.map(d => typeof d === 'string' ? d : d.code));
+      // テーブルが表示済みなら★を更新
+      document.querySelectorAll('.fav-btn[data-code]').forEach(btn => {
+        const code = btn.dataset.code;
+        const active = favorites.has(code);
+        btn.textContent = active ? '★' : '☆';
+        btn.classList.toggle('active', active);
+      });
     }
   } catch(e) {}
 }
@@ -444,6 +452,11 @@ async function toggleFavorite(code, btn) {
     fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method: 'POST'}).catch(() => {});
   }
 }
+
+// タブがアクティブになったとき再同期
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') loadFavorites();
+});
 
 // ===== INIT =====
 async function init() {
