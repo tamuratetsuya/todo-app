@@ -202,8 +202,14 @@ def get_favorites():
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT symbol FROM favorites ORDER BY created_at DESC")
-            return [r["symbol"] for r in cur.fetchall()]
+            cur.execute("""
+                SELECT f.symbol, COALESCE(p.name, '') AS name
+                FROM favorites f
+                LEFT JOIN prime_stocks p ON p.code = f.symbol
+                ORDER BY f.created_at DESC
+            """)
+            rows = cur.fetchall()
+            return [{"code": r["symbol"], "name": r["name"]} for r in rows]
     finally:
         conn.close()
 

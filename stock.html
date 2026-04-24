@@ -1453,28 +1453,39 @@
 const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:8020' : '/api/stock';
 
 // ===== FAVORITES =====
+// favorites: [{code, name}] — DBと同期
 let favorites = [];
-function isFavorite(code) { return favorites.includes(code); }
+function isFavorite(code) { return favorites.some(f => f.code === code); }
+function favName(code) { return (favorites.find(f => f.code === code) || {}).name || code; }
+
 async function loadFavorites() {
   try {
     const res = await fetch(`${API}/favorites`);
     if (res.ok) {
       const prev = JSON.stringify(favorites);
-      favorites = await res.json();
+      const data = await res.json();
+      // 旧形式(string[])との互換
+      favorites = data.map(d => typeof d === 'string' ? {code: d, name: d} : d);
       if (JSON.stringify(favorites) !== prev) renderPnl();
     }
   } catch(e) {}
 }
-async function toggleFavorite(code) {
+
+async function toggleFavorite(code, name) {
   if (isFavorite(code)) {
-    favorites = favorites.filter(c => c !== code);
+    favorites = favorites.filter(f => f.code !== code);
     fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method:'DELETE'}).catch(()=>{});
   } else {
-    favorites.unshift(code);
+    favorites.unshift({code, name: name || code});
     fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method:'POST'}).catch(()=>{});
   }
   renderPnl();
 }
+
+// タブがアクティブになったときにfavoritesを再同期
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') loadFavorites();
+});
 
 // ===== RDS API =====
 function rawTradeKey(t) {
@@ -3543,7 +3554,7 @@ function fmtPnl(n) {
 // ===== RENDER SIDEBAR =====
 function renderPnl() {
   const codes = Object.keys(trades);
-  if (!codes.length) {
+  if (!codes.length && !watchStocks.length && !favorites.length) {
     pnlBody.innerHTML = '<div class="empty-msg">CSVをインポートしてください</div>';
     totalPnlEl.textContent = '';
     return;
@@ -3595,11 +3606,18 @@ function renderPnl() {
     .filter(w => !codes.includes(w.code))
     .map(w => ({ code: w.code, name: w.name, type: 'watch' }));
 
+  // favoritesにあるがsidebarに未登録の銘柄を追加
+  const existingCodes = new Set([...codes, ...watchStocks.map(w => w.code)]);
+  const favOnlyRows = favorites
+    .filter(f => !existingCodes.has(f.code))
+    .map(f => ({ code: f.code, name: f.name || f.code, type: 'watch' }));
+
   // 全行を統合してお気に入りを先頭に
   const allRows = [
     ...rows.map(r => ({ ...r, type: 'pnl' })),
     ...holdingRows.map(r => ({ ...r, type: 'holding' })),
     ...watchRows,
+    ...favOnlyRows,
   ];
   allRows.sort((a, b) => (isFavorite(b.code) ? 1 : 0) - (isFavorite(a.code) ? 1 : 0));
 
@@ -3614,7 +3632,7 @@ function renderPnl() {
     favBtn.className = 'fav-btn' + (isFavorite(r.code) ? ' active' : '');
     favBtn.textContent = isFavorite(r.code) ? '★' : '☆';
     favBtn.title = 'お気に入り';
-    favBtn.addEventListener('click', e => { e.stopPropagation(); toggleFavorite(r.code); });
+    favBtn.addEventListener('click', e => { e.stopPropagation(); toggleFavorite(r.code, r.name); });
 
     const tdName = document.createElement('td');
     const nameDiv = document.createElement('div');

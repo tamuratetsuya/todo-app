@@ -227,6 +227,19 @@
   .col-vol    { width: 90px; text-align: right; }
   .col-hv     { width: 70px; text-align: right; }
   .col-sigs   { min-width: 180px; }
+  .col-fav    { width: 36px; text-align: center; }
+  .fav-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 15px;
+    color: var(--text2);
+    padding: 0 2px;
+    line-height: 1;
+    transition: color 0.1s;
+  }
+  .fav-btn.active { color: #f59e0b; }
+  .fav-btn:hover  { color: #f59e0b; }
 
   .code-link {
     color: var(--blue);
@@ -377,6 +390,7 @@
   <table id="screeningTable">
     <thead>
       <tr>
+        <th class="col-fav">★</th>
         <th class="col-code" data-col="code">コード <span class="sort-icon">↕</span></th>
         <th class="col-name" data-col="name">銘柄名 <span class="sort-icon">↕</span></th>
         <th class="col-sector" data-col="sector">セクター <span class="sort-icon">↕</span></th>
@@ -404,10 +418,37 @@ let filteredData = [];
 let sortCol = 'net_score';
 let sortAsc = false;
 let pollTimer = null;
+let favorites = new Set();
+
+// ===== FAVORITES =====
+async function loadFavorites() {
+  try {
+    const res = await fetch(`${API}/favorites`);
+    if (res.ok) {
+      const list = await res.json();
+      favorites = new Set(list);
+    }
+  } catch(e) {}
+}
+
+async function toggleFavorite(code, btn) {
+  if (favorites.has(code)) {
+    favorites.delete(code);
+    btn.textContent = '☆';
+    btn.classList.remove('active');
+    fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method: 'DELETE'}).catch(() => {});
+  } else {
+    favorites.add(code);
+    btn.textContent = '★';
+    btn.classList.add('active');
+    fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method: 'POST'}).catch(() => {});
+  }
+}
 
 // ===== INIT =====
 async function init() {
   await loadSectors();
+  await loadFavorites();
   await checkStatus();
   await loadScreening();
 }
@@ -600,7 +641,9 @@ function buildRow(r) {
   const hvStr = r.hv != null ? r.hv.toFixed(1) + '%' : '-';
   const hvClass = r.hv == null ? '' : r.hv >= 50 ? 'chg-neg' : r.hv <= 20 ? 'chg-pos' : '';
 
+  const isFav = favorites.has(code);
   return `<tr class="clickable" onclick="openStock('${code}')">
+    <td class="col-fav"><button class="fav-btn${isFav ? ' active' : ''}" data-code="${code}" onclick="event.stopPropagation();toggleFavorite('${code}',this)">${isFav ? '★' : '☆'}</button></td>
     <td class="col-code"><a class="code-link" onclick="event.stopPropagation();openStock('${code}')">${codeBase}</a></td>
     <td class="col-name">${name}</td>
     <td class="col-sector">${sector}</td>
@@ -641,7 +684,7 @@ function updateSortHeaders() {
 document.querySelectorAll('th[data-col]').forEach(th => {
   th.addEventListener('click', () => {
     const col = th.dataset.col;
-    if (col === 'col-sigs') return;
+    if (col === 'col-sigs' || col === 'col-fav') return;
     if (sortCol === col) {
       sortAsc = !sortAsc;
     } else {
