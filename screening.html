@@ -711,6 +711,7 @@ document.querySelectorAll('th[data-col]').forEach(th => {
 
 // ===== FILTER CHANGE =====
 document.getElementById('minScore').addEventListener('change', loadScreening);
+document.getElementById('maxSellScore').addEventListener('change', applyFilters);
 document.getElementById('sectorFilter').addEventListener('change', loadScreening);
 document.getElementById('minVolume').addEventListener('change', applyFilters);
 document.getElementById('minHv').addEventListener('change', applyFilters);
