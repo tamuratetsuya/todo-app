@@ -399,11 +399,11 @@
         <th class="col-sell" data-col="sell_score">売り <span class="sort-icon">↕</span></th>
         <th class="col-net" data-col="net_score">総合 <span class="sort-icon">↕</span></th>
         <th class="col-close" data-col="close">終値 <span class="sort-icon">↕</span></th>
+        <th class="col-date" data-col="price_date">日付 <span class="sort-icon">↕</span></th>
         <th class="col-chg" data-col="change_pct">騰落率 <span class="sort-icon">↕</span></th>
         <th class="col-vol" data-col="volume_avg">出来高(万株) <span class="sort-icon">↕</span></th>
         <th class="col-hv"  data-col="hv">HV(%) <span class="sort-icon">↕</span></th>
         <th class="col-sigs">シグナル</th>
-        <th class="col-date" data-col="price_date">株価日付 <span class="sort-icon">↕</span></th>
       </tr>
     </thead>
     <tbody id="screeningBody">
@@ -668,11 +668,11 @@ function buildRow(r) {
     <td class="col-sell" style="text-align:center"><span class="score-badge score-sell">${sell}</span></td>
     <td class="col-net" style="text-align:center"><span class="score-badge ${netClass}">${net}</span></td>
     <td class="col-close" style="text-align:right">${close}</td>
+    <td class="col-date">${priceDate}</td>
     <td class="col-chg ${chgClass}" style="text-align:right">${chgStr}</td>
     <td class="col-vol" style="text-align:right">${volStr}</td>
     <td class="col-hv ${hvClass}" style="text-align:right">${hvStr}</td>
     <td class="col-sigs"><div class="sig-tags">${buySigs}${sellSigs}</div></td>
-    <td class="col-date">${priceDate}</td>
   </tr>`;
 }
 
