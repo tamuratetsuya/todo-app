@@ -19,8 +19,8 @@
 
 | 項目 | 値 |
 |------|-----|
-| EC2 IP | 57.183.7.38 |
-| SSHキー | /Users/tamura/.ssh/todo-ec2-key.pem（SSH認証不可→SSM経由でデプロイ） |
+| EC2 IP | 57.182.38.255（ElasticIP・固定） |
+| SSHキー | /Users/tamura/claude_code/tododb.pem |
 | 本番HTML | /usr/share/nginx/html/ |
 | stg HTML | /usr/share/nginx/html/stg/ |
 | calendar本番バックエンド | ~/calendar-backend/ ポート8002 |
@@ -38,11 +38,11 @@
 sed -e "s|https://calendar.golfspace.jp/api/calendar|https://stg.calendar.golfspace.jp/api/calendar|g" \
     -e "s|https://calendar.golfspace.jp\"|https://stg.calendar.golfspace.jp\"|g" \
     <file> > /tmp/<file_stg>
-scp -i /Users/tamura/claude_code/tododb.pem -o StrictHostKeyChecking=no /tmp/<file_stg> ec2-user@57.183.7.38:/tmp/<file>
-ssh -i /Users/tamura/claude_code/tododb.pem -o StrictHostKeyChecking=no ec2-user@57.183.7.38 "sudo cp /tmp/<file> /usr/share/nginx/html/stg/"
+scp -i /Users/tamura/claude_code/tododb.pem -o StrictHostKeyChecking=no /tmp/<file_stg> ec2-user@57.182.38.255:/tmp/<file>
+ssh -i /Users/tamura/claude_code/tododb.pem -o StrictHostKeyChecking=no ec2-user@57.182.38.255 "sudo cp /tmp/<file> /usr/share/nginx/html/stg/"
 
 # stgデプロイ（calendarバックエンド）
-scp ... main.py ec2-user@57.183.7.38:/tmp/main.py
+scp ... main.py ec2-user@57.182.38.255:/tmp/main.py
 ssh ... "cp /tmp/main.py ~/calendar-backend-staging/main.py && sudo systemctl restart calendar-backend-staging"
 
 # 本番デプロイ（HTMLのみ）
