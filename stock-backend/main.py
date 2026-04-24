@@ -4011,7 +4011,8 @@ def _run_screening_update():
             latest_map = {r["symbol"]: str(r["latest"]) for r in (cur.fetchall() if symbols_t else [])}
         conn.close()
 
-        today_str = _dt3.now().strftime("%Y-%m-%d")
+        today_str = (_dt3.utcnow() + _td(hours=9)).strftime("%Y-%m-%d")
+        tomorrow_str = (_dt3.utcnow() + _td(hours=9, days=1)).strftime("%Y-%m-%d")
         stale_codes = []; new_codes = []; fresh_count = 0
 
         for code in codes:
@@ -4038,7 +4039,7 @@ def _run_screening_update():
             tickers = [f"{c}.T" for c in batch_codes]
             min_start = min(batch_starts)
             try:
-                raw = yf.download(tickers, start=min_start, end=today_str,
+                raw = yf.download(tickers, start=min_start, end=tomorrow_str,
                                   interval="1d", group_by="ticker",
                                   progress=False, threads=True, auto_adjust=True)
                 for code, ticker in zip(batch_codes, tickers):
