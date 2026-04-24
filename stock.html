@@ -1453,10 +1453,12 @@
 const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:8020' : '/api/stock';
 
 // ===== FAVORITES =====
-// favorites: [{code, name}] — DBと同期
+// favorites: [{code, name}] — DBと同期。コードは常に .T なし正規化形式
+const normCode = c => c ? c.replace(/\.T$/i, '') : c;
+
 let favorites = [];
-function isFavorite(code) { return favorites.some(f => f.code === code); }
-function favName(code) { return (favorites.find(f => f.code === code) || {}).name || code; }
+function isFavorite(code) { return favorites.some(f => f.code === normCode(code)); }
+function favName(code) { return (favorites.find(f => f.code === normCode(code)) || {}).name || code; }
 
 async function loadFavorites() {
   try {
@@ -1464,20 +1466,20 @@ async function loadFavorites() {
     if (res.ok) {
       const prev = JSON.stringify(favorites);
       const data = await res.json();
-      // 旧形式(string[])との互換
-      favorites = data.map(d => typeof d === 'string' ? {code: d, name: d} : d);
+      favorites = data.map(d => typeof d === 'string' ? {code: normCode(d), name: d} : {code: normCode(d.code), name: d.name});
       if (JSON.stringify(favorites) !== prev) renderPnl();
     }
   } catch(e) {}
 }
 
 async function toggleFavorite(code, name) {
-  if (isFavorite(code)) {
-    favorites = favorites.filter(f => f.code !== code);
-    fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method:'DELETE'}).catch(()=>{});
+  const c = normCode(code);
+  if (isFavorite(c)) {
+    favorites = favorites.filter(f => f.code !== c);
+    fetch(`${API}/favorites/${encodeURIComponent(c)}`, {method:'DELETE'}).catch(()=>{});
   } else {
-    favorites.unshift({code, name: name || code});
-    fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method:'POST'}).catch(()=>{});
+    favorites.unshift({code: c, name: name || c});
+    fetch(`${API}/favorites/${encodeURIComponent(c)}`, {method:'POST'}).catch(()=>{});
   }
   renderPnl();
 }
