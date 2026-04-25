@@ -3083,7 +3083,9 @@ def get_company_info(symbol: str = Query(...)):
             cur.execute("SELECT data, updated_at FROM company_info_cache WHERE symbol=%s", (code,))
             row = cur.fetchone()
             if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 86400:
-                return json.loads(row["data"])
+                cached = json.loads(row["data"])
+                if cached.get("description_ja"):  # 空キャッシュは無視して再取得
+                    return cached
     finally:
         conn.close()
 
