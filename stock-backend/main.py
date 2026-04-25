@@ -2544,14 +2544,41 @@ def _scrape_minkabu_picks(code: str) -> list:
     return posts[:50]
 
 
+def _scrape_yahoo_bbs(symbol: str) -> list:
+    """Yahoo!ファイナンス掲示板をスクレイピング"""
+    code = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
+    url = f"https://finance.yahoo.co.jp/quote/{code}.T/bbs"
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    resp = _requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(resp.text, "html.parser")
+    articles = [a for a in soup.find_all("article") if any("BbsItem" in c for c in a.get("class", []))]
+    result = []
+    for a in articles:
+        user_el   = a.find(lambda t: t.name == "a" and any("userName" in c for c in t.get("class", [])))
+        time_el   = a.find("time")
+        body_el   = a.find(lambda t: t.name == "div" and any("body" in c for c in t.get("class", [])))
+        no_el     = a.find(lambda t: t.name == "a" and any("commentNo" in c for c in t.get("class", [])))
+        good_els  = a.find_all(lambda t: t.name == "span" and any("count" in c.lower() for c in t.get("class", [])))
+        author = user_el.get_text(strip=True) if user_el else "匿名"
+        date   = time_el.get_text(strip=True) if time_el else ""
+        body   = body_el.get_text(" ", strip=True) if body_el else ""
+        no     = no_el.get_text(strip=True) if no_el else ""
+        good   = int(good_els[0].get_text(strip=True)) if good_els else 0
+        if body:
+            result.append({"author": author, "date": date, "text": body, "no": no, "good": good, "source": "yahoo_bbs"})
+    return result
+
+
 @app.get("/x_posts")
 def get_x_posts(symbol: str = Query(...), name: str = Query("")):
-    """日本株: みんかぶ株価予想 / US株: Twitter API v2"""
-    # 日本株（4桁以下の数字コード）はみんかぶをスクレイピング
-    is_jp = symbol.isdigit() and len(symbol) <= 4
+    """日本株: Yahoo!ファイナンス掲示板 / US株: Twitter API v2"""
+    raw = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
+    is_jp = raw.isdigit() and len(raw) <= 4
     if is_jp:
         try:
-            return _scrape_minkabu_picks(symbol)
+            return _scrape_yahoo_bbs(raw)
         except Exception as e:
             raise HTTPException(500, str(e))
 

@@ -1339,8 +1339,8 @@
         最新ニュース
       </button>
       <button class="analysis-tab" id="tabX" onclick="switchAnalysisTab('x')">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.742l7.733-8.835L1.254 2.25H8.08l4.253 5.622 5.91-5.622Zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-        X投稿
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        掲示板
       </button>
       <button class="analysis-tab" id="tabHolders" onclick="switchAnalysisTab('holders')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -4905,16 +4905,33 @@ function renderXPosts(posts, sym, name) {
     return;
   }
   const label = name || sym;
-  const isMinkabu = posts[0] && posts[0].source === 'minkabu';
-  const sourceLabel = isMinkabu ? 'みんかぶ株価予想' : 'X投稿';
-  let html = `<div style="padding:10px 14px 4px;font-size:11px;color:var(--text2)">「${escapeHtml(label)}」の${sourceLabel} ${posts.length}件</div>`;
+  const src = posts[0] && posts[0].source;
+  const isMinkabu = src === 'minkabu';
+  const isYahooBbs = src === 'yahoo_bbs';
+  const sourceLabel = isMinkabu ? 'みんかぶ株価予想' : isYahooBbs ? 'Yahoo!掲示板' : 'X投稿';
+  const bbsUrl = `https://finance.yahoo.co.jp/quote/${sym}/bbs`;
+  let html = `<div style="padding:10px 14px 4px;font-size:11px;color:var(--text2);display:flex;align-items:center;gap:8px">
+    <span>「${escapeHtml(label)}」の${sourceLabel} ${posts.length}件</span>
+    ${isYahooBbs ? `<a href="${bbsUrl}" target="_blank" style="font-size:10px;color:var(--accent)">Yahoo!掲示板で見る →</a>` : ''}
+  </div>`;
 
   for (const p of posts) {
     const itemUrl = p.url
       ? p.url
       : (p.author_username ? `https://x.com/${p.author_username}/status/${p.id}` : '#');
 
-    if (isMinkabu) {
+    if (isYahooBbs) {
+      // Yahoo!掲示板形式
+      html += `<div class="news-item">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span style="font-size:11px;font-weight:600;color:var(--text)">${escapeHtml(p.author)}</span>
+          <span style="font-size:10px;color:var(--text2)">${escapeHtml(p.no)}</span>
+          <span style="font-size:10px;color:var(--text2);margin-left:auto">${escapeHtml(p.date)}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text);line-height:1.6;white-space:pre-wrap;word-break:break-word">${escapeHtml(p.text)}</div>
+        ${p.good > 0 ? `<div style="font-size:10px;color:var(--text2);margin-top:4px">👍 ${p.good}</div>` : ''}
+      </div>`;
+    } else if (isMinkabu) {
       // みんかぶ形式
       const dirColor = p.direction === '買い' ? 'var(--green)' : 'var(--red)';
       const dirBg    = p.direction === '買い' ? 'rgba(63,185,80,0.15)' : 'rgba(248,81,73,0.15)';
