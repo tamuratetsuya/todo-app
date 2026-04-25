@@ -3609,7 +3609,7 @@ function renderPnl() {
     .map(w => ({ code: w.code, name: w.name, type: 'watch' }));
 
   // favoritesにあるがsidebarに未登録の銘柄を追加
-  const existingCodes = new Set([...codes, ...watchStocks.map(w => w.code)]);
+  const existingCodes = new Set([...codes, ...watchStocks.map(w => w.code)].map(normCode));
   const favOnlyRows = favorites
     .filter(f => !existingCodes.has(f.code))
     .map(f => ({ code: f.code, name: f.name || f.code, type: 'watch' }));
