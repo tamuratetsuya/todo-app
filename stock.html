@@ -1334,6 +1334,10 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
         観点
       </button>
+      <button class="analysis-tab" id="tabCompany" onclick="switchAnalysisTab('company')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+        基本情報
+      </button>
       <button class="analysis-tab" id="tabNews" onclick="switchAnalysisTab('news')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8M15 18h-5M10 6h8v4h-8V6Z"></path></svg>
         最新ニュース
@@ -1430,6 +1434,7 @@
       履歴に保存
     </button>
   </div>
+  <div class="analysis-body" id="companyBody" style="display:none;overflow-y:auto;padding:14px 16px;"></div>
   <div class="analysis-body" id="newsBody" style="display:none;"></div>
   <div class="analysis-body" id="xBody" style="display:none;"></div>
   <div class="analysis-body" id="holdersBody" style="display:none;"></div>
@@ -3713,7 +3718,7 @@ function selectSymbol(code) {
   currentSymbol = code;
   stockSelect.value = code;
   aiSignals = [];  // 銘柄変更時にシグナルリセット
-  xLoadedSymbol = ''; holdersLoadedSymbol = ''; financialsLoadedSymbol = ''; analystLoadedSymbol = '';
+  xLoadedSymbol = ''; holdersLoadedSymbol = ''; financialsLoadedSymbol = ''; analystLoadedSymbol = ''; companyLoadedSymbol = '';
   aiChatSymbol = ''; aiChatInited = false; aiChatHistory = []; aiChatAnalyst = {};
   document.getElementById('memoTextarea').value = '';
   document.getElementById('memoSavedAt').textContent = '';
@@ -4664,11 +4669,12 @@ let currentNewsTab = 'rules';
 
 function switchAnalysisTab(tab) {
   currentNewsTab = tab;
-  ['rules','news','x','holders','financials','analyst','aiChat','margin','memo'].forEach(t => {
+  ['rules','company','news','x','holders','financials','analyst','aiChat','margin','memo'].forEach(t => {
     const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (el) el.classList.toggle('active', t === tab);
   });
   document.getElementById('rulesBody').style.display       = tab === 'rules'      ? '' : 'none';
+  document.getElementById('companyBody').style.display     = tab === 'company'    ? '' : 'none';
   document.getElementById('newsBody').style.display        = tab === 'news'       ? '' : 'none';
   document.getElementById('xBody').style.display           = tab === 'x'          ? '' : 'none';
   document.getElementById('holdersBody').style.display     = tab === 'holders'    ? '' : 'none';
@@ -4677,6 +4683,7 @@ function switchAnalysisTab(tab) {
   document.getElementById('aiChatBody').style.display      = tab === 'aiChat'     ? 'flex' : 'none';
   document.getElementById('marginBody').style.display      = tab === 'margin'     ? '' : 'none';
   document.getElementById('memoBody').style.display        = tab === 'memo'       ? 'flex' : 'none';
+  if (tab === 'company')    loadCompanyInfo();
   if (tab === 'news')       loadNews();
   if (tab === 'x')          loadXPosts();
   if (tab === 'holders')    loadHolders();
@@ -5099,6 +5106,100 @@ function renderHolders(d) {
 }
 
 // ===== 財務タブ =====
+// ===== 基本情報タブ =====
+let companyLoadedSymbol = '';
+async function loadCompanyInfo() {
+  const sym = currentSymbol;
+  if (!sym) return;
+  const body = document.getElementById('companyBody');
+  if (companyLoadedSymbol === sym) return;
+  companyLoadedSymbol = sym;
+  body.innerHTML = '<div class="news-loading">取得中...</div>';
+  try {
+    const res = await fetch(`${API}/company_info?symbol=${encodeURIComponent(sym)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    renderCompanyInfo(d, sym);
+  } catch(e) {
+    companyLoadedSymbol = '';
+    body.innerHTML = `<div class="news-loading" style="color:var(--red)">取得失敗: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderCompanyInfo(d, sym) {
+  const body = document.getElementById('companyBody');
+  const fmt = (v, suffix='') => v != null ? Number(v).toLocaleString('ja-JP', {maximumFractionDigits:2}) + suffix : '-';
+  const fmtCap = v => {
+    if (v == null) return '-';
+    if (v >= 1e12) return (v/1e12).toFixed(1) + '兆円';
+    if (v >= 1e8)  return (v/1e8).toFixed(0) + '億円';
+    return v.toLocaleString() + '円';
+  };
+
+  let html = '';
+
+  // 指標グリッド
+  const metrics = [
+    { label: 'PER',       value: d.per   != null ? fmt(d.per, '倍') : '-' },
+    { label: 'PBR',       value: d.pbr   != null ? fmt(d.pbr, '倍') : '-' },
+    { label: 'PSR',       value: d.psr   != null ? fmt(d.psr, '倍') : '-' },
+    { label: 'ROE',       value: d.roe   != null ? fmt(d.roe, '%') : '-' },
+    { label: '配当利回り', value: d.dividend_yield != null ? fmt(d.dividend_yield, '%') : '-' },
+    { label: '時価総額',  value: fmtCap(d.market_cap) },
+    { label: 'EPS',       value: d.eps   != null ? fmt(d.eps, '円') : '-' },
+    { label: 'BPS',       value: d.bps   != null ? fmt(d.bps, '円') : '-' },
+    { label: '従業員数',  value: d.employees != null ? fmt(d.employees, '人') : '-' },
+  ];
+
+  html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">`;
+  for (const m of metrics) {
+    html += `<div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
+      <div style="font-size:10px;color:var(--text2);margin-bottom:2px">${m.label}</div>
+      <div style="font-size:14px;font-weight:600;color:var(--text)">${m.value}</div>
+    </div>`;
+  }
+  html += `</div>`;
+
+  // セクター・業種
+  if (d.sector || d.industry) {
+    html += `<div style="margin-bottom:12px;font-size:12px;color:var(--text2)">`;
+    if (d.sector)   html += `<span style="margin-right:8px">📂 ${escapeHtml(d.sector)}</span>`;
+    if (d.industry) html += `<span>🏭 ${escapeHtml(d.industry)}</span>`;
+    html += `</div>`;
+  }
+
+  // 事業内容
+  const desc = d.description_ja || d.description_en || '';
+  if (desc) {
+    html += `<div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">事業内容</div>
+      <div style="font-size:12px;color:var(--text);line-height:1.7;white-space:pre-wrap">${escapeHtml(desc)}</div>
+    </div>`;
+  }
+
+  // 売上構成（セグメント）
+  if (d.segments && d.segments.length) {
+    html += `<div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">売上構成</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">`;
+    for (const seg of d.segments) {
+      html += `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 4px;color:var(--text)">${escapeHtml(seg.name)}</td>
+        <td style="padding:5px 4px;text-align:right;color:var(--text2)">${escapeHtml(seg.value)}</td>
+      </tr>`;
+    }
+    html += `</table></div>`;
+  }
+
+  // みんかぶリンク
+  const code = sym.replace(/\.T$/i, '');
+  html += `<div style="margin-top:8px;font-size:11px">
+    <a href="https://minkabu.jp/stock/${code}/profile" target="_blank" style="color:var(--accent)">みんかぶで詳細を見る →</a>
+  </div>`;
+
+  body.innerHTML = html || '<div class="news-loading">情報が取得できませんでした</div>';
+}
+
 let financialsLoadedSymbol = '';
 async function loadFinancials() {
   const sym = currentSymbol;

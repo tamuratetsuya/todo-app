@@ -3073,6 +3073,125 @@ def _scrape_minkabu_analyst(code: str) -> dict:
     return result
 
 
+@app.get("/company_info")
+def get_company_info(symbol: str = Query(...)):
+    """銘柄基本情報: 事業内容・売上構成・PER/PBR等をyfinance+みんかぶから取得"""
+    code = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data, updated_at FROM company_info_cache WHERE symbol=%s", (code,))
+            row = cur.fetchone()
+            if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 86400:
+                return json.loads(row["data"])
+    finally:
+        conn.close()
+
+    result = {}
+
+    # yfinance から基本指標取得
+    try:
+        import yfinance as yf
+        tk = yf.Ticker(f"{code}.T")
+        info = tk.info or {}
+        result["name"]           = info.get("longName") or info.get("shortName") or ""
+        result["sector"]         = info.get("sector") or ""
+        result["industry"]       = info.get("industry") or ""
+        result["market_cap"]     = info.get("marketCap")
+        result["per"]            = info.get("trailingPE") or info.get("forwardPE")
+        result["pbr"]            = info.get("priceToBook")
+        result["psr"]            = info.get("priceToSalesTrailing12Months")
+        result["roe"]            = round(info.get("returnOnEquity") * 100, 2) if info.get("returnOnEquity") else None
+        result["dividend_yield"] = round(info.get("dividendYield") * 100, 2) if info.get("dividendYield") else None
+        result["eps"]            = info.get("trailingEps")
+        result["bps"]            = info.get("bookValue")
+        result["employees"]      = info.get("fullTimeEmployees")
+        result["website"]        = info.get("website") or ""
+        result["description_en"] = info.get("longBusinessSummary") or ""
+    except Exception:
+        pass
+
+    # みんかぶから日本語事業内容・売上構成取得
+    try:
+        from bs4 import BeautifulSoup
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+        url = f"https://minkabu.jp/stock/{code}/profile"
+        resp = _requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # 事業内容
+        desc = ""
+        for el in soup.find_all(["p", "div"]):
+            cls = " ".join(el.get("class", []))
+            txt = el.get_text(" ", strip=True)
+            if len(txt) > 80 and ("事業" in txt or "製造" in txt or "販売" in txt or "提供" in txt or "サービス" in txt):
+                if "profile" in cls.lower() or "description" in cls.lower() or "business" in cls.lower() or "summary" in cls.lower():
+                    desc = txt[:600]
+                    break
+        if not desc:
+            # フォールバック: 最初の長いpタグ
+            for p in soup.find_all("p"):
+                t = p.get_text(" ", strip=True)
+                if len(t) > 100:
+                    desc = t[:600]
+                    break
+        result["description_ja"] = desc
+
+        # 売上構成（セグメント情報）
+        segments = []
+        for table in soup.find_all("table"):
+            headers_row = table.find("tr")
+            if not headers_row: continue
+            ths = [th.get_text(strip=True) for th in headers_row.find_all(["th","td"])]
+            if any(k in " ".join(ths) for k in ["セグメント", "売上", "事業"]):
+                for tr in table.find_all("tr")[1:]:
+                    tds = [td.get_text(strip=True) for td in tr.find_all(["td","th"])]
+                    if len(tds) >= 2 and tds[0]:
+                        segments.append({"name": tds[0], "value": tds[1] if len(tds) > 1 else ""})
+                if segments: break
+        result["segments"] = segments
+    except Exception:
+        pass
+
+    # みんかぶ指標ページからPER/PBR補完
+    if not result.get("per") or not result.get("pbr"):
+        try:
+            from bs4 import BeautifulSoup
+            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+            url2 = f"https://minkabu.jp/stock/{code}"
+            resp2 = _requests.get(url2, headers=headers, timeout=15)
+            soup2 = BeautifulSoup(resp2.text, "html.parser")
+            for row in soup2.find_all(["tr","div","li"]):
+                txt = row.get_text(" ", strip=True)
+                if "PER" in txt and not result.get("per"):
+                    m = _re.search(r'PER[^\d]*([\d.]+)', txt)
+                    if m: result["per"] = float(m.group(1))
+                if "PBR" in txt and not result.get("pbr"):
+                    m = _re.search(r'PBR[^\d]*([\d.]+)', txt)
+                    if m: result["pbr"] = float(m.group(1))
+                if result.get("per") and result.get("pbr"): break
+        except Exception:
+            pass
+
+    # キャッシュ保存
+    conn2 = get_conn()
+    try:
+        with conn2.cursor() as cur:
+            data_json = json.dumps(result, ensure_ascii=False)
+            cur.execute(
+                "INSERT INTO company_info_cache (symbol,data) VALUES (%s,%s) ON DUPLICATE KEY UPDATE data=%s,updated_at=NOW()",
+                (code, data_json, data_json)
+            )
+        conn2.commit()
+    except Exception:
+        pass
+    finally:
+        conn2.close()
+
+    return result
+
+
 @app.get("/financials")
 def get_financials(symbol: str = Query(...)):
     """みんかぶから四半期・年次財務データを取得"""
