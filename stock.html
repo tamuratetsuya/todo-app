@@ -5867,7 +5867,7 @@ async function sendAiChat() {
   const _urlParams = new URLSearchParams(location.search);
   const _urlCodeRaw = _urlParams.get('code');
   // 4桁数字はJP株として.Tを付与（スクリーニングページからの遷移対応）
-  const _urlCode = _urlCodeRaw && /^\d{4}$/.test(_urlCodeRaw) ? _urlCodeRaw + '.T' : _urlCodeRaw;
+  const _urlCode = _urlCodeRaw && /^[0-9A-Z]{4,5}$/i.test(_urlCodeRaw) && !_urlCodeRaw.includes('.') ? _urlCodeRaw + '.T' : _urlCodeRaw;
   if (_urlCode) {
     const _urlName = _urlParams.get('name') || _urlCode;
     if (!trades[_urlCode]) trades[_urlCode] = [];
