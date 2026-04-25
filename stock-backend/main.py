@@ -3082,9 +3082,10 @@ def get_company_info(symbol: str = Query(...)):
         with conn.cursor() as cur:
             cur.execute("SELECT data, updated_at FROM company_info_cache WHERE symbol=%s", (code,))
             row = cur.fetchone()
+            CACHE_VER = 2  # セグメント解析修正後に更新
             if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 86400:
                 cached = json.loads(row["data"])
-                if cached.get("description_ja"):  # 空キャッシュは無視して再取得
+                if cached.get("description_ja") and cached.get("_v", 0) >= CACHE_VER:
                     return cached
     finally:
         conn.close()
@@ -3188,8 +3189,9 @@ def get_company_info(symbol: str = Query(...)):
     # キャッシュ保存
     conn2 = get_conn()
     try:
+        result["_v"] = 2  # キャッシュバージョン
+        data_json = json.dumps(result, ensure_ascii=False)
         with conn2.cursor() as cur:
-            data_json = json.dumps(result, ensure_ascii=False)
             cur.execute(
                 "INSERT INTO company_info_cache (symbol,data) VALUES (%s,%s) ON DUPLICATE KEY UPDATE data=%s,updated_at=NOW()",
                 (code, data_json, data_json)
