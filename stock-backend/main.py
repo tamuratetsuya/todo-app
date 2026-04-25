@@ -2575,7 +2575,7 @@ def _scrape_yahoo_bbs(symbol: str) -> list:
 def get_x_posts(symbol: str = Query(...), name: str = Query("")):
     """日本株: Yahoo!ファイナンス掲示板 / US株: Twitter API v2"""
     raw = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
-    is_jp = raw.isdigit() and len(raw) <= 4
+    is_jp = symbol.upper().endswith('.T') or (raw.isdigit() and len(raw) <= 5)
     if is_jp:
         try:
             return _scrape_yahoo_bbs(raw)
