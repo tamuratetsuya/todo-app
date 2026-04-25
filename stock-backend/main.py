@@ -4209,7 +4209,7 @@ def screening_update():
 
 @app.get("/screening")
 def get_screening(
-    min_score: int = Query(1),
+    min_score: int = Query(-20),
     sector: str = Query(""),
     sort: str = Query("net_score"),
 ):
