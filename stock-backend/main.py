@@ -3160,8 +3160,6 @@ def get_company_info(symbol: str = Query(...)):
         result["segments"] = segments
     except Exception:
         pass
-        except Exception:
-            pass
 
     # みんかぶ指標ページからPER/PBR補完
     if not result.get("per") or not result.get("pbr"):
