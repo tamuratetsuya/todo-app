@@ -3154,11 +3154,13 @@ def get_company_info(symbol: str = Query(...)):
                     continue
                 for part in _re.split(r'[、,]', line):
                     part = part.strip()
-                    m = _re.match(r'^(.+?)(\d[\d.]*)(?:\((-?[\d.]+)\))?$', part)
+                    # 名前は非数字文字で始まる（「84(2025.3)」などの海外比率行を除外）
+                    m = _re.match(r'^([^\d（(]+?)(\d[\d.]*)(?:\((-?[\d.]+)\))?$', part)
                     if m:
                         name = m.group(1).strip()
                         ratio = m.group(2) + "%"
-                        segments.append({"name": name, "value": ratio})
+                        if name:
+                            segments.append({"name": name, "value": ratio})
         result["segments"] = segments
     except Exception:
         pass
