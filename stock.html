@@ -5168,8 +5168,8 @@ function renderCompanyInfo(d, sym) {
     html += `</div>`;
   }
 
-  // 事業内容
-  const desc = d.description_ja || d.description_en || '';
+  // 事業内容（日本語のみ）
+  const desc = d.description_ja || '';
   if (desc) {
     html += `<div style="margin-bottom:14px">
       <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">事業内容</div>

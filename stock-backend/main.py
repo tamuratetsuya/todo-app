@@ -3111,40 +3111,48 @@ def get_company_info(symbol: str = Query(...)):
     except Exception:
         pass
 
-    # みんかぶから日本語事業内容・売上構成取得
+    # 株探から日本語事業内容・売上構成取得
     try:
         from bs4 import BeautifulSoup
-        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
-        url = f"https://minkabu.jp/stock/{code}/profile"
-        resp = _requests.get(url, headers=headers, timeout=15)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
+        _hdr = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+        # 株探プロフィールページ
+        kurl = f"https://kabutan.jp/stock/profile?code={code}"
+        kr = _requests.get(kurl, headers=_hdr, timeout=15)
+        kr.raise_for_status()
+        ksoup = BeautifulSoup(kr.text, "html.parser")
 
-        # 事業内容
+        # 事業内容: 株探は <div class="detail_explanation"> または <p> に本文あり
         desc = ""
-        for el in soup.find_all(["p", "div"]):
-            cls = " ".join(el.get("class", []))
-            txt = el.get_text(" ", strip=True)
-            if len(txt) > 80 and ("事業" in txt or "製造" in txt or "販売" in txt or "提供" in txt or "サービス" in txt):
-                if "profile" in cls.lower() or "description" in cls.lower() or "business" in cls.lower() or "summary" in cls.lower():
-                    desc = txt[:600]
+        for sel in ["div.detail_explanation", "div.company_info p", "section.company_profile p"]:
+            el = ksoup.select_one(sel)
+            if el:
+                t = el.get_text(" ", strip=True)
+                if len(t) > 50:
+                    desc = t[:800]
                     break
         if not desc:
-            # フォールバック: 最初の長いpタグ
-            for p in soup.find_all("p"):
+            # フォールバック: 最初の長いpタグ（ナビゲーション等を除く）
+            for p in ksoup.select("div#main p, div.main p, article p, #profile p"):
                 t = p.get_text(" ", strip=True)
                 if len(t) > 100:
-                    desc = t[:600]
+                    desc = t[:800]
+                    break
+        if not desc:
+            for p in ksoup.find_all("p"):
+                t = p.get_text(" ", strip=True)
+                if len(t) > 150:
+                    desc = t[:800]
                     break
         result["description_ja"] = desc
 
-        # 売上構成（セグメント情報）
+        # 売上構成: 株探のセグメントテーブル
         segments = []
-        for table in soup.find_all("table"):
+        for table in ksoup.find_all("table"):
             headers_row = table.find("tr")
             if not headers_row: continue
             ths = [th.get_text(strip=True) for th in headers_row.find_all(["th","td"])]
-            if any(k in " ".join(ths) for k in ["セグメント", "売上", "事業"]):
+            hstr = " ".join(ths)
+            if any(k in hstr for k in ["セグメント", "売上", "事業", "部門", "分野"]):
                 for tr in table.find_all("tr")[1:]:
                     tds = [td.get_text(strip=True) for td in tr.find_all(["td","th"])]
                     if len(tds) >= 2 and tds[0]:
@@ -3153,6 +3161,48 @@ def get_company_info(symbol: str = Query(...)):
         result["segments"] = segments
     except Exception:
         pass
+
+    # みんかぶから事業内容補完（株探で取得できなかった場合）
+    if not result.get("description_ja"):
+        try:
+            from bs4 import BeautifulSoup
+            _hdr = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+            url = f"https://minkabu.jp/stock/{code}/profile"
+            resp = _requests.get(url, headers=_hdr, timeout=15)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+            desc = ""
+            for sel in [".md_profile_text p", ".profile_text p", ".about_company p", ".company_description p"]:
+                el = soup.select_one(sel)
+                if el:
+                    t = el.get_text(" ", strip=True)
+                    if len(t) > 50:
+                        desc = t[:800]
+                        break
+            if not desc:
+                for p in soup.find_all("p"):
+                    t = p.get_text(" ", strip=True)
+                    if len(t) > 150:
+                        desc = t[:800]
+                        break
+            if desc:
+                result["description_ja"] = desc
+            # セグメントも補完
+            if not result.get("segments"):
+                segments = []
+                for table in soup.find_all("table"):
+                    headers_row = table.find("tr")
+                    if not headers_row: continue
+                    ths = [th.get_text(strip=True) for th in headers_row.find_all(["th","td"])]
+                    if any(k in " ".join(ths) for k in ["セグメント", "売上", "事業"]):
+                        for tr in table.find_all("tr")[1:]:
+                            tds = [td.get_text(strip=True) for td in tr.find_all(["td","th"])]
+                            if len(tds) >= 2 and tds[0]:
+                                segments.append({"name": tds[0], "value": tds[1] if len(tds) > 1 else ""})
+                        if segments: break
+                result["segments"] = segments
+        except Exception:
+            pass
 
     # みんかぶ指標ページからPER/PBR補完
     if not result.get("per") or not result.get("pbr"):
