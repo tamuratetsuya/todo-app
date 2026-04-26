@@ -3082,7 +3082,7 @@ def get_company_info(symbol: str = Query(...)):
         with conn.cursor() as cur:
             cur.execute("SELECT data, updated_at FROM company_info_cache WHERE symbol=%s", (code,))
             row = cur.fetchone()
-            CACHE_VER = 2  # セグメント解析修正後に更新
+            CACHE_VER = 3  # 配当利回り計算修正
             if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 86400:
                 cached = json.loads(row["data"])
                 if cached.get("description_ja") and cached.get("_v", 0) >= CACHE_VER:
@@ -3105,7 +3105,9 @@ def get_company_info(symbol: str = Query(...)):
         result["pbr"]            = info.get("priceToBook")
         result["psr"]            = info.get("priceToSalesTrailing12Months")
         result["roe"]            = round(info.get("returnOnEquity") * 100, 2) if info.get("returnOnEquity") else None
-        result["dividend_yield"] = round(info.get("dividendYield") * 100, 2) if info.get("dividendYield") else None
+        dy = info.get("dividendYield")
+        # yfinanceは日本株でdividendYieldをパーセント値で返す場合がある（3.1→3.1%）
+        result["dividend_yield"] = round(dy * 100 if dy and dy < 1 else dy, 2) if dy else None
         result["eps"]            = info.get("trailingEps")
         result["bps"]            = info.get("bookValue")
         result["employees"]      = info.get("fullTimeEmployees")
@@ -3189,7 +3191,7 @@ def get_company_info(symbol: str = Query(...)):
     # キャッシュ保存
     conn2 = get_conn()
     try:
-        result["_v"] = 2  # キャッシュバージョン
+        result["_v"] = 3  # キャッシュバージョン
         data_json = json.dumps(result, ensure_ascii=False)
         with conn2.cursor() as cur:
             cur.execute(
