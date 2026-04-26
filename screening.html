@@ -228,6 +228,9 @@
   .col-hv     { width: 70px; text-align: right; }
   .col-sigs   { min-width: 180px; }
   .col-date   { width: 60px; text-align: center; color: var(--text2); font-size: 11px; }
+  .col-per    { width: 58px; text-align: right; font-size: 11px; }
+  .col-pbr    { width: 48px; text-align: right; font-size: 11px; }
+  .col-mcap   { width: 72px; text-align: right; font-size: 11px; }
   .col-fav    { width: 36px; text-align: center; }
   .fav-btn {
     background: none;
@@ -401,13 +404,16 @@
         <th class="col-close" data-col="close">終値 <span class="sort-icon">↕</span></th>
         <th class="col-date" data-col="price_date">日付 <span class="sort-icon">↕</span></th>
         <th class="col-chg" data-col="change_pct">騰落率 <span class="sort-icon">↕</span></th>
+        <th class="col-per"  data-col="per">PER <span class="sort-icon">↕</span></th>
+        <th class="col-pbr"  data-col="pbr">PBR <span class="sort-icon">↕</span></th>
+        <th class="col-mcap" data-col="market_cap">時価総額 <span class="sort-icon">↕</span></th>
         <th class="col-vol" data-col="volume_avg">出来高(万株) <span class="sort-icon">↕</span></th>
         <th class="col-hv"  data-col="hv">HV(%) <span class="sort-icon">↕</span></th>
         <th class="col-sigs">シグナル</th>
       </tr>
     </thead>
     <tbody id="screeningBody">
-      <tr><td colspan="12" class="empty-msg">データを読み込み中...</td></tr>
+      <tr><td colspan="15" class="empty-msg">データを読み込み中...</td></tr>
     </tbody>
   </table>
 </div>
@@ -658,6 +664,16 @@ function buildRow(r) {
 
   const priceDate = r.price_date ? (() => { const p = r.price_date.slice(0,10); return p.slice(5).replace('-', '/'); })() : '-';
 
+  // PER / PBR / 時価総額
+  const perStr  = r.per  != null ? Number(r.per).toFixed(1)  + '倍' : '-';
+  const pbrStr  = r.pbr  != null ? Number(r.pbr).toFixed(2)  + '倍' : '-';
+  const mcapStr = r.market_cap != null ? (() => {
+    const v = r.market_cap;
+    if (v >= 1e12) return (v/1e12).toFixed(1) + '兆';
+    if (v >= 1e8)  return (v/1e8).toFixed(0)  + '億';
+    return (v/1e4).toFixed(0) + '万';
+  })() : '-';
+
   const isFav = favorites.has(code);
   return `<tr class="clickable" onclick="openStock('${code}')">
     <td class="col-fav"><button class="fav-btn${isFav ? ' active' : ''}" data-code="${code}" onclick="event.stopPropagation();toggleFavorite('${code}',this)">${isFav ? '★' : '☆'}</button></td>
@@ -670,6 +686,9 @@ function buildRow(r) {
     <td class="col-close" style="text-align:right">${close}</td>
     <td class="col-date">${priceDate}</td>
     <td class="col-chg ${chgClass}" style="text-align:right">${chgStr}</td>
+    <td class="col-per"  style="text-align:right;color:var(--text2)">${perStr}</td>
+    <td class="col-pbr"  style="text-align:right;color:var(--text2)">${pbrStr}</td>
+    <td class="col-mcap" style="text-align:right;color:var(--text2)">${mcapStr}</td>
     <td class="col-vol" style="text-align:right">${volStr}</td>
     <td class="col-hv ${hvClass}" style="text-align:right">${hvStr}</td>
     <td class="col-sigs"><div class="sig-tags">${buySigs}${sellSigs}</div></td>
@@ -685,7 +704,7 @@ function openStock(code) {
 
 function renderEmpty(msg) {
   document.getElementById('screeningBody').innerHTML =
-    `<tr><td colspan="12" class="empty-msg">${escHtml(msg)}</td></tr>`;
+    `<tr><td colspan="15" class="empty-msg">${escHtml(msg)}</td></tr>`;
   document.getElementById('countBadge').style.display = 'none';
 }
 

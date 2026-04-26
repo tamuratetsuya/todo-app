@@ -4377,7 +4377,11 @@ def get_screening(
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM screening_cache")
+            cur.execute("""
+                SELECT s.*, c.data AS company_data
+                FROM screening_cache s
+                LEFT JOIN company_info_cache c ON s.code = c.symbol
+            """)
             rows = cur.fetchall()
     finally:
         conn.close()
@@ -4393,6 +4397,11 @@ def get_screening(
             sell_sigs = json.loads(r["sell_signals"] or "[]")
         except Exception:
             buy_sigs = sell_sigs = []
+        cd = {}
+        try:
+            cd = json.loads(r.get("company_data") or "{}")
+        except Exception:
+            pass
         results.append({
             "code":        r["code"],
             "name":        r["name"],
@@ -4412,6 +4421,9 @@ def get_screening(
             "last_signal_buy_score":  r.get("last_signal_buy_score"),
             "last_signal_sell_score": r.get("last_signal_sell_score"),
             "price_date":             str(r["price_date"]) if r.get("price_date") else None,
+            "per":         cd.get("per"),
+            "pbr":         cd.get("pbr"),
+            "market_cap":  cd.get("market_cap"),
         })
 
     results.sort(key=lambda x: (x.get(sort) or 0), reverse=True)
