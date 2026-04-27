@@ -3833,7 +3833,7 @@ function rebuildStockSelect() {
     stockSelect.appendChild(grp);
   }
 
-  const extraCodes = watchCodes.filter(c => !tradeCodes.includes(c));
+  const extraCodes = watchCodes.filter(c => !tradeCodes.some(t => normCode(t) === normCode(c)));
   if (extraCodes.length) {
     const grp = document.createElement('optgroup');
     grp.label = 'ウォッチリスト';
@@ -5982,8 +5982,9 @@ async function sendAiChat() {
     if (_existing) {
       if (_urlName && _urlName !== _urlCode) _existing.name = _urlName;
     } else if (_fromScreening) {
-      // スクリーニングからの遷移時のみwatchStocksに追加
-      watchStocks.push({ code: _urlCode, name: _urlName });
+      // tradesに同じ銘柄（.T有無を無視）がなければwatchStocksに追加
+      const _inTrades = Object.keys(trades).some(t => normCode(t) === normCode(_urlCode));
+      if (!_inTrades) watchStocks.push({ code: _urlCode, name: _urlName });
     }
     localStorage.setItem(WATCH_KEY, JSON.stringify(watchStocks));
     currentSymbol = _urlCode; // rebuildStockSelect前にセットして一時オプションを生成
