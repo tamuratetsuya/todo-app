@@ -3819,13 +3819,15 @@ function rebuildStockSelect() {
   const watchCodes = watchStocks.map(w => w.code);
   stockSelect.innerHTML = '<option value="">— 銘柄を選択 —</option>';
 
+  const dispCode = c => c.replace(/\.T$/i, '');
+
   if (tradeCodes.length) {
     const grp = document.createElement('optgroup');
     grp.label = 'トレード履歴あり';
     for (const code of tradeCodes) {
       const opt = document.createElement('option');
       opt.value = code;
-      opt.textContent = `${stockNames[code] || code} (${code})`;
+      opt.textContent = `${stockNames[code] || dispCode(code)} (${dispCode(code)})`;
       grp.appendChild(opt);
     }
     stockSelect.appendChild(grp);
@@ -3839,10 +3841,18 @@ function rebuildStockSelect() {
       const w = watchStocks.find(w => w.code === code);
       const opt = document.createElement('option');
       opt.value = code;
-      opt.textContent = `${(w && w.name) || code} (${code})`;
+      opt.textContent = `${(w && w.name) || dispCode(code)} (${dispCode(code)})`;
       grp.appendChild(opt);
     }
     stockSelect.appendChild(grp);
+  }
+
+  // リロード等で一時表示中の銘柄がリストにない場合は追加
+  if (currentSymbol && !tradeCodes.includes(currentSymbol) && !watchCodes.includes(currentSymbol)) {
+    const opt = document.createElement('option');
+    opt.value = currentSymbol;
+    opt.textContent = `${stockNames[currentSymbol] || dispCode(currentSymbol)} (${dispCode(currentSymbol)})`;
+    stockSelect.appendChild(opt);
   }
 }
 
@@ -5983,6 +5993,7 @@ async function sendAiChat() {
       watchStocks.push({ code: _urlCode, name: _urlName });
     }
     localStorage.setItem(WATCH_KEY, JSON.stringify(watchStocks));
+    currentSymbol = _urlCode; // rebuildStockSelect前にセットして一時オプションを生成
     rebuildStockSelect();
     selectSymbol(_urlCode);
   } else {
