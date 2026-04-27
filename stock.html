@@ -3525,7 +3525,7 @@ async function loadEventMarkers() {
 
   const today    = new Date();
   const dateFrom = new Date(today);
-  dateFrom.setMonth(dateFrom.getMonth() - 6);
+  dateFrom.setFullYear(dateFrom.getFullYear() - 1);
   const dateTo   = new Date(today);
   dateTo.setDate(dateTo.getDate() + 14);
 

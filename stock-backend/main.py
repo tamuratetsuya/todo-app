@@ -2113,30 +2113,66 @@ def get_events(
             _ib_r = _requests.get(f"https://irbank.net/{code_only}/news", headers=_ib_hdrs, timeout=8)
             if _ib_r.status_code == 200:
                 _ib_text = _ib_r.text
-                _cur_date = None
-                _date_re = _re_ev.compile(r'<td class="lf" colspan="\d+"[^>]*>(\d{4})年(\d+)月(\d+)日</td>')
-                _news_re = _re_ev.compile(r'<a[^>]+title="([^"]+)"[^>]+href="/news/(\d+)"')
-                for _line in _ib_text.split('\n'):
-                    _dm = _date_re.search(_line)
-                    if _dm:
-                        try:
-                            _cur_date = _dt_ev.date(int(_dm.group(1)), int(_dm.group(2)), int(_dm.group(3)))
-                        except Exception:
-                            _cur_date = None
-                    _nm = _news_re.search(_line)
-                    if _nm and _cur_date and d_from <= _cur_date <= d_to:
-                        _full_title = _nm.group(1)
-                        _doc_id = _nm.group(2)
-                        _title = _re_ev.sub(r'^[\w\s]+[、、]', '', _full_title).strip() or _full_title
-                        _title_short = _title[:40] + ("…" if len(_title) > 40 else "")
-                        events.append({
-                            "date":   _cur_date.isoformat(),
-                            "type":   "news",
-                            "title":  _title_short,
-                            "detail": "企業開示（irbank）",
-                            "result": None,
-                            "url":    f"https://irbank.net/news/{_doc_id}",
-                        })
+                # HTML is minified (mostly one long line) — use full-text regex matching
+                # Pattern: date section → news link with text content
+                _pairs = _re_ev.findall(
+                    r'(\d{4})年(\d{1,2})月(\d{1,2})日.{0,3000}?href="/news/([a-zA-Z0-9]+)"[^>]*>([^<]{0,80})',
+                    _ib_text
+                )
+                _seen_ids = set()
+                for _yr, _mo, _dy, _doc_id, _title_raw in _pairs:
+                    if _doc_id in _seen_ids:
+                        continue
+                    _seen_ids.add(_doc_id)
+                    try:
+                        _cur_date = _dt_ev.date(int(_yr), int(_mo), int(_dy))
+                    except Exception:
+                        continue
+                    if not (d_from <= _cur_date <= d_to):
+                        continue
+                    _title = _title_raw.strip()
+                    _title_short = _title[:40] + ("…" if len(_title) > 40 else "")
+                    events.append({
+                        "date":   _cur_date.isoformat(),
+                        "type":   "news",
+                        "title":  _title_short,
+                        "detail": "企業開示（irbank）",
+                        "result": None,
+                        "url":    f"https://irbank.net/news/{_doc_id}",
+                    })
+    except Exception:
+        pass
+
+    # --- news_cache DB（過去にニュースタブで取得済みの記事をマーカーに追加）---
+    try:
+        _news_conn = get_conn()
+        with _news_conn.cursor() as _nc:
+            _d_from_ms = int(d_from.strftime('%s')) * 1000
+            _d_to_ms   = int(d_to.strftime('%s')) * 1000
+            _nc.execute(
+                "SELECT title_ja, title, published, source, url FROM news_cache "
+                "WHERE symbol=%s AND published BETWEEN %s AND %s ORDER BY published DESC LIMIT 50",
+                (symbol, _d_from_ms, _d_to_ms)
+            )
+            for _row in _nc.fetchall():
+                if not _row["published"]:
+                    continue
+                try:
+                    _pub_date = _dt_ev.date.fromtimestamp(_row["published"] / 1000)
+                except Exception:
+                    continue
+                _t = (_row["title_ja"] or _row["title"] or "")[:40]
+                if not _t:
+                    continue
+                events.append({
+                    "date":   _pub_date.isoformat(),
+                    "type":   "news",
+                    "title":  _t + ("…" if len(_row["title_ja"] or _row["title"] or "") > 40 else ""),
+                    "detail": _row.get("source") or "ニュース",
+                    "result": None,
+                    "url":    _row.get("url") or None,
+                })
+        _news_conn.close()
     except Exception:
         pass
 
