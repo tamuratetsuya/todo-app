@@ -2101,6 +2101,47 @@ def get_events(
         except Exception:
             pass
 
+        # Calendar（次回の決算・配当落ち日 — yfinance で最も確実な未来日程ソース）
+        try:
+            cal = ticker.calendar
+            if cal:
+                _cal_earnings = cal.get("Earnings Date")
+                if _cal_earnings:
+                    if not isinstance(_cal_earnings, list):
+                        _cal_earnings = [_cal_earnings]
+                    for _ed in _cal_earnings:
+                        try:
+                            _d = _ed if isinstance(_ed, date) else date.fromisoformat(str(_ed)[:10])
+                            if d_from <= _d <= d_to:
+                                # earnings_dates と重複しないよう確認
+                                if not any(e["type"] == "company" and e["title"] == "決算発表" and e["date"] == _d.isoformat() for e in events):
+                                    events.append({
+                                        "date":   _d.isoformat(),
+                                        "type":   "company",
+                                        "title":  "決算発表",
+                                        "detail": "決算発表予定",
+                                        "result": None,
+                                    })
+                        except Exception:
+                            pass
+                _cal_div = cal.get("Ex-Dividend Date")
+                if _cal_div:
+                    try:
+                        _d = _cal_div if isinstance(_cal_div, date) else date.fromisoformat(str(_cal_div)[:10])
+                        if d_from <= _d <= d_to:
+                            if not any(e["type"] == "company" and e["title"] == "配当落ち日" and e["date"] == _d.isoformat() for e in events):
+                                events.append({
+                                    "date":   _d.isoformat(),
+                                    "type":   "company",
+                                    "title":  "配当落ち日",
+                                    "detail": "配当落ち日予定",
+                                    "result": None,
+                                })
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     except Exception:
         pass
 
