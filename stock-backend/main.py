@@ -3279,6 +3279,80 @@ def get_company_info(symbol: str = Query(...)):
     return result
 
 
+@app.get("/company_financials")
+def get_company_financials(symbol: str = Query(...)):
+    """スクリーニング用: PER/PBR/時価総額をキャッシュまたはyfinanceから高速取得（スクレイピングなし）"""
+    code = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
+    conn = get_conn()
+    # キャッシュ確認
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data, updated_at FROM company_info_cache WHERE symbol=%s", (code,))
+            row = cur.fetchone()
+            if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 86400:
+                cached = json.loads(row["data"])
+                if cached.get("per") is not None or cached.get("pbr") is not None or cached.get("market_cap") is not None:
+                    return {"per": cached.get("per"), "pbr": cached.get("pbr"), "market_cap": cached.get("market_cap")}
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+    result = {"per": None, "pbr": None, "market_cap": None}
+    try:
+        import yfinance as yf
+        info = yf.Ticker(f"{code}.T").info or {}
+        result["market_cap"] = info.get("marketCap")
+        result["per"]        = info.get("trailingPE") or info.get("forwardPE")
+        result["pbr"]        = info.get("priceToBook")
+    except Exception:
+        pass
+
+    # みんかぶ補完 (PER/PBRがyfinanceで取れなかった場合)
+    if not result.get("per") or not result.get("pbr"):
+        try:
+            from bs4 import BeautifulSoup
+            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+            resp2 = _requests.get(f"https://minkabu.jp/stock/{code}", headers=headers, timeout=10)
+            soup2 = BeautifulSoup(resp2.text, "html.parser")
+            for row2 in soup2.find_all(["tr", "div", "li"]):
+                txt = row2.get_text(" ", strip=True)
+                if "PER" in txt and not result.get("per"):
+                    m = _re.search(r'PER[^\d]*([\d.]+)', txt)
+                    if m: result["per"] = float(m.group(1))
+                if "PBR" in txt and not result.get("pbr"):
+                    m = _re.search(r'PBR[^\d]*([\d.]+)', txt)
+                    if m: result["pbr"] = float(m.group(1))
+                if result.get("per") and result.get("pbr"): break
+        except Exception:
+            pass
+
+    # キャッシュ更新（既存エントリがあればPER/PBR/market_capだけ上書き）
+    try:
+        conn3 = get_conn()
+        with conn3.cursor() as cur:
+            cur.execute("SELECT data FROM company_info_cache WHERE symbol=%s", (code,))
+            row3 = cur.fetchone()
+            if row3:
+                existing = json.loads(row3["data"])
+                existing.update({k: v for k, v in result.items() if v is not None})
+                cur.execute(
+                    "UPDATE company_info_cache SET data=%s, updated_at=NOW() WHERE symbol=%s",
+                    (json.dumps(existing, ensure_ascii=False), code)
+                )
+            else:
+                cur.execute(
+                    "INSERT IGNORE INTO company_info_cache (symbol, data) VALUES (%s, %s)",
+                    (code, json.dumps(result, ensure_ascii=False))
+                )
+        conn3.commit()
+        conn3.close()
+    except Exception:
+        pass
+
+    return result
+
+
 @app.get("/financials")
 def get_financials(symbol: str = Query(...)):
     """みんかぶから四半期・年次財務データを取得"""

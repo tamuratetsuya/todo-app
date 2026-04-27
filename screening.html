@@ -631,6 +631,10 @@ function renderTable() {
 
   document.getElementById('countBadge').style.display = '';
   document.getElementById('countBadge').textContent = `${filteredData.length}件`;
+
+  // PER/PBR/時価総額が未取得の銘柄をバックグラウンドで取得
+  const missing = rows.filter(r => r.per == null && r.pbr == null && r.market_cap == null).map(r => r.code);
+  if (missing.length) fetchFinancialsBatch(missing);
 }
 
 function buildRow(r) {
@@ -686,13 +690,54 @@ function buildRow(r) {
     <td class="col-close" style="text-align:right">${close}</td>
     <td class="col-date">${priceDate}</td>
     <td class="col-chg ${chgClass}" style="text-align:right">${chgStr}</td>
-    <td class="col-per"  style="text-align:right;color:var(--text2)">${perStr}</td>
-    <td class="col-pbr"  style="text-align:right;color:var(--text2)">${pbrStr}</td>
-    <td class="col-mcap" style="text-align:right;color:var(--text2)">${mcapStr}</td>
+    <td class="col-per"  id="per-${code}"  style="text-align:right;color:var(--text2)">${perStr}</td>
+    <td class="col-pbr"  id="pbr-${code}"  style="text-align:right;color:var(--text2)">${pbrStr}</td>
+    <td class="col-mcap" id="mcap-${code}" style="text-align:right;color:var(--text2)">${mcapStr}</td>
     <td class="col-vol" style="text-align:right">${volStr}</td>
     <td class="col-hv ${hvClass}" style="text-align:right">${hvStr}</td>
     <td class="col-sigs"><div class="sig-tags">${buySigs}${sellSigs}</div></td>
   </tr>`;
+}
+
+let _finBatchTimer = null;
+async function fetchFinancialsBatch(codes) {
+  clearTimeout(_finBatchTimer);
+  const BATCH = 6;
+  const DELAY = 400; // ms between batches
+
+  for (let i = 0; i < codes.length; i += BATCH) {
+    const batch = codes.slice(i, i + BATCH);
+    await Promise.all(batch.map(async code => {
+      try {
+        const res = await fetch(`${API}/company_financials?symbol=${encodeURIComponent(code)}`);
+        if (!res.ok) return;
+        const d = await res.json();
+        // allDataのレコードを更新
+        const rec = allData.find(r => r.code === code);
+        if (rec) {
+          if (d.per != null) rec.per = d.per;
+          if (d.pbr != null) rec.pbr = d.pbr;
+          if (d.market_cap != null) rec.market_cap = d.market_cap;
+        }
+        // セルをDOMに直接反映（再描画不要）
+        const fmtPer  = d.per  != null ? Number(d.per).toFixed(1) + '倍' : '-';
+        const fmtPbr  = d.pbr  != null ? Number(d.pbr).toFixed(2) + '倍' : '-';
+        const fmtMcap = d.market_cap != null ? (() => {
+          const v = d.market_cap;
+          if (v >= 1e12) return (v/1e12).toFixed(1) + '兆';
+          if (v >= 1e8)  return (v/1e8).toFixed(0)  + '億';
+          return (v/1e4).toFixed(0) + '万';
+        })() : '-';
+        const elPer  = document.getElementById(`per-${code}`);
+        const elPbr  = document.getElementById(`pbr-${code}`);
+        const elMcap = document.getElementById(`mcap-${code}`);
+        if (elPer)  elPer.textContent  = fmtPer;
+        if (elPbr)  elPbr.textContent  = fmtPbr;
+        if (elMcap) elMcap.textContent = fmtMcap;
+      } catch(e) {}
+    }));
+    if (i + BATCH < codes.length) await new Promise(r => setTimeout(r, DELAY));
+  }
 }
 
 function openStock(code) {
