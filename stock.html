@@ -3717,6 +3717,7 @@ function esc(s) {
 function selectSymbol(code) {
   currentSymbol = code;
   stockSelect.value = code;
+  history.replaceState(null, '', '?code=' + encodeURIComponent(code));
   aiSignals = [];  // 銘柄変更時にシグナルリセット
   xLoadedSymbol = ''; holdersLoadedSymbol = ''; financialsLoadedSymbol = ''; analystLoadedSymbol = ''; companyLoadedSymbol = '';
   aiChatSymbol = ''; aiChatInited = false; aiChatHistory = []; aiChatAnalyst = {};
