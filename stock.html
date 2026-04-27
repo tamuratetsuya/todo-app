@@ -3815,7 +3815,11 @@ modalName.addEventListener('keydown', e => { if (e.key === 'Enter') submitAddSto
 
 // ===== STOCK SELECTOR =====
 function rebuildStockSelect() {
-  const tradeCodes = Object.keys(trades).filter(c => !watchStocks.find(w => w.code === c) || (trades[c] && trades[c].length > 0));
+  const _seenTrade = new Set();
+  const tradeCodes = Object.keys(trades)
+    .filter(c => !watchStocks.find(w => w.code === c) || (trades[c] && trades[c].length > 0))
+    .sort()
+    .filter(c => { const n = normCode(c); if (_seenTrade.has(n)) return false; _seenTrade.add(n); return true; });
   const watchCodes = watchStocks.map(w => w.code);
   stockSelect.innerHTML = '<option value="">— 銘柄を選択 —</option>';
 

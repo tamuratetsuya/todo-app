@@ -2104,6 +2104,42 @@ def get_events(
     except Exception:
         pass
 
+    # --- irbank 企業開示ニュース（チャートマーカー用）---
+    try:
+        import re as _re_ev, datetime as _dt_ev
+        code_only = symbol.replace(".T", "").replace(".OS", "")
+        if code_only.isdigit():
+            _ib_hdrs = {"User-Agent": "Mozilla/5.0 (compatible)"}
+            _ib_r = _requests.get(f"https://irbank.net/{code_only}/news", headers=_ib_hdrs, timeout=8)
+            if _ib_r.status_code == 200:
+                _ib_text = _ib_r.text
+                _cur_date = None
+                _date_re = _re_ev.compile(r'<td class="lf" colspan="\d+"[^>]*>(\d{4})年(\d+)月(\d+)日</td>')
+                _news_re = _re_ev.compile(r'<a[^>]+title="([^"]+)"[^>]+href="/news/(\d+)"')
+                for _line in _ib_text.split('\n'):
+                    _dm = _date_re.search(_line)
+                    if _dm:
+                        try:
+                            _cur_date = _dt_ev.date(int(_dm.group(1)), int(_dm.group(2)), int(_dm.group(3)))
+                        except Exception:
+                            _cur_date = None
+                    _nm = _news_re.search(_line)
+                    if _nm and _cur_date and d_from <= _cur_date <= d_to:
+                        _full_title = _nm.group(1)
+                        _doc_id = _nm.group(2)
+                        _title = _re_ev.sub(r'^[\w\s]+[、、]', '', _full_title).strip() or _full_title
+                        _title_short = _title[:40] + ("…" if len(_title) > 40 else "")
+                        events.append({
+                            "date":   _cur_date.isoformat(),
+                            "type":   "news",
+                            "title":  _title_short,
+                            "detail": "企業開示（irbank）",
+                            "result": None,
+                            "url":    f"https://irbank.net/news/{_doc_id}",
+                        })
+    except Exception:
+        pass
+
     # --- BOJ events ---
     _monex = "https://mst.monex.co.jp/pc/servlet/ITS/report/EconomyIndexCalendar"
     for m in BOJ_MEETINGS:
