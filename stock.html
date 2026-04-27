@@ -1059,32 +1059,36 @@
   .event-marker.type-us_econ { color: #3fb950; }
   .event-marker.type-news    { color: #f59e0b; top: 16px; }
 
-  /* 未来の決算・配当落ち：チャート上部バッジバー */
-  #upcomingEventsBar {
+  /* 未来の決算・配当落ち：日付位置に固定バッジ */
+  .upcoming-ev-badge {
     position: absolute;
     top: 6px;
-    left: 50%;
     transform: translateX(-50%);
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    z-index: 10;
-    pointer-events: none;
-  }
-  .upcoming-ev-badge {
     background: #818cf8;
     color: #fff;
     font-size: 10px;
     font-weight: 700;
-    padding: 3px 9px;
+    padding: 3px 8px;
     border-radius: 4px;
     white-space: nowrap;
     box-shadow: 0 2px 8px rgba(129,140,248,0.5);
     animation: pulse-ev 2.4s ease-in-out infinite;
     pointer-events: auto;
     cursor: default;
+    z-index: 10;
+  }
+  .upcoming-ev-badge::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    transform: translateX(-50%);
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #818cf8;
   }
   .upcoming-ev-badge.div-ev { background: #e879f9; box-shadow: 0 2px 8px rgba(232,121,249,0.5); }
+  .upcoming-ev-badge.div-ev::after { border-top-color: #e879f9; }
   @keyframes pulse-ev {
     0%, 100% { opacity: 1; }
     50%       { opacity: 0.65; }
@@ -3520,30 +3524,67 @@ function drawEventMarkers() {
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  // 未来の会社イベント（決算・配当）をチャート上部バッジバーに表示
   const upcomingBar = document.getElementById('upcomingEventsBar');
-  if (upcomingBar) {
-    upcomingBar.innerHTML = '';
-    const futureCompany = eventData
-      .filter(ev => ev.type === 'company' && ev.date >= todayStr)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    for (const ev of futureCompany) {
-      const badge = document.createElement('div');
+  if (upcomingBar) upcomingBar.innerHTML = '';
+
+  // バー幅を最後の2本から推定（ズーム変化に追従）
+  let _barPx = 8;
+  if (candleData.length >= 2) {
+    const _xA = chart.timeScale().timeToCoordinate(candleData[candleData.length - 2].time);
+    const _xB = chart.timeScale().timeToCoordinate(candleData[candleData.length - 1].time);
+    if (_xA !== null && _xB !== null) _barPx = Math.abs(_xB - _xA);
+  }
+  const _lastCandle = candleData.length ? candleData[candleData.length - 1] : null;
+  const _lastX = _lastCandle ? chart.timeScale().timeToCoordinate(_lastCandle.time) : null;
+
+  // 未来日付の x 座標を取得（timeToCoordinate → null なら最終バーから外挿）
+  function _futureX(dateStr) {
+    const x = chart.timeScale().timeToCoordinate(dateStr);
+    if (x !== null && x !== undefined) return x;
+    if (_lastX === null || !_lastCandle) return null;
+    const msPerDay = 86400000;
+    const daysDiff = (new Date(dateStr) - new Date(_lastCandle.time)) / msPerDay;
+    const tradingDays = daysDiff * 5 / 7; // 週末を除いた概算
+    return _lastX + tradingDays * _barPx;
+  }
+
+  for (const ev of eventData) {
+    const isFutureCompany = ev.type === 'company' && ev.date >= todayStr;
+
+    // 未来の決算・配当は正しいx位置にバッジとして表示
+    if (isFutureCompany) {
+      const x = _futureX(ev.date);
+      if (x === null) continue;
       const isDividend = ev.title.includes('配当');
+      const badge = document.createElement('div');
       badge.className = 'upcoming-ev-badge' + (isDividend ? ' div-ev' : '');
       const label = ev.title.includes('配当') ? '配当落' :
                     ev.title.includes('決算') ? '決算'   :
                     ev.title.includes('分割') ? '分割'   : ev.title.slice(0, 4);
       const [, mm, dd] = ev.date.split('-');
       badge.textContent = `${label} ${parseInt(mm)}/${parseInt(dd)}`;
-      badge.title = `${ev.title} (${ev.date})${ev.detail ? '\n' + ev.detail : ''}`;
-      upcomingBar.appendChild(badge);
+      badge.title = `${ev.title}（${ev.date}）`;
+      badge.style.left = x + 'px';
+      badge.addEventListener('mouseenter', () => {
+        clearTimeout(_evHideTimer);
+        eventTooltip.innerHTML = `<div class="ev-title">${ev.title}</div><div class="ev-detail">${ev.date}</div>${ev.detail ? `<div class="ev-detail">${ev.detail}</div>` : ''}`;
+        eventTooltip.className = `type-${ev.type}`;
+        const rect = chartContainer.getBoundingClientRect();
+        let left = rect.left + x + 12;
+        eventTooltip.style.display = 'block';
+        const tw = eventTooltip.offsetWidth;
+        if (left + tw > window.innerWidth - 8) left = rect.left + x - tw - 12;
+        eventTooltip.style.left = left + 'px';
+        eventTooltip.style.top = (rect.top + 36) + 'px';
+      });
+      badge.addEventListener('mouseleave', () => {
+        _evHideTimer = setTimeout(() => { eventTooltip.style.display = 'none'; }, 150);
+      });
+      eventMarkerLayer.appendChild(badge);
+      continue;
     }
-  }
 
-  // 過去のイベントはチャートマーカー（三角）として描画
-  for (const ev of eventData) {
-    if (ev.type === 'company' && ev.date >= todayStr) continue; // 未来はバッジバーで表示済み
+    // 過去のイベントはチャートマーカー（三角）として描画
     const x = chart.timeScale().timeToCoordinate(ev.date);
     if (x === null || x === undefined) continue;
 
