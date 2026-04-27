@@ -1059,41 +1059,35 @@
   .event-marker.type-us_econ { color: #3fb950; }
   .event-marker.type-news    { color: #f59e0b; top: 16px; }
 
-  /* 未来の配当落ち日・決算発表：ラベル形式 */
-  .event-marker.upcoming-company {
-    width: auto !important;
-    height: auto !important;
-    border-left: none !important;
-    border-right: none !important;
-    border-top: none !important;
+  /* 未来の決算・配当落ち：チャート上部バッジバー */
+  #upcomingEventsBar {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .upcoming-ev-badge {
     background: #818cf8;
-    border-radius: 4px;
     color: #fff;
     font-size: 10px;
     font-weight: 700;
-    line-height: 1.4;
-    padding: 2px 7px;
-    top: 2px;
-    transform: translateX(-50%);
+    padding: 3px 9px;
+    border-radius: 4px;
     white-space: nowrap;
-    box-shadow: 0 2px 10px rgba(129,140,248,0.6);
+    box-shadow: 0 2px 8px rgba(129,140,248,0.5);
     animation: pulse-ev 2.4s ease-in-out infinite;
+    pointer-events: auto;
+    cursor: default;
   }
-  .event-marker.upcoming-company::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 100%;
-    transform: translateX(-50%);
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 6px solid #818cf8;
-  }
-  .event-marker.upcoming-company.div-event  { background: #e879f9; box-shadow: 0 2px 10px rgba(232,121,249,0.6); }
-  .event-marker.upcoming-company.div-event::after  { border-top-color: #e879f9; }
+  .upcoming-ev-badge.div-ev { background: #e879f9; box-shadow: 0 2px 8px rgba(232,121,249,0.5); }
   @keyframes pulse-ev {
-    0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
-    50%       { opacity: 0.75; transform: translateX(-50%) scale(0.95); }
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.65; }
   }
 
   #eventTooltip {
@@ -1295,6 +1289,7 @@
       <div id="patternTooltip"></div>
       <div id="refreshBadge" style="position:absolute;bottom:8px;right:8px;z-index:100;font-size:10px;color:var(--text2);background:rgba(13,17,23,0.7);padding:2px 7px;border-radius:4px;pointer-events:none;"></div>
       <div id="indTooltip"></div>
+      <div id="upcomingEventsBar"></div>
       <div id="eventMarkerLayer"></div>
       <div id="eventTooltip"></div>
       <div id="noDataMsg">
@@ -3515,6 +3510,8 @@ function clearEventMarkers() {
   eventMarkerLayer.innerHTML = '';
   eventData = [];
   eventTooltip.style.display = 'none';
+  const bar = document.getElementById('upcomingEventsBar');
+  if (bar) bar.innerHTML = '';
 }
 
 function drawEventMarkers() {
@@ -3523,24 +3520,35 @@ function drawEventMarkers() {
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  for (const ev of eventData) {
-    const x = chart.timeScale().timeToCoordinate(ev.date);
-    if (x === null || x === undefined) continue;
-
-    const marker = document.createElement('div');
-    const isFutureCompany = ev.type === 'company' && ev.date >= todayStr;
-
-    if (isFutureCompany) {
+  // 未来の会社イベント（決算・配当）をチャート上部バッジバーに表示
+  const upcomingBar = document.getElementById('upcomingEventsBar');
+  if (upcomingBar) {
+    upcomingBar.innerHTML = '';
+    const futureCompany = eventData
+      .filter(ev => ev.type === 'company' && ev.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    for (const ev of futureCompany) {
+      const badge = document.createElement('div');
       const isDividend = ev.title.includes('配当');
-      marker.className = 'event-marker upcoming-company' + (isDividend ? ' div-event' : '');
+      badge.className = 'upcoming-ev-badge' + (isDividend ? ' div-ev' : '');
       const label = ev.title.includes('配当') ? '配当落' :
                     ev.title.includes('決算') ? '決算'   :
                     ev.title.includes('分割') ? '分割'   : ev.title.slice(0, 4);
       const [, mm, dd] = ev.date.split('-');
-      marker.textContent = `${label} ${parseInt(mm)}/${parseInt(dd)}`;
-    } else {
-      marker.className = `event-marker type-${ev.type}`;
+      badge.textContent = `${label} ${parseInt(mm)}/${parseInt(dd)}`;
+      badge.title = `${ev.title} (${ev.date})${ev.detail ? '\n' + ev.detail : ''}`;
+      upcomingBar.appendChild(badge);
     }
+  }
+
+  // 過去のイベントはチャートマーカー（三角）として描画
+  for (const ev of eventData) {
+    if (ev.type === 'company' && ev.date >= todayStr) continue; // 未来はバッジバーで表示済み
+    const x = chart.timeScale().timeToCoordinate(ev.date);
+    if (x === null || x === undefined) continue;
+
+    const marker = document.createElement('div');
+    marker.className = `event-marker type-${ev.type}`;
     marker.style.left = x + 'px';
 
     marker.addEventListener('mouseenter', () => {
