@@ -3734,6 +3734,11 @@ function selectSymbol(code) {
 // ===== WATCH STOCKS (trade履歴なしで追加した銘柄) =====
 const WATCH_KEY = 'stockWatchList';
 let watchStocks = JSON.parse(localStorage.getItem(WATCH_KEY) || '[]'); // [{code, name}]
+// tradesと重複するエントリ（.T有無違い含む）を除去
+watchStocks = watchStocks.filter(w => !Object.keys(trades).some(t => normCode(t) === normCode(w.code)));
+// watchStocks内の重複も除去
+watchStocks = watchStocks.filter((w, i, arr) => arr.findIndex(x => normCode(x.code) === normCode(w.code)) === i);
+localStorage.setItem(WATCH_KEY, JSON.stringify(watchStocks));
 
 const addStockModal = document.getElementById('addStockModal');
 const modalCode     = document.getElementById('modalCode');
