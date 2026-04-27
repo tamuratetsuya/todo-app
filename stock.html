@@ -3847,13 +3847,6 @@ function rebuildStockSelect() {
     stockSelect.appendChild(grp);
   }
 
-  // リロード等で一時表示中の銘柄がリストにない場合は追加
-  if (currentSymbol && !tradeCodes.includes(currentSymbol) && !watchCodes.includes(currentSymbol)) {
-    const opt = document.createElement('option');
-    opt.value = currentSymbol;
-    opt.textContent = `${stockNames[currentSymbol] || dispCode(currentSymbol)} (${dispCode(currentSymbol)})`;
-    stockSelect.appendChild(opt);
-  }
 }
 
 stockSelect.addEventListener('change', () => {
