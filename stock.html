@@ -5972,12 +5972,14 @@ async function sendAiChat() {
   const _urlCode = _urlCodeRaw && /^[0-9A-Z]{4,5}$/i.test(_urlCodeRaw) && !_urlCodeRaw.includes('.') ? _urlCodeRaw + '.T' : _urlCodeRaw;
   if (_urlCode) {
     const _urlName = _urlParams.get('name') || _urlCode;
+    const _fromScreening = !!_urlParams.get('name'); // nameがある＝スクリーニングからの遷移
     if (!trades[_urlCode]) trades[_urlCode] = [];
     if (!stockNames[_urlCode]) stockNames[_urlCode] = _urlName;
     const _existing = watchStocks.find(w => w.code === _urlCode);
     if (_existing) {
       if (_urlName && _urlName !== _urlCode) _existing.name = _urlName;
-    } else {
+    } else if (_fromScreening) {
+      // スクリーニングからの遷移時のみwatchStocksに追加
       watchStocks.push({ code: _urlCode, name: _urlName });
     }
     localStorage.setItem(WATCH_KEY, JSON.stringify(watchStocks));
