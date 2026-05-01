@@ -20,9 +20,9 @@ EC2_FAIL_THRESH   = 3   # EC2ステータスチェックNG: 3回でリブート
 
 
 HTTP_CHECKS = [
-    ("nginx",   "https://stock.golfspace.jp/stock.html",              8),
-    ("stock",   "https://stock.golfspace.jp/api/stock/candles?symbol=7203.T&interval=1d", 10),
-    ("calendar","https://calendar.golfspace.jp/api/calendar/events",  10),
+    ("nginx",   "http://57.182.38.255/stock.html",              8),
+    ("stock",   "http://57.182.38.255/api/stock/candles?symbol=7203.T&interval=1d", 10),
+    ("calendar","http://57.182.38.255/api/calendar/events",  10),
 ]
 
 
