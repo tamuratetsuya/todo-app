@@ -3202,7 +3202,7 @@ def chat(req: ChatRequest):
         conn = get_conn()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT title_ja, title, published, source FROM news_cache WHERE symbol=%s ORDER BY published DESC LIMIT 5",
+                "SELECT title_ja, title, published, source FROM news_cache WHERE symbol=%s ORDER BY published DESC LIMIT 10",
                 (req.symbol,)
             )
             news_rows = cur.fetchall()

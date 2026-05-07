@@ -5947,6 +5947,9 @@ function initAiChat() {
     .then(d => { aiChatAnalyst = d; })
     .catch(() => {});
 
+  // ニュースキャッシュをバックグラウンドで最新化（チャットのシステムプロンプトに使われる）
+  fetch(`${API}/news?symbol=${encodeURIComponent(currentSymbol)}`).catch(() => {});
+
   // DB から履歴を復元
   fetch(`${API}/chat/history?symbol=${encodeURIComponent(currentSymbol)}`)
     .then(r => r.ok ? r.json() : [])
