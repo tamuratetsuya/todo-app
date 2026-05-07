@@ -3243,7 +3243,7 @@ def chat(req: ChatRequest):
 
     system += "\nユーザーの質問に日本語で答えてください。上記の株価・アナリスト情報を積極的に活用し、さらにGoogle検索で最新ニュース・決算・業績情報も調べて具体的に回答してください。投資判断はユーザー自身が行うものとし、参考情報として回答してください。"
 
-    GEMINI_API_KEY = "AIzaSyCYfRpjScAdGw5d_aZB82TmZm5FfvpT93w"
+    GEMINI_API_KEY = "AIzaSyDJ95N8brTHePOIaTJAKp9Eczbu7Nl_uNU"
     try:
         # Gemini形式のメッセージに変換
         contents = []
