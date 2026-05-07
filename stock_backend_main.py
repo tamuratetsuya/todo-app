@@ -3282,6 +3282,36 @@ def chat(req: ChatRequest):
         raise HTTPException(500, str(e))
 
 
+@app.get("/stockname")
+def get_stock_name(symbol: str = Query(...)):
+    """銘柄コードから会社名を返す（prime_stocks優先、なければyfinance）"""
+    conn = get_conn()
+    try:
+        # 4桁コード → prime_stocks で検索
+        code_only = symbol.replace(".T", "").replace(".OS", "")
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM prime_stocks WHERE code=%s", (code_only,))
+            row = cur.fetchone()
+        if row and row["name"]:
+            return {"name": row["name"]}
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+    # yfinance fallback
+    try:
+        # 数字のみのコードは日本株として .T を付与
+        sym = f"{symbol}.T" if symbol.isdigit() else symbol
+        info = yf.Ticker(sym).info or {}
+        name = info.get("longName") or info.get("shortName") or ""
+        if name:
+            return {"name": name}
+    except Exception:
+        pass
+    return {"name": symbol}
+
+
 @app.get("/candles")
 def get_candles(symbol: str = Query(...), interval: str = Query("1d")):
     if interval not in INTERVALS:

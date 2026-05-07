@@ -1508,7 +1508,17 @@ async function loadFavorites() {
       const prev = JSON.stringify(favorites);
       const data = await res.json();
       favorites = data.map(d => typeof d === 'string' ? {code: normCode(d), name: d} : {code: normCode(d.code), name: d.name});
+      // stockNamesに反映（既に名前があれば優先）
+      for (const f of favorites) {
+        if (!stockNames[f.code] || stockNames[f.code] === f.code) {
+          stockNames[f.code] = stockNames[f.code + '.T'] || f.name;
+        }
+      }
       if (JSON.stringify(favorites) !== prev) renderPnl();
+      // 名前がコードのままの銘柄を非同期補完
+      for (const f of favorites) {
+        if (!f.name || f.name === f.code) fetchAndSetStockName(f.code);
+      }
     }
   } catch(e) {}
 }
@@ -3902,6 +3912,26 @@ function submitAddStock() {
   rebuildStockSelect();
   closeAddStockModal();
   selectSymbol(code);
+  // 名前が未入力の場合、バックエンドから自動取得
+  if (!label) fetchAndSetStockName(code);
+}
+
+async function fetchAndSetStockName(code) {
+  try {
+    const res = await fetch(`${API}/stockname?symbol=${encodeURIComponent(code)}`);
+    if (!res.ok) return;
+    const d = await res.json();
+    const nc = normCode(code);
+    if (d.name && d.name !== code && d.name !== nc) {
+      stockNames[code] = d.name;
+      const w = watchStocks.find(w => w.code === code);
+      if (w) { w.name = d.name; localStorage.setItem(WATCH_KEY, JSON.stringify(watchStocks)); }
+      const fav = favorites.find(f => f.code === nc);
+      if (fav) fav.name = d.name;
+      rebuildStockSelect();
+      renderPnl();
+    }
+  } catch(e) {}
 }
 
 // モーダル外クリックで閉じる
@@ -6078,6 +6108,13 @@ async function sendAiChat() {
 
   rebuildStockSelect();
   renderPnl();
+
+  // 名前がコードのままのwatchStocksを非同期で補完
+  for (const w of watchStocks) {
+    if (!w.name || w.name === w.code || w.name === normCode(w.code)) {
+      fetchAndSetStockName(w.code);
+    }
+  }
 
   // URLパラメータで銘柄指定（スクリーニングページから遷移）
   const _urlParams = new URLSearchParams(location.search);
