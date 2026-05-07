@@ -2187,12 +2187,16 @@ def get_news(symbol: str = Query(...)):
                     published = None
                     if hasattr(entry, 'published_parsed') and entry.published_parsed:
                         published = cal_mod.timegm(entry.published_parsed) * 1000
+                    raw_summary = entry.get("summary", "") or ""
+                    # feedparserのsummaryはHTMLタグを含むことがあるので除去
+                    import re as _re
+                    clean_summary = _re.sub(r'<[^>]+>', '', raw_summary).strip()[:500]
                     results.append({
                         "url": u,
                         "title": entry.get("title", ""),
                         "published": published,
                         "source": entry.get("source", {}).get("title", "Google News") if hasattr(entry.get("source", {}), "get") else "Google News",
-                        "summary_ja": None,
+                        "summary_ja": clean_summary if lang == "ja" and clean_summary else None,
                         "title_ja": entry.get("title", "") if lang == "ja" else None,
                     })
             except Exception:
@@ -3232,20 +3236,27 @@ def chat(req: ChatRequest):
         if req.analyst.get("kabuka") and req.analyst["kabuka"].get("avg"):
             system += f"kabuka.jp.net平均: {req.analyst['kabuka']['avg']}円\n"
 
-    system += "\nユーザーの質問に日本語で答えてください。上記の株価・ニュース・アナリスト情報を積極的に活用して具体的に回答してください。投資判断はユーザー自身が行うものとし、参考情報として回答してください。"
+    system += "\nユーザーの質問に日本語で答えてください。上記の株価・アナリスト情報を積極的に活用し、さらにGoogle検索で最新ニュース・決算・業績情報も調べて具体的に回答してください。投資判断はユーザー自身が行うものとし、参考情報として回答してください。"
 
+    GEMINI_API_KEY = "AIzaSyCYfRpjScAdGw5d_aZB82TmZm5FfvpT93w"
     try:
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 1024,
-            "system": system,
-            "messages": req.messages
-        })
-        resp = boto3.client("bedrock-runtime", region_name="us-east-1").invoke_model(
-            modelId="us.anthropic.claude-haiku-4-5-20251001-v1:0",
-            body=body, contentType="application/json", accept="application/json"
-        )
-        text = json.loads(resp["body"].read())["content"][0]["text"]
+        # Gemini形式のメッセージに変換
+        contents = []
+        for msg in req.messages:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+
+        payload = {
+            "system_instruction": {"parts": [{"text": system}]},
+            "contents": contents,
+            "tools": [{"google_search": {}}],
+            "generationConfig": {"maxOutputTokens": 1500, "temperature": 0.7}
+        }
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+        gemini_resp = _requests.post(url, json=payload, timeout=30)
+        gemini_resp.raise_for_status()
+        data = gemini_resp.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
 
         # ユーザー発言と返答をDBに保存
         try:
