@@ -2347,6 +2347,7 @@ def _parse_ih_df(df):
 
 def _scrape_minkabu_picks(code: str) -> list:
     """みんかぶの株価予想（ピック）一覧をスクレイピングして返す"""
+    code = code.replace(".T", "").replace(".OS", "")
     url = f"https://minkabu.jp/stock/{code}/pick"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0"}
     r = _requests.get(url, headers=headers, timeout=12)
@@ -2606,6 +2607,7 @@ def _scrape_all_analyst(symbol: str) -> dict:
 
 def _scrape_kabuyoho_analyst(code: str) -> dict:
     """株予報Pro アナリスト目標株価ページをスクレイピング"""
+    code = code.replace(".T", "").replace(".OS", "")
     url = f"https://kabuyoho.jp/reportTarget?bcode={code}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -2675,6 +2677,7 @@ def _scrape_kabuyoho_analyst(code: str) -> dict:
 
 def _scrape_kabuka_analyst(code: str) -> dict:
     """目標株価まとめ (kabuka.jp.net) をスクレイピング"""
+    code = code.replace(".T", "").replace(".OS", "")
     url = f"https://www.kabuka.jp.net/rating/{code}.html"
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -2815,6 +2818,7 @@ def _scrape_kabuka_analyst(code: str) -> dict:
 
 
 def _scrape_minkabu_analyst(code: str) -> dict:
+    code = code.replace(".T", "").replace(".OS", "")
     """みんかぶ アナリストコンセンサスページをスクレイピング"""
     url = f"https://minkabu.jp/stock/{code}/analyst_consensus"
     headers = {
@@ -2921,6 +2925,7 @@ def get_financials(symbol: str = Query(...)):
 
 def _scrape_minkabu_financials(symbol: str) -> dict:
     """みんかぶ決算ページをスクレイピングして四半期・年次データを返す"""
+    symbol = symbol.replace(".T", "").replace(".OS", "")
     url = f"https://minkabu.jp/stock/{symbol}/settlement"
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     resp = _requests.get(url, headers=headers, timeout=15)
