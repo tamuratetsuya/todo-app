@@ -15,8 +15,8 @@ ssm_client = boto3.client('ssm', region_name='ap-northeast-1')
 
 EC2_INSTANCE_ID   = 'i-014c42b58e2f8cc69'
 RDS_INSTANCE_ID   = 'tododb'
-HTTP_FAIL_THRESH  = 5   # HTTP: 5回連続NGでリブート
-EC2_FAIL_THRESH   = 3   # EC2ステータスチェックNG: 3回でリブート
+HTTP_FAIL_THRESH  = 2   # HTTP: 2回連続NGでリブート
+EC2_FAIL_THRESH   = 2   # EC2ステータスチェックNG: 2回でリブート
 
 
 HTTP_CHECKS = [
