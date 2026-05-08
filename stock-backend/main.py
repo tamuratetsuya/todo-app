@@ -3197,16 +3197,46 @@ def _scrape_minkabu_analyst(code: str) -> dict:
     return result
 
 
+import threading as _threading
+_company_info_locks: dict = {}
+_company_info_lock_mutex = _threading.Lock()
+
+def _get_company_info_lock(key: str):
+    with _company_info_lock_mutex:
+        if key not in _company_info_locks:
+            _company_info_locks[key] = _threading.Lock()
+        return _company_info_locks[key]
+
+def _translate_to_ja(text: str) -> str:
+    """Gemini REST APIで英語→日本語翻訳（全文）"""
+    if not text:
+        return ""
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        return ""
+    try:
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": f"以下の英文を自然な日本語に翻訳してください。翻訳文のみ返してください:\n\n{text}"}]}],
+            "generationConfig": {"maxOutputTokens": 4000, "temperature": 0}
+        }
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        resp = _requests.post(url, json=payload, timeout=30)
+        resp.raise_for_status()
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception:
+        return ""
+
+
 @app.get("/company_info")
 def get_company_info(symbol: str = Query(...)):
     """銘柄基本情報: 事業内容・売上構成・PER/PBR等をyfinance+みんかぶから取得"""
     code = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
+    CACHE_VER = 4  # Gemini全文翻訳対応
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT data, updated_at FROM company_info_cache WHERE symbol=%s", (code,))
             row = cur.fetchone()
-            CACHE_VER = 3  # 配当利回り計算修正
             if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 86400:
                 cached = json.loads(row["data"])
                 if cached.get("description_ja") and cached.get("_v", 0) >= CACHE_VER:
@@ -3214,121 +3244,144 @@ def get_company_info(symbol: str = Query(...)):
     finally:
         conn.close()
 
-    result = {}
-
-    # yfinance から基本指標取得
-    try:
-        import yfinance as yf
-        tk = yf.Ticker(f"{code}.T")
-        info = tk.info or {}
-        result["name"]           = info.get("longName") or info.get("shortName") or ""
-        result["sector"]         = info.get("sector") or ""
-        result["industry"]       = info.get("industry") or ""
-        result["market_cap"]     = info.get("marketCap")
-        result["per"]            = info.get("trailingPE") or info.get("forwardPE")
-        result["pbr"]            = info.get("priceToBook")
-        result["psr"]            = info.get("priceToSalesTrailing12Months")
-        result["roe"]            = round(info.get("returnOnEquity") * 100, 2) if info.get("returnOnEquity") else None
-        dy = info.get("dividendYield")
-        # yfinanceは日本株でdividendYieldをパーセント値で返す場合がある（3.1→3.1%）
-        result["dividend_yield"] = round(dy * 100 if dy and dy < 1 else dy, 2) if dy else None
-        result["eps"]            = info.get("trailingEps")
-        result["bps"]            = info.get("bookValue")
-        result["employees"]      = info.get("fullTimeEmployees")
-        result["website"]        = info.get("website") or ""
-        result["description_en"] = info.get("longBusinessSummary") or ""
-    except Exception:
-        pass
-
-    # Yahoo!ファイナンスから日本語事業内容・連結事業取得
-    try:
-        from bs4 import BeautifulSoup
-        _hdr = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
-        yurl = f"https://finance.yahoo.co.jp/quote/{code}.T/profile"
-        yr = _requests.get(yurl, headers=_hdr, timeout=15)
-        yr.raise_for_status()
-        ysoup = BeautifulSoup(yr.text, "html.parser")
-
-        # 特色テキストを取得: h2「特色」の次のpタグ（兄弟要素）
-        desc = ""
-        for h2 in ysoup.find_all("h2"):
-            if "特色" in h2.get_text():
-                p = h2.find_next_sibling("p")
-                if p:
-                    t = p.get_text("\n", strip=True)
-                    t = _re.sub(r'^【特色】\s*', '', t).strip()
-                    if len(t) > 10:
-                        desc = t
-                break
-        result["description_ja"] = desc
-
-        # 連結事業テキストを取得: h2「連結事業」の次のpタグ（兄弟要素）
-        seg_text = ""
-        for h2 in ysoup.find_all("h2"):
-            if "連結事業" in h2.get_text():
-                p = h2.find_next_sibling("p")
-                if p:
-                    seg_text = p.get_text("\n", strip=True)
-                break
-
-        segments = []
-        if seg_text:
-            # 【連結事業】行からカンマ区切りでセグメント抽出
-            # 例: 自動車90(9)、金融9(15)、他1(13)
-            for line in seg_text.split("\n"):
-                line = line.strip()
-                if not line or line.startswith("【"):
-                    continue
-                for part in _re.split(r'[、,]', line):
-                    part = part.strip()
-                    # 名前は非数字文字で始まる（「84(2025.3)」などの海外比率行を除外）
-                    m = _re.match(r'^([^\d（(]+?)(\d[\d.]*)(?:\((-?[\d.]+)\))?$', part)
-                    if m:
-                        name = m.group(1).strip()
-                        ratio = m.group(2) + "%"
-                        if name:
-                            segments.append({"name": name, "value": ratio})
-        result["segments"] = segments
-    except Exception:
-        pass
-
-    # みんかぶ指標ページからPER/PBR補完
-    if not result.get("per") or not result.get("pbr"):
+    # 銘柄ごとのロックで並列リクエストを直列化（別スレッド競合防止）
+    lock = _get_company_info_lock(code)
+    with lock:
+        # ロック取得後に再チェック（別スレッドが先に書いた可能性）
+        conn_chk = get_conn()
         try:
-            from bs4 import BeautifulSoup
-            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
-            url2 = f"https://minkabu.jp/stock/{code}"
-            resp2 = _requests.get(url2, headers=headers, timeout=15)
-            soup2 = BeautifulSoup(resp2.text, "html.parser")
-            for row in soup2.find_all(["tr","div","li"]):
-                txt = row.get_text(" ", strip=True)
-                if "PER" in txt and not result.get("per"):
-                    m = _re.search(r'PER[^\d]*([\d.]+)', txt)
-                    if m: result["per"] = float(m.group(1))
-                if "PBR" in txt and not result.get("pbr"):
-                    m = _re.search(r'PBR[^\d]*([\d.]+)', txt)
-                    if m: result["pbr"] = float(m.group(1))
-                if result.get("per") and result.get("pbr"): break
+            with conn_chk.cursor() as cur:
+                cur.execute("SELECT data, updated_at FROM company_info_cache WHERE symbol=%s", (code,))
+                row2 = cur.fetchone()
+            if row2 and (datetime.utcnow() - row2["updated_at"]).total_seconds() < 86400:
+                cached2 = json.loads(row2["data"])
+                if cached2.get("description_ja") and cached2.get("_v", 0) >= CACHE_VER:
+                    return cached2
+        except Exception:
+            pass
+        finally:
+            conn_chk.close()
+
+        result = {}
+
+        # yfinance から基本指標取得
+        try:
+            import yfinance as yf
+            tk = yf.Ticker(f"{code}.T")
+            info = tk.info or {}
+            result["name"]           = info.get("longName") or info.get("shortName") or ""
+            result["sector"]         = info.get("sector") or ""
+            result["industry"]       = info.get("industry") or ""
+            result["market_cap"]     = info.get("marketCap")
+            result["per"]            = info.get("trailingPE") or info.get("forwardPE")
+            result["pbr"]            = info.get("priceToBook")
+            result["psr"]            = info.get("priceToSalesTrailing12Months")
+            result["roe"]            = round(info.get("returnOnEquity") * 100, 2) if info.get("returnOnEquity") else None
+            dy = info.get("dividendYield")
+            # yfinanceは日本株でdividendYieldをパーセント値で返す場合がある（3.1→3.1%）
+            result["dividend_yield"] = round(dy * 100 if dy and dy < 1 else dy, 2) if dy else None
+            result["eps"]            = info.get("trailingEps")
+            result["bps"]            = info.get("bookValue")
+            result["employees"]      = info.get("fullTimeEmployees")
+            result["website"]        = info.get("website") or ""
+            result["description_en"] = info.get("longBusinessSummary") or ""
         except Exception:
             pass
 
-    # キャッシュ保存
-    conn2 = get_conn()
-    try:
-        result["_v"] = 3  # キャッシュバージョン
-        data_json = json.dumps(result, ensure_ascii=False)
-        with conn2.cursor() as cur:
-            cur.execute(
-                "INSERT INTO company_info_cache (symbol,data) VALUES (%s,%s) ON DUPLICATE KEY UPDATE data=%s,updated_at=NOW()",
-                (code, data_json, data_json)
-            )
-        conn2.commit()
-    except Exception:
-        pass
-    finally:
-        conn2.close()
+        # Yahoo!ファイナンスから日本語事業内容・連結事業取得
+        try:
+            from bs4 import BeautifulSoup
+            _hdr = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+            yurl = f"https://finance.yahoo.co.jp/quote/{code}.T/profile"
+            yr = _requests.get(yurl, headers=_hdr, timeout=15)
+            yr.raise_for_status()
+            ysoup = BeautifulSoup(yr.text, "html.parser")
 
-    return result
+            # 特色テキストを取得: h2「特色」の次のpタグ（兄弟要素）
+            desc = ""
+            for h2 in ysoup.find_all("h2"):
+                if "特色" in h2.get_text():
+                    p = h2.find_next_sibling("p")
+                    if p:
+                        t = p.get_text("\n", strip=True)
+                        t = _re.sub(r'^【特色】\s*', '', t).strip()
+                        if len(t) > 10:
+                            desc = t
+                    break
+            result["description_ja"] = desc
+            # Yahoo Financeの特色が短い場合はGeminiで英文全文を翻訳
+            if len(desc) < 100 and result.get("description_en"):
+                translated = _translate_to_ja(result["description_en"])
+                if translated:
+                    result["description_ja"] = translated
+
+            # 連結事業テキストを取得: h2「連結事業」の次のpタグ（兄弟要素）
+            seg_text = ""
+            for h2 in ysoup.find_all("h2"):
+                if "連結事業" in h2.get_text():
+                    p = h2.find_next_sibling("p")
+                    if p:
+                        seg_text = p.get_text("\n", strip=True)
+                    break
+
+            segments = []
+            if seg_text:
+                # 【連結事業】行からカンマ区切りでセグメント抽出
+                # 例: 自動車90(9)、金融9(15)、他1(13)
+                for line in seg_text.split("\n"):
+                    line = line.strip()
+                    if not line or line.startswith("【"):
+                        continue
+                    for part in _re.split(r'[、,]', line):
+                        part = part.strip()
+                        # 名前は非数字文字で始まる（「84(2025.3)」などの海外比率行を除外）
+                        m = _re.match(r'^([^\d（(]+?)(\d[\d.]*)(?:\((-?[\d.]+)\))?$', part)
+                        if m:
+                            name = m.group(1).strip()
+                            ratio = m.group(2) + "%"
+                            if name:
+                                segments.append({"name": name, "value": ratio})
+            result["segments"] = segments
+        except Exception:
+            pass
+
+        # みんかぶ指標ページからPER/PBR補完
+        if not result.get("per") or not result.get("pbr"):
+            try:
+                from bs4 import BeautifulSoup
+                headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+                url2 = f"https://minkabu.jp/stock/{code}"
+                resp2 = _requests.get(url2, headers=headers, timeout=15)
+                soup2 = BeautifulSoup(resp2.text, "html.parser")
+                for row in soup2.find_all(["tr","div","li"]):
+                    txt = row.get_text(" ", strip=True)
+                    if "PER" in txt and not result.get("per"):
+                        m = _re.search(r'PER[^\d]*([\d.]+)', txt)
+                        if m: result["per"] = float(m.group(1))
+                    if "PBR" in txt and not result.get("pbr"):
+                        m = _re.search(r'PBR[^\d]*([\d.]+)', txt)
+                        if m: result["pbr"] = float(m.group(1))
+                    if result.get("per") and result.get("pbr"): break
+            except Exception:
+                pass
+
+        # キャッシュ保存
+        conn2 = get_conn()
+        try:
+            result["_v"] = 4  # Gemini全文翻訳対応
+            data_json = json.dumps(result, ensure_ascii=False)
+            with conn2.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO company_info_cache (symbol,data) VALUES (%s,%s) ON DUPLICATE KEY UPDATE data=%s,updated_at=NOW()",
+                    (code, data_json, data_json)
+                )
+            conn2.commit()
+        except Exception:
+            pass
+        finally:
+            conn2.close()
+
+        return result
 
 
 @app.get("/company_financials")
