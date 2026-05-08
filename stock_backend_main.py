@@ -141,10 +141,15 @@ def init_db():
             CREATE TABLE IF NOT EXISTS favorites (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 symbol VARCHAR(20) NOT NULL,
+                fav_type VARCHAR(10) NOT NULL DEFAULT 'buy',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE KEY uq_fav (symbol)
             )
         """)
+        try:
+            cur.execute("ALTER TABLE favorites ADD COLUMN fav_type VARCHAR(10) NOT NULL DEFAULT 'buy'")
+        except Exception:
+            pass  # already exists
         cur.execute("""
             CREATE TABLE IF NOT EXISTS analyst_cache (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -202,17 +207,29 @@ def get_favorites():
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT symbol FROM favorites ORDER BY created_at DESC")
-            return [r["symbol"] for r in cur.fetchall()]
+            cur.execute("""
+                SELECT f.symbol, f.fav_type, COALESCE(p.name, '') AS name
+                FROM favorites f
+                LEFT JOIN prime_stocks p ON p.code = f.symbol
+                ORDER BY f.created_at DESC
+            """)
+            rows = cur.fetchall()
+            return [{"code": r["symbol"], "name": r["name"], "fav_type": r["fav_type"]} for r in rows]
     finally:
         conn.close()
 
 @app.post("/favorites/{symbol}")
-def add_favorite(symbol: str):
+def add_favorite(symbol: str, fav_type: str = "buy"):
+    if fav_type not in ("buy", "sell"):
+        fav_type = "buy"
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("INSERT IGNORE INTO favorites (symbol) VALUES (%s)", (symbol,))
+            cur.execute(
+                "INSERT INTO favorites (symbol, fav_type) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE fav_type=VALUES(fav_type)",
+                (symbol, fav_type)
+            )
         conn.commit()
         return {"ok": True}
     finally:
@@ -692,21 +709,26 @@ def build_candle_summary(symbol: str, interval: str) -> str:
         return ""
 
 
-def generate_rule_signals(symbol: str, interval: str) -> list:
+def generate_rule_signals(symbol: str, interval: str, _candles=None, _vix_by_date=None) -> list:
     """ポイントスコアリング式ルールベースシグナル生成
     買い観点（各1pt）:
       TL=トレンドライン近傍, GC=ゴールデンクロス, IK3=一目三役好転,
       BB反転=BB下限から反転上昇, BBウォーク=BBバンドウォーク,
       抵抗ブレイク=直近高値ブレイク, 支持反転=直近安値で反転
     売り観点: DC=デッドクロス, BB↑=BB上限到達, IK↓=一目下抜け
+    _candles: 事前取得済みのローソク足データ（省略時はDBから取得）
+    _vix_by_date: 事前取得済みのVIX辞書 date->value（省略時はyfinanceから取得）
     """
     try:
         from datetime import datetime as _dt, timezone, timedelta
-        conn = get_conn()
-        candles = load_candles_from_db(conn, symbol, interval)
-        conn.close()
+        if _candles is not None:
+            candles = _candles
+        else:
+            conn = get_conn()
+            candles = load_candles_from_db(conn, symbol, interval)
+            conn.close()
         if len(candles) < 30:
-            return []
+            return {"signals": [], "scores": {}}
 
         closes  = [c['close'] for c in candles]
         highs   = [c.get('high', c['close']) for c in candles]
@@ -718,18 +740,21 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             if isinstance(t, str): return t[:10]
             return _dt.fromtimestamp(int(t), tz=timezone.utc).strftime('%Y-%m-%d')
 
-        # VIXデータ取得
-        vix_by_date = {}
-        try:
-            first_date = get_date(candles[0])
-            last_date  = get_date(candles[-1])
-            end_dt = (_dt.strptime(last_date, '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
-            vix_df = yf.Ticker("^VIX").history(start=first_date, end=end_dt)
-            if not vix_df.empty:
-                for idx, row in vix_df.iterrows():
-                    vix_by_date[str(idx)[:10]] = round(float(row['Close']), 1)
-        except Exception:
-            pass
+        # VIXデータ取得（事前取得済みがあればそれを使用）
+        if _vix_by_date is not None:
+            vix_by_date = _vix_by_date
+        else:
+            vix_by_date = {}
+            try:
+                first_date = get_date(candles[0])
+                last_date  = get_date(candles[-1])
+                end_dt = (_dt.strptime(last_date, '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
+                vix_df = yf.Ticker("^VIX").history(start=first_date, end=end_dt)
+                if not vix_df.empty:
+                    for idx, row in vix_df.iterrows():
+                        vix_by_date[str(idx)[:10]] = round(float(row['Close']), 1)
+            except Exception:
+                pass
 
         def get_vix(date_key):
             v = vix_by_date.get(date_key)
@@ -1052,6 +1077,24 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
             recent_low = min(lows[start:i+1])
             return round(max(recent_low * 0.98, price * 0.85), 1)
 
+        def _slope(arr):
+            mn = len(arr)
+            if mn < 2: return 0.0
+            mean_x = (mn - 1) / 2
+            mean_y = sum(arr) / mn
+            num = sum((j - mean_x) * (arr[j] - mean_y) for j in range(mn))
+            den = sum((j - mean_x) ** 2 for j in range(mn))
+            return (num / den) / (mean_y or 1) if den else 0.0
+
+        # パターンシグナル集合（2pt）
+        _pattern_buy  = {"急騰+4%", "ハンマー", "逆ハンマー", "陽の包み足", "三白兵",
+                         "ダブルボトム", "逆H&S", "上昇フラッグ", "レクタングル上抜け",
+                         "上昇三角形", "対称三角形↑", "下降ウェッジ", "C&H"}
+        _pattern_sell = {"急落-4%", "BBウォーク↓", "雲下抜け",
+                         "トンカチ", "陰の包み足", "三羽烏",
+                         "ダブルトップ", "H&S", "下降フラッグ", "レクタングル下抜け",
+                         "下降三角形", "対称三角形↓", "上昇ウェッジ"}
+
         # 最低スコア閾値: 3pt以上で買いシグナル表示
         BUY_THRESHOLD = 2
         signals = []
@@ -1185,9 +1228,133 @@ def generate_rule_signals(symbol: str, interval: str) -> list:
                     elif (was_above or was_in) and now_below:
                         add_sell("雲下抜け", 2)
 
-            # 全日付のポイントを記録
-            buy_pt = len(buy_tags)
-            scores[date_key] = {"buy": buy_pt, "sell": sell_pts}
+            # ===== チャートパターン検出 =====
+            # ローソク足パターン（直近3本）
+            if i >= 2:
+                co, ch, cl, cc = float(candles[i]['open']), highs[i], lows[i], closes[i]
+                po, ph, pl, pc = float(candles[i-1]['open']), highs[i-1], lows[i-1], closes[i-1]
+                p2o, p2c = float(candles[i-2]['open']), closes[i-2]
+                body = abs(cc - co); rng = ch - cl
+                if rng > 0:
+                    lw = min(co, cc) - cl; uw = ch - max(co, cc)
+                    ma5_now = _ma(i, 5); ma5_prev = _ma(max(0, i-5), 5)
+                    up_trend = ma5_now and ma5_prev and ma5_now > ma5_prev
+                    dn_trend = ma5_now and ma5_prev and ma5_now < ma5_prev
+                    if dn_trend and lw >= 0.55*rng and uw <= 0.15*rng and body <= 0.3*rng:
+                        buy_tags.append("ハンマー")
+                    if up_trend and lw >= 0.55*rng and uw <= 0.15*rng and body <= 0.3*rng:
+                        add_sell("トンカチ", 2)
+                    if dn_trend and uw >= 0.55*rng and lw <= 0.15*rng and body <= 0.3*rng:
+                        buy_tags.append("逆ハンマー")
+                if pc < po and cc > co and co <= pc and cc >= po:
+                    buy_tags.append("陽の包み足")
+                if pc > po and cc < co and co >= pc and cc <= po:
+                    add_sell("陰の包み足", 2)
+                if (p2c > p2o and pc > po and cc > co and pc > p2c and cc > pc and po >= p2o and co >= po):
+                    buy_tags.append("三白兵")
+                if (p2c < p2o and pc < po and cc < co and pc < p2c and cc < pc and po <= p2o and co <= po):
+                    add_sell("三羽烏", 2)
+
+            # ダブルトップ / ダブルボトム
+            if i >= 15:
+                lb = min(40, i); seg_h = highs[i-lb:i+1]; seg_l = lows[i-lb:i+1]
+                sn = len(seg_h); lhighs = []; llows = []
+                for j in range(2, sn-2):
+                    if seg_h[j] > seg_h[j-1] and seg_h[j] > seg_h[j-2] and seg_h[j] > seg_h[j+1] and seg_h[j] > seg_h[j+2]:
+                        lhighs.append((j, seg_h[j]))
+                    if seg_l[j] < seg_l[j-1] and seg_l[j] < seg_l[j-2] and seg_l[j] < seg_l[j+1] and seg_l[j] < seg_l[j+2]:
+                        llows.append((j, seg_l[j]))
+                if len(lhighs) >= 2:
+                    (j1,h1),(j2,h2) = lhighs[-2], lhighs[-1]
+                    if j2-j1 >= 5 and abs(h1-h2)/h1 < 0.03 and sn-1 > j2:
+                        neck = min(seg_l[j1:j2+1])
+                        if closes[i] < neck:
+                            add_sell("ダブルトップ", 2)
+                if len(llows) >= 2:
+                    (j1,l1),(j2,l2) = llows[-2], llows[-1]
+                    if j2-j1 >= 5 and abs(l1-l2)/l1 < 0.03 and sn-1 > j2:
+                        neck = max(seg_h[j1:j2+1])
+                        if closes[i] > neck:
+                            buy_tags.append("ダブルボトム")
+
+            # ヘッド&ショルダー / 逆H&S
+            if i >= 20:
+                lb = min(60, i); seg_h = highs[i-lb:i+1]; seg_l = lows[i-lb:i+1]; sn = len(seg_h)
+                pks = []; trs = []
+                for j in range(3, sn-3):
+                    if seg_h[j] == max(seg_h[j-3:j+4]): pks.append((j, seg_h[j]))
+                    if seg_l[j] == min(seg_l[j-3:j+4]): trs.append((j, seg_l[j]))
+                if len(pks) >= 3:
+                    (lsi,lsv),(hdi,hdv),(rsi2,rsv) = pks[-3], pks[-2], pks[-1]
+                    if hdv > lsv*1.02 and hdv > rsv*1.02 and abs(lsv-rsv)/lsv < 0.05 and rsi2-lsi >= 10:
+                        n1 = min(seg_l[lsi:hdi+1]); n2 = min(seg_l[hdi:rsi2+1])
+                        if closes[i] < (n1+n2)/2:
+                            add_sell("H&S", 2)
+                if len(trs) >= 3:
+                    (lsi,lsv),(hdi,hdv),(rsi2,rsv) = trs[-3], trs[-2], trs[-1]
+                    if hdv < lsv*0.98 and hdv < rsv*0.98 and abs(lsv-rsv)/lsv < 0.05 and rsi2-lsi >= 10:
+                        n1 = max(seg_h[lsi:hdi+1]); n2 = max(seg_h[hdi:rsi2+1])
+                        if closes[i] > (n1+n2)/2:
+                            buy_tags.append("逆H&S")
+
+            # フラッグ
+            if i >= 14:
+                p_len = 8; f_len = min(6, i - p_len)
+                if f_len >= 3:
+                    ps2 = i - p_len - f_len; pe = i - f_len
+                    if ps2 >= 0:
+                        pm = (closes[pe] - closes[ps2]) / closes[ps2] if closes[ps2] else 0
+                        fbars_h = highs[pe:i+1]; fbars_l = lows[pe:i+1]; fbars_c = closes[pe:i+1]
+                        fh = max(fbars_h); fl = min(fbars_l)
+                        fsl = (fbars_c[-1] - fbars_c[0]) / fbars_c[0] if fbars_c[0] else 0
+                        fr = (fh - fl) / fl if fl else 0
+                        if pm > 0.04 and fr < pm*0.6 and fsl < 0 and fsl > -0.04 and closes[i] > fh:
+                            buy_tags.append("上昇フラッグ")
+                        if pm < -0.04 and fr < abs(pm)*0.6 and fsl > 0 and fsl < 0.04 and closes[i] < fl:
+                            add_sell("下降フラッグ", 2)
+
+            # レクタングル / 三角形 / ウェッジ
+            if i >= 20:
+                c_len = min(25, i-1); seg_h2 = highs[i-c_len:i]; seg_l2 = lows[i-c_len:i]
+                mx_h = max(seg_h2); mn_l = min(seg_l2)
+                rng2 = (mx_h - mn_l) / mn_l if mn_l else 0
+                if rng2 < 0.07:
+                    if closes[i] > mx_h * 1.003: buy_tags.append("レクタングル上抜け")
+                    elif closes[i] < mn_l * 0.997: add_sell("レクタングル下抜け", 2)
+                rs2 = seg_h2[-12:]; ls2_arr = seg_l2[-12:]
+                if len(rs2) >= 8:
+                    hs2 = _slope(list(rs2)); ls2_v = _slope(list(ls2_arr))
+                    if abs(hs2) < 0.003 and ls2_v > 0.003 and closes[i] > mx_h:
+                        buy_tags.append("上昇三角形")
+                    if hs2 < -0.003 and abs(ls2_v) < 0.003 and closes[i] < mn_l:
+                        add_sell("下降三角形", 2)
+                    if hs2 < -0.002 and ls2_v > 0.002:
+                        if closes[i] > mx_h: buy_tags.append("対称三角形↑")
+                        if closes[i] < mn_l: add_sell("対称三角形↓", 2)
+                    if hs2 > 0.001 and ls2_v > hs2*1.3 and closes[i] < mn_l:
+                        add_sell("上昇ウェッジ", 2)
+                    if hs2 < -0.001 and ls2_v < 0 and hs2 < ls2_v*1.3 and closes[i] > mx_h:
+                        buy_tags.append("下降ウェッジ")
+
+            # C&H（カップ&ハンドル）
+            if i >= 30:
+                c_len2 = min(35, i-5)
+                if c_len2 >= 15:
+                    cup = candles[i-c_len2:i-3]
+                    hdl_l = lows[i-3:i+1]; hdl_c = closes[i-3:i+1]
+                    cup_c = [float(r['close']) for r in cup]; cup_l = [float(r['low']) for r in cup]
+                    if len(cup_c) >= 10:
+                        cleft = sum(cup_c[:5])/5; cright = sum(cup_c[-5:])/5
+                        cbotm = min(cup_l); base = min(cleft, cright)
+                        depth = (base - cbotm) / base if base else 0
+                        if 0.05 < depth < 0.4 and abs(cleft-cright)/cleft < 0.05:
+                            res = max(cleft, cright)
+                            if min(hdl_l) > cbotm and closes[i] > res:
+                                buy_tags.append("C&H")
+
+            # 全日付のポイントを記録（パターンは2pt）
+            buy_pt = sum(2 if t in _pattern_buy else 1 for t in buy_tags)
+            scores[date_key] = {"buy": buy_pt, "sell": sell_pts, "buy_tags": buy_tags, "sell_tags": sell_tags}
 
             # 買いシグナル: 買いpt - 売りpt の合計が BUY_THRESHOLD 以上
             net_buy_pt = buy_pt - sell_pts
@@ -1945,6 +2112,119 @@ def get_events(
         except Exception:
             pass
 
+        # Calendar（次回の決算・配当落ち日 — yfinance で最も確実な未来日程ソース）
+        try:
+            cal = ticker.calendar
+            if cal:
+                _cal_earnings = cal.get("Earnings Date")
+                if _cal_earnings:
+                    if not isinstance(_cal_earnings, list):
+                        _cal_earnings = [_cal_earnings]
+                    for _ed in _cal_earnings:
+                        try:
+                            _d = _ed if isinstance(_ed, date) else date.fromisoformat(str(_ed)[:10])
+                            if d_from <= _d <= d_to:
+                                # earnings_dates と重複しないよう確認
+                                if not any(e["type"] == "company" and e["title"] == "決算発表" and e["date"] == _d.isoformat() for e in events):
+                                    events.append({
+                                        "date":   _d.isoformat(),
+                                        "type":   "company",
+                                        "title":  "決算発表",
+                                        "detail": "決算発表予定",
+                                        "result": None,
+                                    })
+                        except Exception:
+                            pass
+                _cal_div = cal.get("Ex-Dividend Date")
+                if _cal_div:
+                    try:
+                        _d = _cal_div if isinstance(_cal_div, date) else date.fromisoformat(str(_cal_div)[:10])
+                        if d_from <= _d <= d_to:
+                            if not any(e["type"] == "company" and e["title"] == "配当落ち日" and e["date"] == _d.isoformat() for e in events):
+                                events.append({
+                                    "date":   _d.isoformat(),
+                                    "type":   "company",
+                                    "title":  "配当落ち日",
+                                    "detail": "配当落ち日予定",
+                                    "result": None,
+                                })
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    except Exception:
+        pass
+
+    # --- irbank 企業開示ニュース（チャートマーカー用）---
+    try:
+        import re as _re_ev, datetime as _dt_ev
+        code_only = symbol.replace(".T", "").replace(".OS", "")
+        if code_only.isdigit():
+            _ib_hdrs = {"User-Agent": "Mozilla/5.0 (compatible)"}
+            _ib_r = _requests.get(f"https://irbank.net/{code_only}/news", headers=_ib_hdrs, timeout=8)
+            if _ib_r.status_code == 200:
+                _ib_text = _ib_r.text
+                # HTML is minified (mostly one long line) — use full-text regex matching
+                # Pattern: date section → news link with text content
+                _pairs = _re_ev.findall(
+                    r'(\d{4})年(\d{1,2})月(\d{1,2})日.{0,3000}?href="/news/([a-zA-Z0-9]+)"[^>]*>([^<]{0,80})',
+                    _ib_text
+                )
+                _seen_ids = set()
+                for _yr, _mo, _dy, _doc_id, _title_raw in _pairs:
+                    if _doc_id in _seen_ids:
+                        continue
+                    _seen_ids.add(_doc_id)
+                    try:
+                        _cur_date = _dt_ev.date(int(_yr), int(_mo), int(_dy))
+                    except Exception:
+                        continue
+                    if not (d_from <= _cur_date <= d_to):
+                        continue
+                    _title = _title_raw.strip()
+                    _title_short = _title[:40] + ("…" if len(_title) > 40 else "")
+                    events.append({
+                        "date":   _cur_date.isoformat(),
+                        "type":   "news",
+                        "title":  _title_short,
+                        "detail": "企業開示（irbank）",
+                        "result": None,
+                        "url":    f"https://irbank.net/news/{_doc_id}",
+                    })
+    except Exception:
+        pass
+
+    # --- news_cache DB（過去にニュースタブで取得済みの記事をマーカーに追加）---
+    try:
+        _news_conn = get_conn()
+        with _news_conn.cursor() as _nc:
+            _d_from_ms = int(d_from.strftime('%s')) * 1000
+            _d_to_ms   = int(d_to.strftime('%s')) * 1000
+            _nc.execute(
+                "SELECT title_ja, title, published, source, url FROM news_cache "
+                "WHERE symbol=%s AND published BETWEEN %s AND %s ORDER BY published DESC LIMIT 50",
+                (symbol, _d_from_ms, _d_to_ms)
+            )
+            for _row in _nc.fetchall():
+                if not _row["published"]:
+                    continue
+                try:
+                    _pub_date = _dt_ev.date.fromtimestamp(_row["published"] / 1000)
+                except Exception:
+                    continue
+                _t = (_row["title_ja"] or _row["title"] or "")[:40]
+                if not _t:
+                    continue
+                events.append({
+                    "date":   _pub_date.isoformat(),
+                    "type":   "news",
+                    "title":  _t + ("…" if len(_row["title_ja"] or _row["title"] or "") > 40 else ""),
+                    "detail": _row.get("source") or "ニュース",
+                    "result": None,
+                    "url":    _row.get("url") or None,
+                })
+        _news_conn.close()
     except Exception:
         pass
 
@@ -2187,16 +2467,12 @@ def get_news(symbol: str = Query(...)):
                     published = None
                     if hasattr(entry, 'published_parsed') and entry.published_parsed:
                         published = cal_mod.timegm(entry.published_parsed) * 1000
-                    raw_summary = entry.get("summary", "") or ""
-                    # feedparserのsummaryはHTMLタグを含むことがあるので除去
-                    import re as _re
-                    clean_summary = _re.sub(r'<[^>]+>', '', raw_summary).strip()[:500]
                     results.append({
                         "url": u,
                         "title": entry.get("title", ""),
                         "published": published,
                         "source": entry.get("source", {}).get("title", "Google News") if hasattr(entry.get("source", {}), "get") else "Google News",
-                        "summary_ja": clean_summary if lang == "ja" and clean_summary else None,
+                        "summary_ja": None,
                         "title_ja": entry.get("title", "") if lang == "ja" else None,
                     })
             except Exception:
@@ -2347,7 +2623,6 @@ def _parse_ih_df(df):
 
 def _scrape_minkabu_picks(code: str) -> list:
     """みんかぶの株価予想（ピック）一覧をスクレイピングして返す"""
-    code = code.replace(".T", "").replace(".OS", "")
     url = f"https://minkabu.jp/stock/{code}/pick"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0"}
     r = _requests.get(url, headers=headers, timeout=12)
@@ -2393,14 +2668,41 @@ def _scrape_minkabu_picks(code: str) -> list:
     return posts[:50]
 
 
+def _scrape_yahoo_bbs(symbol: str) -> list:
+    """Yahoo!ファイナンス掲示板をスクレイピング"""
+    code = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
+    url = f"https://finance.yahoo.co.jp/quote/{code}.T/bbs"
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    resp = _requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(resp.text, "html.parser")
+    articles = [a for a in soup.find_all("article") if any("BbsItem" in c for c in a.get("class", []))]
+    result = []
+    for a in articles:
+        user_el   = a.find(lambda t: t.name == "a" and any("userName" in c for c in t.get("class", [])))
+        time_el   = a.find("time")
+        body_el   = a.find(lambda t: t.name == "div" and any("body" in c for c in t.get("class", [])))
+        no_el     = a.find(lambda t: t.name == "a" and any("commentNo" in c for c in t.get("class", [])))
+        good_els  = a.find_all(lambda t: t.name == "span" and any("count" in c.lower() for c in t.get("class", [])))
+        author = user_el.get_text(strip=True) if user_el else "匿名"
+        date   = time_el.get_text(strip=True) if time_el else ""
+        body   = body_el.get_text(" ", strip=True) if body_el else ""
+        no     = no_el.get_text(strip=True) if no_el else ""
+        good   = int(good_els[0].get_text(strip=True)) if good_els else 0
+        if body:
+            result.append({"author": author, "date": date, "text": body, "no": no, "good": good, "source": "yahoo_bbs"})
+    return result
+
+
 @app.get("/x_posts")
 def get_x_posts(symbol: str = Query(...), name: str = Query("")):
-    """日本株: みんかぶ株価予想 / US株: Twitter API v2"""
-    # 日本株（4桁以下の数字コード）はみんかぶをスクレイピング
-    is_jp = symbol.isdigit() and len(symbol) <= 4
+    """日本株: Yahoo!ファイナンス掲示板 / US株: Twitter API v2"""
+    raw = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
+    is_jp = symbol.upper().endswith('.T') or (raw.isdigit() and len(raw) <= 5)
     if is_jp:
         try:
-            return _scrape_minkabu_picks(symbol)
+            return _scrape_yahoo_bbs(raw)
         except Exception as e:
             raise HTTPException(500, str(e))
 
@@ -2552,6 +2854,7 @@ def get_holders(symbol: str = Query(...)):
 @app.get("/analyst")
 def get_analyst(symbol: str = Query(...)):
     """アナリスト予想を複数サイトから取得"""
+    symbol = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -2607,7 +2910,6 @@ def _scrape_all_analyst(symbol: str) -> dict:
 
 def _scrape_kabuyoho_analyst(code: str) -> dict:
     """株予報Pro アナリスト目標株価ページをスクレイピング"""
-    code = code.replace(".T", "").replace(".OS", "")
     url = f"https://kabuyoho.jp/reportTarget?bcode={code}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -2677,7 +2979,6 @@ def _scrape_kabuyoho_analyst(code: str) -> dict:
 
 def _scrape_kabuka_analyst(code: str) -> dict:
     """目標株価まとめ (kabuka.jp.net) をスクレイピング"""
-    code = code.replace(".T", "").replace(".OS", "")
     url = f"https://www.kabuka.jp.net/rating/{code}.html"
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -2818,7 +3119,6 @@ def _scrape_kabuka_analyst(code: str) -> dict:
 
 
 def _scrape_minkabu_analyst(code: str) -> dict:
-    code = code.replace(".T", "").replace(".OS", "")
     """みんかぶ アナリストコンセンサスページをスクレイピング"""
     url = f"https://minkabu.jp/stock/{code}/analyst_consensus"
     headers = {
@@ -2897,9 +3197,271 @@ def _scrape_minkabu_analyst(code: str) -> dict:
     return result
 
 
+import threading as _threading
+_company_info_locks: dict = {}
+_company_info_lock_mutex = _threading.Lock()
+
+def _get_company_info_lock(key: str):
+    with _company_info_lock_mutex:
+        if key not in _company_info_locks:
+            _company_info_locks[key] = _threading.Lock()
+        return _company_info_locks[key]
+
+def _translate_to_ja(text: str) -> str:
+    """Gemini REST APIで英語→日本語翻訳（全文）"""
+    if not text:
+        return ""
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        return ""
+    try:
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": f"以下の英文を自然な日本語に翻訳してください。翻訳文のみ返してください:\n\n{text}"}]}],
+            "generationConfig": {"maxOutputTokens": 4000, "temperature": 0}
+        }
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        resp = _requests.post(url, json=payload, timeout=30)
+        resp.raise_for_status()
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception:
+        return ""
+
+
+@app.get("/company_info")
+def get_company_info(symbol: str = Query(...)):
+    """銘柄基本情報: 事業内容・売上構成・PER/PBR等をyfinance+みんかぶから取得"""
+    code = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
+    CACHE_VER = 4  # Gemini全文翻訳対応
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data, updated_at FROM company_info_cache WHERE symbol=%s", (code,))
+            row = cur.fetchone()
+            if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 86400:
+                cached = json.loads(row["data"])
+                if cached.get("description_ja") and cached.get("_v", 0) >= CACHE_VER:
+                    return cached
+    finally:
+        conn.close()
+
+    # 銘柄ごとのロックで並列リクエストを直列化（別スレッド競合防止）
+    lock = _get_company_info_lock(code)
+    with lock:
+        # ロック取得後に再チェック（別スレッドが先に書いた可能性）
+        conn_chk = get_conn()
+        try:
+            with conn_chk.cursor() as cur:
+                cur.execute("SELECT data, updated_at FROM company_info_cache WHERE symbol=%s", (code,))
+                row2 = cur.fetchone()
+            if row2 and (datetime.utcnow() - row2["updated_at"]).total_seconds() < 86400:
+                cached2 = json.loads(row2["data"])
+                if cached2.get("description_ja") and cached2.get("_v", 0) >= CACHE_VER:
+                    return cached2
+        except Exception:
+            pass
+        finally:
+            conn_chk.close()
+
+        result = {}
+
+        # yfinance から基本指標取得
+        try:
+            import yfinance as yf
+            tk = yf.Ticker(f"{code}.T")
+            info = tk.info or {}
+            result["name"]           = info.get("longName") or info.get("shortName") or ""
+            result["sector"]         = info.get("sector") or ""
+            result["industry"]       = info.get("industry") or ""
+            result["market_cap"]     = info.get("marketCap")
+            result["per"]            = info.get("trailingPE") or info.get("forwardPE")
+            result["pbr"]            = info.get("priceToBook")
+            result["psr"]            = info.get("priceToSalesTrailing12Months")
+            result["roe"]            = round(info.get("returnOnEquity") * 100, 2) if info.get("returnOnEquity") else None
+            dy = info.get("dividendYield")
+            # yfinanceは日本株でdividendYieldをパーセント値で返す場合がある（3.1→3.1%）
+            result["dividend_yield"] = round(dy * 100 if dy and dy < 1 else dy, 2) if dy else None
+            result["eps"]            = info.get("trailingEps")
+            result["bps"]            = info.get("bookValue")
+            result["employees"]      = info.get("fullTimeEmployees")
+            result["website"]        = info.get("website") or ""
+            result["description_en"] = info.get("longBusinessSummary") or ""
+        except Exception:
+            pass
+
+        # Yahoo!ファイナンスから日本語事業内容・連結事業取得
+        try:
+            from bs4 import BeautifulSoup
+            _hdr = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+            yurl = f"https://finance.yahoo.co.jp/quote/{code}.T/profile"
+            yr = _requests.get(yurl, headers=_hdr, timeout=15)
+            yr.raise_for_status()
+            ysoup = BeautifulSoup(yr.text, "html.parser")
+
+            # 特色テキストを取得: h2「特色」の次のpタグ（兄弟要素）
+            desc = ""
+            for h2 in ysoup.find_all("h2"):
+                if "特色" in h2.get_text():
+                    p = h2.find_next_sibling("p")
+                    if p:
+                        t = p.get_text("\n", strip=True)
+                        t = _re.sub(r'^【特色】\s*', '', t).strip()
+                        if len(t) > 10:
+                            desc = t
+                    break
+            result["description_ja"] = desc
+            # Yahoo Financeの特色が短い場合はGeminiで英文全文を翻訳
+            if len(desc) < 100 and result.get("description_en"):
+                translated = _translate_to_ja(result["description_en"])
+                if translated:
+                    result["description_ja"] = translated
+
+            # 連結事業テキストを取得: h2「連結事業」の次のpタグ（兄弟要素）
+            seg_text = ""
+            for h2 in ysoup.find_all("h2"):
+                if "連結事業" in h2.get_text():
+                    p = h2.find_next_sibling("p")
+                    if p:
+                        seg_text = p.get_text("\n", strip=True)
+                    break
+
+            segments = []
+            if seg_text:
+                # 【連結事業】行からカンマ区切りでセグメント抽出
+                # 例: 自動車90(9)、金融9(15)、他1(13)
+                for line in seg_text.split("\n"):
+                    line = line.strip()
+                    if not line or line.startswith("【"):
+                        continue
+                    for part in _re.split(r'[、,]', line):
+                        part = part.strip()
+                        # 名前は非数字文字で始まる（「84(2025.3)」などの海外比率行を除外）
+                        m = _re.match(r'^([^\d（(]+?)(\d[\d.]*)(?:\((-?[\d.]+)\))?$', part)
+                        if m:
+                            name = m.group(1).strip()
+                            ratio = m.group(2) + "%"
+                            if name:
+                                segments.append({"name": name, "value": ratio})
+            result["segments"] = segments
+        except Exception:
+            pass
+
+        # みんかぶ指標ページからPER/PBR補完
+        if not result.get("per") or not result.get("pbr"):
+            try:
+                from bs4 import BeautifulSoup
+                headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+                url2 = f"https://minkabu.jp/stock/{code}"
+                resp2 = _requests.get(url2, headers=headers, timeout=15)
+                soup2 = BeautifulSoup(resp2.text, "html.parser")
+                for row in soup2.find_all(["tr","div","li"]):
+                    txt = row.get_text(" ", strip=True)
+                    if "PER" in txt and not result.get("per"):
+                        m = _re.search(r'PER[^\d]*([\d.]+)', txt)
+                        if m: result["per"] = float(m.group(1))
+                    if "PBR" in txt and not result.get("pbr"):
+                        m = _re.search(r'PBR[^\d]*([\d.]+)', txt)
+                        if m: result["pbr"] = float(m.group(1))
+                    if result.get("per") and result.get("pbr"): break
+            except Exception:
+                pass
+
+        # キャッシュ保存
+        conn2 = get_conn()
+        try:
+            result["_v"] = 4  # Gemini全文翻訳対応
+            data_json = json.dumps(result, ensure_ascii=False)
+            with conn2.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO company_info_cache (symbol,data) VALUES (%s,%s) ON DUPLICATE KEY UPDATE data=%s,updated_at=NOW()",
+                    (code, data_json, data_json)
+                )
+            conn2.commit()
+        except Exception:
+            pass
+        finally:
+            conn2.close()
+
+        return result
+
+
+@app.get("/company_financials")
+def get_company_financials(symbol: str = Query(...)):
+    """スクリーニング用: PER/PBR/時価総額をキャッシュまたはyfinanceから高速取得（スクレイピングなし）"""
+    code = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
+    conn = get_conn()
+    # キャッシュ確認
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data, updated_at FROM company_info_cache WHERE symbol=%s", (code,))
+            row = cur.fetchone()
+            if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 86400:
+                cached = json.loads(row["data"])
+                if cached.get("per") is not None or cached.get("pbr") is not None or cached.get("market_cap") is not None:
+                    return {"per": cached.get("per"), "pbr": cached.get("pbr"), "market_cap": cached.get("market_cap")}
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+    result = {"per": None, "pbr": None, "market_cap": None}
+    try:
+        import yfinance as yf
+        info = yf.Ticker(f"{code}.T").info or {}
+        result["market_cap"] = info.get("marketCap")
+        result["per"]        = info.get("trailingPE") or info.get("forwardPE")
+        result["pbr"]        = info.get("priceToBook")
+    except Exception:
+        pass
+
+    # みんかぶ補完 (PER/PBRがyfinanceで取れなかった場合)
+    if not result.get("per") or not result.get("pbr"):
+        try:
+            from bs4 import BeautifulSoup
+            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+            resp2 = _requests.get(f"https://minkabu.jp/stock/{code}", headers=headers, timeout=10)
+            soup2 = BeautifulSoup(resp2.text, "html.parser")
+            for row2 in soup2.find_all(["tr", "div", "li"]):
+                txt = row2.get_text(" ", strip=True)
+                if "PER" in txt and not result.get("per"):
+                    m = _re.search(r'PER[^\d]*([\d.]+)', txt)
+                    if m: result["per"] = float(m.group(1))
+                if "PBR" in txt and not result.get("pbr"):
+                    m = _re.search(r'PBR[^\d]*([\d.]+)', txt)
+                    if m: result["pbr"] = float(m.group(1))
+                if result.get("per") and result.get("pbr"): break
+        except Exception:
+            pass
+
+    # キャッシュ更新（既存エントリがあればPER/PBR/market_capだけ上書き）
+    try:
+        conn3 = get_conn()
+        with conn3.cursor() as cur:
+            cur.execute("SELECT data FROM company_info_cache WHERE symbol=%s", (code,))
+            row3 = cur.fetchone()
+            if row3:
+                existing = json.loads(row3["data"])
+                existing.update({k: v for k, v in result.items() if v is not None})
+                cur.execute(
+                    "UPDATE company_info_cache SET data=%s, updated_at=NOW() WHERE symbol=%s",
+                    (json.dumps(existing, ensure_ascii=False), code)
+                )
+            else:
+                cur.execute(
+                    "INSERT IGNORE INTO company_info_cache (symbol, data) VALUES (%s, %s)",
+                    (code, json.dumps(result, ensure_ascii=False))
+                )
+        conn3.commit()
+        conn3.close()
+    except Exception:
+        pass
+
+    return result
+
+
 @app.get("/financials")
 def get_financials(symbol: str = Query(...)):
     """みんかぶから四半期・年次財務データを取得"""
+    symbol = _re.sub(r'\.T$', '', symbol, flags=_re.IGNORECASE)
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -2925,7 +3487,6 @@ def get_financials(symbol: str = Query(...)):
 
 def _scrape_minkabu_financials(symbol: str) -> dict:
     """みんかぶ決算ページをスクレイピングして四半期・年次データを返す"""
-    symbol = symbol.replace(".T", "").replace(".OS", "")
     url = f"https://minkabu.jp/stock/{symbol}/settlement"
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     resp = _requests.get(url, headers=headers, timeout=15)
@@ -3211,7 +3772,7 @@ def chat(req: ChatRequest):
         conn = get_conn()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT title_ja, title, published, source FROM news_cache WHERE symbol=%s ORDER BY published DESC LIMIT 10",
+                "SELECT title_ja, title, published, source FROM news_cache WHERE symbol=%s ORDER BY published DESC LIMIT 5",
                 (req.symbol,)
             )
             news_rows = cur.fetchall()
@@ -3241,27 +3802,28 @@ def chat(req: ChatRequest):
         if req.analyst.get("kabuka") and req.analyst["kabuka"].get("avg"):
             system += f"kabuka.jp.net平均: {req.analyst['kabuka']['avg']}円\n"
 
-    system += "\nユーザーの質問に日本語で答えてください。上記の株価・アナリスト情報を積極的に活用し、さらにGoogle検索で最新ニュース・決算・業績情報も調べて具体的に回答してください。投資判断はユーザー自身が行うものとし、参考情報として回答してください。"
+    system += "\nユーザーの質問に日本語で答えてください。上記の株価・ニュース・アナリスト情報を積極的に活用して具体的に回答してください。投資判断はユーザー自身が行うものとし、参考情報として回答してください。"
 
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     try:
-        # Gemini形式のメッセージに変換
-        contents = []
-        for msg in req.messages:
-            role = "user" if msg["role"] == "user" else "model"
-            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+        from google import genai
+        from google.genai import types as genai_types
 
-        payload = {
-            "system_instruction": {"parts": [{"text": system}]},
-            "contents": contents,
-            "tools": [{"google_search": {}}],
-            "generationConfig": {"maxOutputTokens": 1500, "temperature": 0.7}
-        }
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-        gemini_resp = _requests.post(url, json=payload, timeout=30)
-        gemini_resp.raise_for_status()
-        data = gemini_resp.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+        # messagesをGemini形式に変換（system以外）
+        history = []
+        for m in req.messages[:-1]:
+            role = "user" if m["role"] == "user" else "model"
+            history.append(genai_types.Content(role=role, parts=[genai_types.Part(text=m["content"])]))
+
+        user_text = req.messages[-1]["content"] if req.messages else ""
+        chat_session = client.chats.create(
+            model="gemini-1.5-flash",
+            config=genai_types.GenerateContentConfig(system_instruction=system, max_output_tokens=1024),
+            history=history,
+        )
+        response = chat_session.send_message(user_text)
+        text = response.text
 
         # ユーザー発言と返答をDBに保存
         try:
@@ -3285,84 +3847,6 @@ def chat(req: ChatRequest):
         return {"reply": text}
     except Exception as e:
         raise HTTPException(500, str(e))
-
-
-def _translate_to_ja(text: str) -> str:
-    """Geminiで英語テキストを日本語に翻訳"""
-    if not text:
-        return ""
-    api_key = os.getenv("GEMINI_API_KEY", "")
-    if not api_key:
-        return text
-    try:
-        payload = {
-            "contents": [{"role": "user", "parts": [{"text": f"以下の英文を自然な日本語に翻訳してください。翻訳文のみ返してください:\n\n{text}"}]}],
-            "generationConfig": {"maxOutputTokens": 800, "temperature": 0}
-        }
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-        resp = _requests.post(url, json=payload, timeout=15)
-        resp.raise_for_status()
-        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception:
-        return text
-
-
-@app.get("/company_info")
-def get_company_info(symbol: str = Query(...)):
-    """yfinanceから基本情報（PER/PBR/配当等）を取得"""
-    code = symbol.replace('.T','').replace('.OS','')
-    sym = f"{code}.T" if code.isdigit() else symbol
-    try:
-        info = yf.Ticker(sym).info or {}
-        desc_en = info.get("longBusinessSummary") or info.get("businessSummary") or ""
-        desc_ja = _translate_to_ja(desc_en) if desc_en else ""
-        return {
-            "per":            info.get("trailingPE"),
-            "pbr":            info.get("priceToBook"),
-            "psr":            info.get("priceToSalesTrailing12Months"),
-            "roe":            round(info.get("returnOnEquity") * 100, 2) if info.get("returnOnEquity") is not None else None,
-            "dividend_yield": round(info.get("dividendYield") * 100, 2) if info.get("dividendYield") is not None else None,
-            "market_cap":     info.get("marketCap"),
-            "eps":            info.get("trailingEps"),
-            "bps":            info.get("bookValue"),
-            "employees":      info.get("fullTimeEmployees"),
-            "sector":         info.get("sector") or info.get("sectorDisp") or "",
-            "industry":       info.get("industry") or info.get("industryDisp") or "",
-            "description_ja": desc_ja,
-            "segments":       [],
-        }
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
-
-@app.get("/stockname")
-def get_stock_name(symbol: str = Query(...)):
-    """銘柄コードから会社名を返す（prime_stocks優先、なければyfinance）"""
-    conn = get_conn()
-    try:
-        # 4桁コード → prime_stocks で検索
-        code_only = symbol.replace(".T", "").replace(".OS", "")
-        with conn.cursor() as cur:
-            cur.execute("SELECT name FROM prime_stocks WHERE code=%s", (code_only,))
-            row = cur.fetchone()
-        if row and row["name"]:
-            return {"name": row["name"]}
-    except Exception:
-        pass
-    finally:
-        conn.close()
-
-    # yfinance fallback
-    try:
-        # 数字のみのコードは日本株として .T を付与
-        sym = f"{symbol}.T" if symbol.isdigit() else symbol
-        info = yf.Ticker(sym).info or {}
-        name = info.get("longName") or info.get("shortName") or ""
-        if name:
-            return {"name": name}
-    except Exception:
-        pass
-    return {"name": symbol}
 
 
 @app.get("/candles")
@@ -3947,7 +4431,8 @@ def _run_screening_update():
             latest_map = {r["symbol"]: str(r["latest"]) for r in (cur.fetchall() if symbols_t else [])}
         conn.close()
 
-        today_str = _dt3.now().strftime("%Y-%m-%d")
+        today_str = (_dt3.utcnow() + _td(hours=9)).strftime("%Y-%m-%d")
+        tomorrow_str = (_dt3.utcnow() + _td(hours=9, days=1)).strftime("%Y-%m-%d")
         stale_codes = []; new_codes = []; fresh_count = 0
 
         for code in codes:
@@ -3961,9 +4446,9 @@ def _run_screening_update():
             else:
                 new_codes.append(code)
 
-        _screening_status["total"] = len(codes)
         _screening_status["skipped"] = fresh_count
         fetch_count = len(stale_codes) + len(new_codes)
+        _screening_status["total"] = fetch_count + len(codes)
         candle_data = {}
         batch_size = 100
         done = 0
@@ -3974,7 +4459,7 @@ def _run_screening_update():
             tickers = [f"{c}.T" for c in batch_codes]
             min_start = min(batch_starts)
             try:
-                raw = yf.download(tickers, start=min_start, end=today_str,
+                raw = yf.download(tickers, start=min_start, end=tomorrow_str,
                                   interval="1d", group_by="ticker",
                                   progress=False, threads=True, auto_adjust=True)
                 for code, ticker in zip(batch_codes, tickers):
@@ -4020,11 +4505,16 @@ def _run_screening_update():
             _screening_status["progress"] = done
 
         vix_latest = None
-        try:
-            vix_df = yf.Ticker("^VIX").history(period="5d")
-            if not vix_df.empty:
-                vix_latest = float(vix_df["Close"].iloc[-1])
-        except Exception: pass
+        vix_by_date_screen = {}
+        for _vix_attempt in range(3):
+            try:
+                vix_df = yf.Ticker("^VIX").history(period="6mo")
+                if not vix_df.empty:
+                    vix_latest = float(vix_df["Close"].iloc[-1])
+                    for _vi, _vr in vix_df.iterrows():
+                        vix_by_date_screen[str(_vi)[:10]] = round(float(_vr['Close']), 1)
+                    break
+            except Exception: pass
 
         conn = get_conn()
         for code, new_rows in candle_data.items():
@@ -4050,45 +4540,74 @@ def _run_screening_update():
                     cur.execute(
                         "SELECT candle_time,open,high,low,close,volume FROM candles "
                         "WHERE symbol=%s AND interval_type='1d' "
-                        "ORDER BY candle_time DESC LIMIT 65",
+                        "ORDER BY candle_time DESC LIMIT 200",
                         (f"{code}.T",)
                     )
                     db_rows = list(reversed(cur.fetchall()))
                 if not db_rows: continue
+                latest_price_date = str(db_rows[-1]["candle_time"])[:10]
                 score = _calc_screening_score(db_rows, vix_latest=vix_latest)
                 if score:
                     s = stock_map.get(code, {})
+
+                    candles_for_sig = [
+                        {"time": r["candle_time"], "open": float(r["open"] or 0),
+                         "high": float(r["high"] or 0), "low": float(r["low"] or 0),
+                         "close": float(r["close"] or 0), "volume": r["volume"] or 0}
+                        for r in db_rows
+                    ]
+                    sig_result = generate_rule_signals(
+                        f"{code}.T", "1d",
+                        _candles=candles_for_sig,
+                        _vix_by_date=vix_by_date_screen
+                    )
+                    last_sig = sig_result.get("signals", [])[-1] if sig_result.get("signals") else None
+                    if last_sig:
+                        sig_date   = str(last_sig["time"])[:10]
+                        sig_side   = last_sig["side"]
+                        day_scores = sig_result.get("scores", {}).get(sig_date, {})
+                        last_sig_buy  = day_scores.get("buy",  0)
+                        last_sig_sell = day_scores.get("sell", 0)
+                    else:
+                        sig_date = sig_side = None
+                        last_sig_buy = last_sig_sell = None
+
                     with conn.cursor() as cur:
                         cur.execute(
                             "INSERT INTO screening_cache "
                             "(code,name,sector,buy_score,sell_score,net_score,close_price,change_pct,"
-                            "buy_signals,sell_signals,volume_avg,hv) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                            "buy_signals,sell_signals,volume_avg,hv,"
+                            "last_signal_side,last_signal_date,last_signal_buy_score,last_signal_sell_score,price_date) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                             "ON DUPLICATE KEY UPDATE name=%s,sector=%s,buy_score=%s,sell_score=%s,net_score=%s,"
                             "close_price=%s,change_pct=%s,buy_signals=%s,sell_signals=%s,"
-                            "volume_avg=%s,hv=%s,updated_at=NOW()",
+                            "volume_avg=%s,hv=%s,"
+                            "last_signal_side=%s,last_signal_date=%s,"
+                            "last_signal_buy_score=%s,last_signal_sell_score=%s,price_date=%s,updated_at=NOW()",
                             (code, s.get("name",""), s.get("sector",""),
                              score["buy_score"], score["sell_score"], score["net_score"],
                              score["close"], score["change_pct"],
                              json.dumps(score["buy_signals"], ensure_ascii=False),
                              json.dumps(score["sell_signals"], ensure_ascii=False),
                              score["volume_avg"], score["hv"],
+                             sig_side, sig_date, last_sig_buy, last_sig_sell, latest_price_date,
                              s.get("name",""), s.get("sector",""),
                              score["buy_score"], score["sell_score"], score["net_score"],
                              score["close"], score["change_pct"],
                              json.dumps(score["buy_signals"], ensure_ascii=False),
                              json.dumps(score["sell_signals"], ensure_ascii=False),
-                             score["volume_avg"], score["hv"])
+                             score["volume_avg"], score["hv"],
+                             sig_side, sig_date, last_sig_buy, last_sig_sell, latest_price_date)
                         )
                     conn.commit()
                 if idx % 50 == 0:
                     _screening_status["progress"] = fetch_count + idx
             except Exception: pass
 
-        _screening_status["progress"] = len(codes)
+        _screening_status["progress"] = fetch_count + len(codes)
         conn.close()
         _screening_status.update({"running": False,
-                                   "updated_at": _dt3.now().strftime("%Y-%m-%d %H:%M"),
+                                   "updated_at": (_dt3.utcnow() + __import__('datetime').timedelta(hours=9)).strftime("%Y-%m-%d %H:%M"),
                                    "error": None})
     except Exception as e:
         _screening_status.update({"running": False, "error": str(e)})
@@ -4110,14 +4629,18 @@ def screening_update():
 
 @app.get("/screening")
 def get_screening(
-    min_score: int = Query(1),
+    min_score: int = Query(-20),
     sector: str = Query(""),
     sort: str = Query("net_score"),
 ):
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM screening_cache")
+            cur.execute("""
+                SELECT s.*, c.data AS company_data
+                FROM screening_cache s
+                LEFT JOIN company_info_cache c ON s.code = c.symbol
+            """)
             rows = cur.fetchall()
     finally:
         conn.close()
@@ -4133,6 +4656,11 @@ def get_screening(
             sell_sigs = json.loads(r["sell_signals"] or "[]")
         except Exception:
             buy_sigs = sell_sigs = []
+        cd = {}
+        try:
+            cd = json.loads(r.get("company_data") or "{}")
+        except Exception:
+            pass
         results.append({
             "code":        r["code"],
             "name":        r["name"],
@@ -4147,6 +4675,14 @@ def get_screening(
             "volume_avg":  r.get("volume_avg"),
             "hv":          r.get("hv"),
             "updated_at":  str(r["updated_at"]),
+            "last_signal_side":       r.get("last_signal_side"),
+            "last_signal_date":       r.get("last_signal_date"),
+            "last_signal_buy_score":  r.get("last_signal_buy_score"),
+            "last_signal_sell_score": r.get("last_signal_sell_score"),
+            "price_date":             str(r["price_date"]) if r.get("price_date") else None,
+            "per":         cd.get("per"),
+            "pbr":         cd.get("pbr"),
+            "market_cap":  cd.get("market_cap"),
         })
 
     results.sort(key=lambda x: (x.get(sort) or 0), reverse=True)
