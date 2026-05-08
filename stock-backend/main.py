@@ -3752,17 +3752,25 @@ def chat(req: ChatRequest):
     system += "\nユーザーの質問に日本語で答えてください。上記の株価・ニュース・アナリスト情報を積極的に活用して具体的に回答してください。投資判断はユーザー自身が行うものとし、参考情報として回答してください。"
 
     try:
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 1024,
-            "system": system,
-            "messages": req.messages
-        })
-        resp = boto3.client("bedrock-runtime", region_name="us-east-1").invoke_model(
-            modelId="us.anthropic.claude-haiku-4-5-20251001-v1:0",
-            body=body, contentType="application/json", accept="application/json"
+        from google import genai
+        from google.genai import types as genai_types
+
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+        # messagesをGemini形式に変換（system以外）
+        history = []
+        for m in req.messages[:-1]:
+            role = "user" if m["role"] == "user" else "model"
+            history.append(genai_types.Content(role=role, parts=[genai_types.Part(text=m["content"])]))
+
+        user_text = req.messages[-1]["content"] if req.messages else ""
+        chat_session = client.chats.create(
+            model="gemini-2.0-flash",
+            config=genai_types.GenerateContentConfig(system_instruction=system, max_output_tokens=1024),
+            history=history,
         )
-        text = json.loads(resp["body"].read())["content"][0]["text"]
+        response = chat_session.send_message(user_text)
+        text = response.text
 
         # ユーザー発言と返答をDBに保存
         try:
