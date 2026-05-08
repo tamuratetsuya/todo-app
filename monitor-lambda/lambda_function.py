@@ -157,10 +157,11 @@ def lambda_handler(event, context):
 
     if ec2_ok:
         set_count('ec2', 0)
-        if restarting:
-            # 復旧確認 → HTTP OK なら restarting フラグ解除
-            pass  # HTTP チェック後に判断
         log['ec2'] = {'status': 'OK', 'detail': ec2_detail}
+    elif restarting:
+        # 再起動中のinitializingは誤検知なのでカウントしない
+        set_count('ec2', 0)
+        log['ec2'] = {'status': 'INITIALIZING', 'detail': ec2_detail}
     else:
         ec2_failures += 1
         set_count('ec2', ec2_failures)
