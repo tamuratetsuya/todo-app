@@ -6277,29 +6277,38 @@ async function sendAiChat() {
     }
   }
 
-  // URLパラメータで銘柄指定（スクリーニングページから遷移）
+  // URLパラメータで銘柄指定
   const _urlParams = new URLSearchParams(location.search);
   const _urlCodeRaw = _urlParams.get('code');
-  // 4桁数字はJP株として.Tを付与（スクリーニングページからの遷移対応）
-  const _urlCode = _urlCodeRaw && /^[0-9A-Z]{4,5}$/i.test(_urlCodeRaw) && !_urlCodeRaw.includes('.') ? _urlCodeRaw + '.T' : _urlCodeRaw;
+  // 常にnormCode（.T除去）で統一
+  const _urlCode = _urlCodeRaw ? normCode(_urlCodeRaw) : null;
   if (_urlCode) {
-    const _urlName = _urlParams.get('name') || _urlCode;
-    const _fromScreening = !!_urlParams.get('name'); // nameがある＝スクリーニングからの遷移
-    // 既存trades/watchStocksに同じ銘柄（.T有無違い）があればそのコードを優先
-    const _existingTradeKey = Object.keys(trades).find(t => normCode(t) === normCode(_urlCode));
-    const _existingWatch = watchStocks.find(w => normCode(w.code) === normCode(_urlCode));
-    const _resolvedCode = _existingTradeKey || (_existingWatch && _existingWatch.code) || _urlCode;
-    if (!trades[_resolvedCode]) trades[_resolvedCode] = [];
-    if (!stockNames[_resolvedCode]) stockNames[_resolvedCode] = _urlName;
-    const _existing = watchStocks.find(w => w.code === _resolvedCode);
-    if (_existing) {
-      if (_urlName && _urlName !== _resolvedCode) _existing.name = _urlName;
-    } else if (_fromScreening) {
-      // tradesに同じ銘柄（.T有無を無視）がなければwatchStocksに追加
-      const _inTrades = Object.keys(trades).some(t => normCode(t) === normCode(_resolvedCode));
-      if (!_inTrades) watchStocks.push({ code: _resolvedCode, name: _urlName });
+    const _urlNameParam = _urlParams.get('name');
+    // trades / watchStocks / favorites から既存エントリを探す
+    const _existingTradeKey = Object.keys(trades).find(t => normCode(t) === _urlCode);
+    const _existingWatch = watchStocks.find(w => normCode(w.code) === _urlCode);
+    const _existingFav = favorites.find(f => f.code === _urlCode);
+    let _resolvedCode = _existingTradeKey || (_existingWatch && _existingWatch.code) || (_existingFav && _existingFav.code) || _urlCode;
+    // 既存データがなければwatchStocksに追加（スクリーニング遷移でなくても追加して表示できるように）
+    if (!_existingTradeKey && !_existingWatch && !_existingFav) {
+      const _inTrades = Object.keys(trades).some(t => normCode(t) === _urlCode);
+      if (!_inTrades) {
+        watchStocks.push({ code: _resolvedCode, name: _urlNameParam || _resolvedCode });
+        localStorage.setItem(WATCH_KEY, JSON.stringify(watchStocks));
+      }
     }
-    localStorage.setItem(WATCH_KEY, JSON.stringify(watchStocks));
+    if (!trades[_resolvedCode]) trades[_resolvedCode] = [];
+    // 名前は既存の正式名を優先し、コード文字列はセットしない
+    const _existingName = stockNames[_resolvedCode] || (_existingFav && _existingFav.name) || (_existingWatch && _existingWatch.name);
+    if (_existingName && _existingName !== _resolvedCode) {
+      stockNames[_resolvedCode] = _existingName;
+    } else if (_urlNameParam) {
+      stockNames[_resolvedCode] = _urlNameParam;
+    }
+    // 名前が未解決なら非同期で補完
+    if (!stockNames[_resolvedCode] || stockNames[_resolvedCode] === _resolvedCode) {
+      fetchAndSetStockName(_resolvedCode);
+    }
     currentSymbol = _resolvedCode;
     rebuildStockSelect();
     selectSymbol(_resolvedCode);
@@ -6307,7 +6316,7 @@ async function sendAiChat() {
     const codes = Object.keys(trades).filter(c => trades[c].length > 0);
     const allCodes = [...codes, ...watchStocks.map(w => w.code)];
     // お気に入りの先頭を優先、なければ通常の先頭銘柄
-    const firstCode = favorites.find(f => allCodes.includes(f)) || allCodes[0];
+    const firstCode = favorites.find(f => allCodes.includes(f.code)) || allCodes[0];
     if (firstCode) selectSymbol(firstCode);
   }
 })();
