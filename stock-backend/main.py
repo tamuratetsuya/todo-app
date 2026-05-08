@@ -141,10 +141,15 @@ def init_db():
             CREATE TABLE IF NOT EXISTS favorites (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 symbol VARCHAR(20) NOT NULL,
+                fav_type VARCHAR(10) NOT NULL DEFAULT 'buy',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE KEY uq_fav (symbol)
             )
         """)
+        try:
+            cur.execute("ALTER TABLE favorites ADD COLUMN fav_type VARCHAR(10) NOT NULL DEFAULT 'buy'")
+        except Exception:
+            pass  # already exists
         cur.execute("""
             CREATE TABLE IF NOT EXISTS analyst_cache (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -203,22 +208,28 @@ def get_favorites():
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT f.symbol, COALESCE(p.name, '') AS name
+                SELECT f.symbol, f.fav_type, COALESCE(p.name, '') AS name
                 FROM favorites f
                 LEFT JOIN prime_stocks p ON p.code = f.symbol
                 ORDER BY f.created_at DESC
             """)
             rows = cur.fetchall()
-            return [{"code": r["symbol"], "name": r["name"]} for r in rows]
+            return [{"code": r["symbol"], "name": r["name"], "fav_type": r["fav_type"]} for r in rows]
     finally:
         conn.close()
 
 @app.post("/favorites/{symbol}")
-def add_favorite(symbol: str):
+def add_favorite(symbol: str, fav_type: str = "buy"):
+    if fav_type not in ("buy", "sell"):
+        fav_type = "buy"
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("INSERT IGNORE INTO favorites (symbol) VALUES (%s)", (symbol,))
+            cur.execute(
+                "INSERT INTO favorites (symbol, fav_type) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE fav_type=VALUES(fav_type)",
+                (symbol, fav_type)
+            )
         conn.commit()
         return {"ok": True}
     finally:
