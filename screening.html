@@ -242,8 +242,34 @@
     line-height: 1;
     transition: color 0.1s;
   }
-  .fav-btn.active { color: #f59e0b; }
-  .fav-btn:hover  { color: #f59e0b; }
+  .fav-btn.buy  { color: #f59e0b; }
+  .fav-btn.sell { color: #ef4444; }
+  .fav-btn:hover { color: #94a3b8; }
+  .fav-type-picker {
+    position: fixed;
+    z-index: 9999;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px;
+    display: flex;
+    gap: 4px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  .fav-pick-buy, .fav-pick-sell {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .fav-pick-buy  { color: #f59e0b; }
+  .fav-pick-buy:hover  { background: rgba(245,158,11,0.15); }
+  .fav-pick-sell { color: #ef4444; }
+  .fav-pick-sell:hover { background: rgba(239,68,68,0.15); }
 
   .code-link {
     color: var(--blue);
@@ -426,7 +452,8 @@ let filteredData = [];
 let sortCol = 'net_score';
 let sortAsc = false;
 let pollTimer = null;
-let favorites = new Set();
+let favorites = new Map(); // code → fav_type
+const _favPending = new Set();
 
 // ===== FAVORITES =====
 async function loadFavorites() {
@@ -434,30 +461,90 @@ async function loadFavorites() {
     const res = await fetch(`${API}/favorites`);
     if (res.ok) {
       const list = await res.json();
-      // [{code,name}] 形式に対応（旧string[]も互換）
-      favorites = new Set(list.map(d => typeof d === 'string' ? d : d.code));
-      // テーブルが表示済みなら★を更新
+      favorites = new Map(list.map(d =>
+        typeof d === 'string' ? [d, 'buy'] : [d.code, d.fav_type || 'buy']
+      ));
       document.querySelectorAll('.fav-btn[data-code]').forEach(btn => {
         const code = btn.dataset.code;
-        const active = favorites.has(code);
-        btn.textContent = active ? '★' : '☆';
-        btn.classList.toggle('active', active);
+        const ft = favorites.get(code) || null;
+        btn.textContent = ft ? '★' : '☆';
+        btn.className = 'fav-btn' + (ft ? ' ' + ft : '');
+        btn.title = ft === 'buy' ? '★買い（クリックで解除）' : ft === 'sell' ? '★売り（クリックで解除）' : 'お気に入り追加';
       });
     }
   } catch(e) {}
 }
 
-async function toggleFavorite(code, btn) {
+function _closeFavPicker() {
+  document.querySelectorAll('.fav-type-picker').forEach(el => el.remove());
+}
+
+function showFavPicker(btn, code) {
+  _closeFavPicker();
+  const picker = document.createElement('div');
+  picker.className = 'fav-type-picker';
+
+  const mkBtn = (label, type) => {
+    const b = document.createElement('button');
+    b.className = type === 'buy' ? 'fav-pick-buy' : 'fav-pick-sell';
+    b.textContent = '★ ' + label;
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      _closeFavPicker();
+      setFavorite(code, type, btn);
+    });
+    return b;
+  };
+  picker.appendChild(mkBtn('買い', 'buy'));
+  picker.appendChild(mkBtn('売り', 'sell'));
+  document.body.appendChild(picker);
+
+  const r = btn.getBoundingClientRect();
+  picker.style.top  = (r.bottom + 4) + 'px';
+  picker.style.left = r.left + 'px';
+
+  const onOutside = e => {
+    if (!picker.contains(e.target) && e.target !== btn) {
+      _closeFavPicker();
+      document.removeEventListener('click', onOutside, true);
+    }
+  };
+  requestAnimationFrame(() => document.addEventListener('click', onOutside, true));
+}
+
+function setFavorite(code, fav_type, btn) {
+  if (_favPending.has(code)) return;
+  _favPending.add(code);
+
+  favorites.set(code, fav_type);
+  btn.textContent = '★';
+  btn.className = 'fav-btn ' + fav_type;
+  btn.title = fav_type === 'buy' ? '★買い（クリックで解除）' : '★売り（クリックで解除）';
+
+  fetch(`${API}/favorites/${encodeURIComponent(code)}?fav_type=${fav_type}`, {method: 'POST'})
+    .catch(() => {})
+    .finally(() => _favPending.delete(code));
+}
+
+function removeFavorite(code, btn) {
+  if (_favPending.has(code)) return;
+  _favPending.add(code);
+
+  favorites.delete(code);
+  btn.textContent = '☆';
+  btn.className = 'fav-btn';
+  btn.title = 'お気に入り追加';
+
+  fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method: 'DELETE'})
+    .catch(() => {})
+    .finally(() => _favPending.delete(code));
+}
+
+function toggleFavorite(code, btn) {
   if (favorites.has(code)) {
-    favorites.delete(code);
-    btn.textContent = '☆';
-    btn.classList.remove('active');
-    fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method: 'DELETE'}).catch(() => {});
+    removeFavorite(code, btn);
   } else {
-    favorites.add(code);
-    btn.textContent = '★';
-    btn.classList.add('active');
-    fetch(`${API}/favorites/${encodeURIComponent(code)}`, {method: 'POST'}).catch(() => {});
+    showFavPicker(btn, code);
   }
 }
 
@@ -678,9 +765,10 @@ function buildRow(r) {
     return (v/1e4).toFixed(0) + '万';
   })() : '-';
 
-  const isFav = favorites.has(code);
+  const _favType = favorites.get(code) || null;
+  const _favTitle = _favType === 'buy' ? '★買い（クリックで解除）' : _favType === 'sell' ? '★売り（クリックで解除）' : 'お気に入り追加';
   return `<tr class="clickable" onclick="openStock('${code}')">
-    <td class="col-fav"><button class="fav-btn${isFav ? ' active' : ''}" data-code="${code}" onclick="event.stopPropagation();toggleFavorite('${code}',this)">${isFav ? '★' : '☆'}</button></td>
+    <td class="col-fav"><button class="fav-btn${_favType ? ' ' + _favType : ''}" data-code="${code}" title="${_favTitle}" onclick="event.stopPropagation();toggleFavorite('${code}',this)">${_favType ? '★' : '☆'}</button></td>
     <td class="col-code"><a class="code-link" onclick="event.stopPropagation();openStock('${code}')">${codeBase}</a></td>
     <td class="col-name">${name}</td>
     <td class="col-sector">${sector}</td>
