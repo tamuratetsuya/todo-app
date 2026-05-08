@@ -752,6 +752,9 @@
   .fav-pick-buy:hover  { background: rgba(245,158,11,0.15); }
   .fav-pick-sell { color: #ef4444; }
   .fav-pick-sell:hover { background: rgba(239,68,68,0.15); }
+  .fav-pick-current { font-weight: 900; text-decoration: underline; }
+  .fav-pick-remove { color: var(--text2); }
+  .fav-pick-remove:hover { background: rgba(148,163,184,0.15); }
 
   .pnl-table .td-pnl {
     text-align: right;
@@ -1560,43 +1563,54 @@ function _closeFavPicker() {
 
 function showFavPicker(btn, code, name) {
   _closeFavPicker();
+  const current = getFavType(normCode(code));
   const picker = document.createElement('div');
   picker.className = 'fav-type-picker';
 
-  const mkBtn = (label, type) => {
+  const mkTypeBtn = (label, type) => {
     const b = document.createElement('button');
-    b.className = type === 'buy' ? 'fav-pick-buy' : 'fav-pick-sell';
-    b.textContent = '★ ' + label;
+    b.className = (type === 'buy' ? 'fav-pick-buy' : 'fav-pick-sell') + (current === type ? ' fav-pick-current' : '');
+    b.textContent = (current === type ? '✓ ' : '') + '★ ' + label;
     b.addEventListener('click', e => {
       e.stopPropagation();
       _closeFavPicker();
-      setFavorite(code, name, type);
+      if (current !== type) setFavorite(code, name, type);
     });
     return b;
   };
-  picker.appendChild(mkBtn('買い', 'buy'));
-  picker.appendChild(mkBtn('売り', 'sell'));
+  const mkRemoveBtn = () => {
+    const b = document.createElement('button');
+    b.className = 'fav-pick-remove';
+    b.textContent = '☆ 解除';
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      _closeFavPicker();
+      removeFavorite(code);
+    });
+    return b;
+  };
+
+  picker.appendChild(mkTypeBtn('買い', 'buy'));
+  picker.appendChild(mkTypeBtn('売り', 'sell'));
+  if (current) picker.appendChild(mkRemoveBtn());
   document.body.appendChild(picker);
 
-  // ボタン直下に配置（fixed座標）
   const r = btn.getBoundingClientRect();
   picker.style.top  = (r.bottom + 4) + 'px';
   picker.style.left = r.left + 'px';
 
-  // 外側クリックで閉じる（capture phaseで拾い、picker内なら無視）
   const onOutside = e => {
     if (!picker.contains(e.target) && e.target !== btn) {
       _closeFavPicker();
       document.removeEventListener('click', onOutside, true);
     }
   };
-  // 同tick内のクリックを無視するため次のフレームで登録
   requestAnimationFrame(() => document.addEventListener('click', onOutside, true));
 }
 
 function setFavorite(code, name, fav_type) {
   const c = normCode(code);
-  if (_favPending.has(c)) return; // 進行中は無視
+  if (_favPending.has(c)) return;
   _favPending.add(c);
 
   const existing = favorites.find(f => f.code === c);
@@ -1626,11 +1640,7 @@ function removeFavorite(code) {
 }
 
 function toggleFavorite(btn, code, name) {
-  if (isFavorite(normCode(code))) {
-    removeFavorite(code);
-  } else {
-    showFavPicker(btn, code, name);
-  }
+  showFavPicker(btn, code, name);
 }
 
 // タブがアクティブになったときにfavoritesを再同期
