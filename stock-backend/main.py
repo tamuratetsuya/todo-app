@@ -3765,7 +3765,7 @@ def chat(req: ChatRequest):
 
         user_text = req.messages[-1]["content"] if req.messages else ""
         chat_session = client.chats.create(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             config=genai_types.GenerateContentConfig(system_instruction=system, max_output_tokens=1024),
             history=history,
         )
