@@ -3769,6 +3769,7 @@ def chat(req: ChatRequest):
             config=genai_types.GenerateContentConfig(
                 system_instruction=system,
                 max_output_tokens=4096,
+                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
             ),
             history=history,
         )
