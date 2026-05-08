@@ -201,10 +201,10 @@ def lambda_handler(event, context):
             if not ok:
                 all_ok = False
         log['http'] = http_log
-        if all_ok:
+        if all_ok and ec2_ok:
             set_param('restarting', 'false')
             log['restarting'] = 'cleared'
-            print(f"[{now}] Restart complete, all HTTP OK")
+            print(f"[{now}] Restart complete, EC2 OK and all HTTP OK")
         else:
             log['restarting'] = 'in_progress'
         print(json.dumps(log))
