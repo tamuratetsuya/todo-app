@@ -3670,7 +3670,14 @@ function fmtPnl(n) {
 
 // ===== RENDER SIDEBAR =====
 function renderPnl() {
-  const codes = Object.keys(trades);
+  // .T有無の重複を排除（先に出たコードを優先）
+  const seenNorm = new Set();
+  const codes = Object.keys(trades).filter(c => {
+    const n = normCode(c);
+    if (seenNorm.has(n)) return false;
+    seenNorm.add(n);
+    return true;
+  });
   if (!codes.length && !watchStocks.length && !favorites.length) {
     pnlBody.innerHTML = '<div class="empty-msg">CSVをインポートしてください</div>';
     totalPnlEl.textContent = '';
@@ -3720,7 +3727,7 @@ function renderPnl() {
 
   // ウォッチリスト銘柄（トレード履歴なし）を追加
   const watchRows = watchStocks
-    .filter(w => !codes.includes(w.code))
+    .filter(w => !codes.some(c => normCode(c) === normCode(w.code)))
     .map(w => ({ code: w.code, name: w.name, type: 'watch' }));
 
   // favoritesにあるがsidebarに未登録の銘柄を追加
@@ -3843,7 +3850,19 @@ function selectSymbol(code) {
 
 // ===== WATCH STOCKS (trade履歴なしで追加した銘柄) =====
 const WATCH_KEY = 'stockWatchList';
-let watchStocks = JSON.parse(localStorage.getItem(WATCH_KEY) || '[]'); // [{code, name}]
+let watchStocks = (() => {
+  const raw = JSON.parse(localStorage.getItem(WATCH_KEY) || '[]');
+  // 同じnormCodeの重複を除去（.T有無違いを統一）
+  const seen = new Set();
+  const deduped = raw.filter(w => {
+    const n = normCode(w.code);
+    if (seen.has(n)) return false;
+    seen.add(n);
+    return true;
+  });
+  if (deduped.length !== raw.length) localStorage.setItem(WATCH_KEY, JSON.stringify(deduped));
+  return deduped;
+})();
 
 const addStockModal = document.getElementById('addStockModal');
 const modalCode     = document.getElementById('modalCode');
