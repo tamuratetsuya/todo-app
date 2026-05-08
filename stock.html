@@ -6135,19 +6135,50 @@ async function clearAiChatHistory() {
   appendAiMessage('assistant', `${stockNames[currentSymbol]||currentSymbol} について何でも聞いてください。`);
 }
 
+function renderAiMarkdown(text) {
+  // HTMLエスケープ
+  let s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // 水平線
+  s = s.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid var(--border2);margin:6px 0">');
+  // 見出し（### ## #）
+  s = s.replace(/^### (.+)$/gm, '<div style="font-size:13px;font-weight:700;margin:8px 0 2px">$1</div>');
+  s = s.replace(/^## (.+)$/gm,  '<div style="font-size:14px;font-weight:700;margin:10px 0 2px">$1</div>');
+  s = s.replace(/^# (.+)$/gm,   '<div style="font-size:15px;font-weight:700;margin:10px 0 4px">$1</div>');
+  // 太字・斜体
+  s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // コードインライン
+  s = s.replace(/`([^`]+)`/g, '<code style="background:var(--bg2);padding:1px 5px;border-radius:3px;font-size:12px">$1</code>');
+  // 箇条書き（- または *）
+  s = s.replace(/^[ \t]*[-*] (.+)$/gm, '<li style="margin:2px 0;padding-left:2px">$1</li>');
+  s = s.replace(/(<li[^>]*>[\s\S]*?<\/li>)(\s*<li)/g, '$1$2');
+  s = s.replace(/(<li[\s\S]+?<\/li>(?:\s*<li[\s\S]+?<\/li>)*)/g,
+    '<ul style="margin:4px 0;padding-left:18px;list-style:disc">$1</ul>');
+  // 番号付きリスト
+  s = s.replace(/^(\d+)\. (.+)$/gm, '<li style="margin:2px 0">$2</li>');
+  // 段落: 連続空行 → 区切り
+  s = s.replace(/\n{2,}/g, '<br><br>');
+  s = s.replace(/\n/g, '<br>');
+  return s;
+}
+
 function appendAiMessage(role, content) {
   const msgs = document.getElementById('aiChatMessages');
   if (!msgs) return;
   const isUser = role === 'user';
   const div = document.createElement('div');
   div.style.cssText = `display:flex;justify-content:${isUser?'flex-end':'flex-start'};`;
-  div.innerHTML = `<div style="
-    max-width:82%;padding:9px 13px;border-radius:${isUser?'14px 14px 4px 14px':'14px 14px 14px 4px'};
+  const bubble = document.createElement('div');
+  bubble.style.cssText = `
+    max-width:88%;padding:9px 13px;border-radius:${isUser?'14px 14px 4px 14px':'14px 14px 14px 4px'};
     background:${isUser?'var(--accent)':'var(--bg3)'};
     color:${isUser?'#000':'var(--text)'};
-    font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;
+    font-size:13px;line-height:1.6;word-break:break-word;
     border:1px solid ${isUser?'transparent':'var(--border2)'};
-  ">${escapeHtml(content)}</div>`;
+  `;
+  bubble.innerHTML = isUser ? escapeHtml(content) : renderAiMarkdown(content);
+  div.appendChild(bubble);
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
 }
