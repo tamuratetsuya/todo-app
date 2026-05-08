@@ -3287,14 +3287,35 @@ def chat(req: ChatRequest):
         raise HTTPException(500, str(e))
 
 
+def _translate_to_ja(text: str) -> str:
+    """Geminiで英語テキストを日本語に翻訳"""
+    if not text:
+        return ""
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        return text
+    try:
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": f"以下の英文を自然な日本語に翻訳してください。翻訳文のみ返してください:\n\n{text}"}]}],
+            "generationConfig": {"maxOutputTokens": 800, "temperature": 0}
+        }
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        resp = _requests.post(url, json=payload, timeout=15)
+        resp.raise_for_status()
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception:
+        return text
+
+
 @app.get("/company_info")
 def get_company_info(symbol: str = Query(...)):
     """yfinanceから基本情報（PER/PBR/配当等）を取得"""
-    sym = f"{symbol}.T" if (symbol.replace('.T','').replace('.OS','').isdigit()) else symbol
+    code = symbol.replace('.T','').replace('.OS','')
+    sym = f"{code}.T" if code.isdigit() else symbol
     try:
         info = yf.Ticker(sym).info or {}
-        # 事業説明：英語をそのまま返す（フロントで表示）
-        desc = info.get("longBusinessSummary") or info.get("businessSummary") or ""
+        desc_en = info.get("longBusinessSummary") or info.get("businessSummary") or ""
+        desc_ja = _translate_to_ja(desc_en) if desc_en else ""
         return {
             "per":            info.get("trailingPE"),
             "pbr":            info.get("priceToBook"),
@@ -3307,7 +3328,7 @@ def get_company_info(symbol: str = Query(...)):
             "employees":      info.get("fullTimeEmployees"),
             "sector":         info.get("sector") or info.get("sectorDisp") or "",
             "industry":       info.get("industry") or info.get("industryDisp") or "",
-            "description_ja": desc,
+            "description_ja": desc_ja,
             "segments":       [],
         }
     except Exception as e:
