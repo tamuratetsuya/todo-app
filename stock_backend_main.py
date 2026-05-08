@@ -3243,7 +3243,7 @@ def chat(req: ChatRequest):
 
     system += "\nユーザーの質問に日本語で答えてください。上記の株価・アナリスト情報を積極的に活用し、さらにGoogle検索で最新ニュース・決算・業績情報も調べて具体的に回答してください。投資判断はユーザー自身が行うものとし、参考情報として回答してください。"
 
-    GEMINI_API_KEY = "AIzaSyDJ95N8brTHePOIaTJAKp9Eczbu7Nl_uNU"
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     try:
         # Gemini形式のメッセージに変換
         contents = []
@@ -3283,6 +3283,33 @@ def chat(req: ChatRequest):
             pass
 
         return {"reply": text}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/company_info")
+def get_company_info(symbol: str = Query(...)):
+    """yfinanceから基本情報（PER/PBR/配当等）を取得"""
+    sym = f"{symbol}.T" if (symbol.replace('.T','').replace('.OS','').isdigit()) else symbol
+    try:
+        info = yf.Ticker(sym).info or {}
+        # 事業説明：英語をそのまま返す（フロントで表示）
+        desc = info.get("longBusinessSummary") or info.get("businessSummary") or ""
+        return {
+            "per":            info.get("trailingPE"),
+            "pbr":            info.get("priceToBook"),
+            "psr":            info.get("priceToSalesTrailing12Months"),
+            "roe":            round(info.get("returnOnEquity") * 100, 2) if info.get("returnOnEquity") is not None else None,
+            "dividend_yield": round(info.get("dividendYield") * 100, 2) if info.get("dividendYield") is not None else None,
+            "market_cap":     info.get("marketCap"),
+            "eps":            info.get("trailingEps"),
+            "bps":            info.get("bookValue"),
+            "employees":      info.get("fullTimeEmployees"),
+            "sector":         info.get("sector") or info.get("sectorDisp") or "",
+            "industry":       info.get("industry") or info.get("industryDisp") or "",
+            "description_ja": desc,
+            "segments":       [],
+        }
     except Exception as e:
         raise HTTPException(500, str(e))
 
