@@ -3818,12 +3818,17 @@ def chat(req: ChatRequest):
 
         user_text = req.messages[-1]["content"] if req.messages else ""
         chat_session = client.chats.create(
-            model="gemini-1.5-flash",
-            config=genai_types.GenerateContentConfig(system_instruction=system, max_output_tokens=1024),
+            model="gemini-2.5-flash",
+            config=genai_types.GenerateContentConfig(
+                system_instruction=system,
+                max_output_tokens=4096,
+                thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
+                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+            ),
             history=history,
         )
         response = chat_session.send_message(user_text)
-        text = response.text
+        text = response.text or ""
 
         # ユーザー発言と返答をDBに保存
         try:
