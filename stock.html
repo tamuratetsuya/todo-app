@@ -4110,12 +4110,13 @@ function splitCSVLine(line) {
 
 // ===== AGGREGATION =====
 function aggregateTrades(rawList) {
-  // Group by code + date + side
+  // Group by normalized code + date + side (.T有無を統一)
   const groups = {};
   for (const t of rawList) {
-    const key = `${t.code}__${t.date}__${t.side}`;
+    const code = normCode(t.code); // .T除去して統一
+    const key = `${code}__${t.date}__${t.side}`;
     if (!groups[key]) {
-      groups[key] = { ...t, totalValue: t.qty * t.price, totalQty: t.qty,
+      groups[key] = { ...t, code, totalValue: t.qty * t.price, totalQty: t.qty,
                       totalComm: t.commission, totalTax: t.tax, totalSettl: t.settlement };
     } else {
       const g = groups[key];
@@ -4124,6 +4125,7 @@ function aggregateTrades(rawList) {
       g.totalComm    += t.commission;
       g.totalTax     += t.tax;
       g.totalSettl   += t.settlement;
+      if (!g.name && t.name) g.name = t.name;
     }
   }
 
