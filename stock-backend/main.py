@@ -27,8 +27,8 @@ app.add_middleware(
 # yfinance fetch period per interval (limited by API)
 INTERVALS = {
     "1h":  {"period": "730d", "is_date": False},
-    "1d":  {"period": "2y",   "is_date": True},
-    "1wk": {"period": "5y",   "is_date": True},
+    "1d":  {"period": "5y",   "is_date": True},
+    "1wk": {"period": "10y",  "is_date": True},
 }
 
 
@@ -348,7 +348,7 @@ def _fetch_twelve_data(sym: str, interval: str) -> list:
     # sym例: "7203.T" → "7203", "6758.T" → "6758"
     td_sym = sym.replace(".T", "").replace(".OS", "")
     interv_map = {"1d": "1day", "1wk": "1week", "1h": "1h"}
-    outputsize_map = {"1d": 500, "1wk": 260, "1h": 500}
+    outputsize_map = {"1d": 1300, "1wk": 520, "1h": 500}
     td_interval = interv_map.get(interval)
     if not td_interval:
         return []
@@ -404,7 +404,7 @@ def _fetch_twelve_data(sym: str, interval: str) -> list:
 def _fetch_yahoo_raw(sym: str, interval: str) -> list:
     """Yahoo Finance生APIを直接叩いて取得（yfinanceより最新データが得られる）"""
     import datetime as _dt
-    range_map  = {"1d": "2y",  "1wk": "5y", "1h": "60d"}
+    range_map  = {"1d": "5y",  "1wk": "10y", "1h": "60d"}
     interv_map = {"1d": "1d",  "1wk": "1wk","1h": "1h"}
     is_date    = interval in ("1d", "1wk")
 
@@ -4485,11 +4485,12 @@ def _run_screening_update():
             done += len(batch)
             _screening_status["progress"] = done
 
+        _hist_start = (_dt3.utcnow() + _td(hours=9) - _td(days=365*5+1)).strftime("%Y-%m-%d")
         for b in range(0, len(new_codes), batch_size):
             batch = new_codes[b:b+batch_size]
             tickers = [f"{c}.T" for c in batch]
             try:
-                raw = yf.download(tickers, period="3mo", interval="1d",
+                raw = yf.download(tickers, start=_hist_start, end=tomorrow_str, interval="1d",
                                   group_by="ticker", progress=False, threads=True, auto_adjust=True)
                 for code, ticker in zip(batch, tickers):
                     try:
@@ -4621,6 +4622,89 @@ def _run_screening_update():
 @app.get("/screening/status")
 def screening_status():
     return _screening_status
+
+
+_backfill_status = {"running": False, "progress": 0, "total": 0, "done": False, "error": None}
+
+def _run_backfill():
+    global _backfill_status
+    _backfill_status.update({"running": True, "progress": 0, "total": 0, "done": False, "error": None})
+    try:
+        import threading as _th
+        from datetime import datetime as _dt4, timedelta as _td4
+        import pandas as _pd2
+
+        hist_start = (_dt4.utcnow() - _td4(days=365*5+10)).strftime("%Y-%m-%d")
+        tomorrow   = (_dt4.utcnow() + _td4(days=1)).strftime("%Y-%m-%d")
+
+        conn = get_conn()
+        # 各銘柄の最古candle日を取得
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT symbol, MIN(candle_time) as earliest
+                FROM candles WHERE interval_type='1d'
+                GROUP BY symbol
+            """)
+            earliest_map = {r["symbol"]: str(r["earliest"])[:10] for r in cur.fetchall()}
+        conn.close()
+
+        # 5年前より新しい earliest を持つ銘柄 → 過去分を補充
+        threshold = (_dt4.utcnow() - _td4(days=365*5 - 30)).strftime("%Y-%m-%d")
+        targets = [(sym, earliest) for sym, earliest in earliest_map.items()
+                   if earliest > threshold and sym.endswith(".T")]
+
+        _backfill_status["total"] = len(targets)
+        batch_size = 50
+        conn2 = get_conn()
+        for i in range(0, len(targets), batch_size):
+            batch = targets[i:i+batch_size]
+            tickers = [sym for sym, _ in batch]
+            min_end = min(earliest for _, earliest in batch)  # 最も古いearliest
+            try:
+                raw = yf.download(tickers, start=hist_start, end=min_end,
+                                  interval="1d", group_by="ticker",
+                                  progress=False, threads=True, auto_adjust=True)
+                for sym, earliest in batch:
+                    try:
+                        df_t = raw if len(tickers) == 1 else (
+                            raw[sym] if sym in raw.columns.get_level_values(0) else _pd2.DataFrame()
+                        )
+                        if df_t is None or df_t.empty: continue
+                        df_t = df_t.dropna(subset=["Close"])
+                        with conn2.cursor() as cur:
+                            for dt, row in df_t.iterrows():
+                                d = str(dt.date())
+                                if d >= earliest: continue  # 既存データは上書きしない
+                                cur.execute(
+                                    "INSERT IGNORE INTO candles "
+                                    "(symbol,interval_type,candle_time,open,high,low,close,volume) "
+                                    "VALUES (%s,'1d',%s,%s,%s,%s,%s,%s)",
+                                    (sym, d,
+                                     float(row["Open"]), float(row["High"]),
+                                     float(row["Low"]),  float(row["Close"]),
+                                     float(row.get("Volume", 0) or 0))
+                                )
+                        conn2.commit()
+                    except Exception: pass
+            except Exception: pass
+            _backfill_status["progress"] = i + len(batch)
+        conn2.close()
+        _backfill_status.update({"running": False, "done": True})
+    except Exception as e:
+        _backfill_status.update({"running": False, "error": str(e)})
+
+
+@app.post("/candles/backfill")
+def start_backfill():
+    if _backfill_status.get("running"):
+        return {"message": "already running", "status": _backfill_status}
+    t = _threading.Thread(target=_run_backfill, daemon=True)
+    t.start()
+    return {"message": "backfill started"}
+
+@app.get("/candles/backfill/status")
+def backfill_status():
+    return _backfill_status
 
 
 @app.post("/screening/update")
