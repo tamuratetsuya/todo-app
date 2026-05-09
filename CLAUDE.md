@@ -64,23 +64,34 @@ cd /Users/tamura/claude_code && git add -A && git commit -m "..." && git push or
   - マイナー（0.x.0）: 新機能追加
   - メジャー（x.0.0）: 大規模変更
 
-### 本番デプロイ時の必須手順
-1. `VERSION` ファイルを更新
-2. git commit & push
-3. git tag を打つ: `git tag -a v1.0.0 -m "リリース内容の説明"`
-4. タグを push: `git push origin v1.0.0`
-5. 本番デプロイ実行
+### 本番デプロイ時の必須手順（どのPCでも同じ）
 
+**ステップ1: バージョンチェック（必須）**
 ```bash
-# タグ付きリリース手順
-VERSION=1.0.0
-echo $VERSION > VERSION
+bash scripts/check_version.sh
+# 本番より古いバージョンの場合は自動停止 → git pull して確認
+```
+
+**ステップ2: バージョン番号を上げる**
+```bash
+# VERSION ファイルを編集して新バージョンに更新（例: 1.0.0 → 1.1.0）
+echo "1.1.0" > VERSION
+```
+
+**ステップ3: git commit & tag & push**
+```bash
+VERSION=$(cat VERSION)
 git add -A
 git commit -m "Release v$VERSION: 変更内容"
 git tag -a "v$VERSION" -m "変更内容"
 git push origin main
 git push origin "v$VERSION"
-# → 本番デプロイ
+```
+
+**ステップ4: 本番デプロイ + S3にバージョン記録**
+```bash
+# ファイルをS3にアップ → SSMでEC2に反映
+aws s3 cp VERSION s3://golfspace-media/deploy/DEPLOYED_VERSION  # ← 必ずデプロイ後に実行
 ```
 
 ### ロールバック手順
@@ -89,15 +100,17 @@ git push origin "v$VERSION"
 git tag -l | sort -V
 
 # 特定バージョンのファイルを取得してデプロイ
-git show v1.0.0:stock.html > /tmp/stock.html
-git show v1.0.0:screening.html > /tmp/screening.html
-git show v1.0.0:stock-backend/main.py > /tmp/main.py
+TARGET=v1.0.0
+git show $TARGET:stock.html > /tmp/stock.html
+git show $TARGET:screening.html > /tmp/screening.html
+git show $TARGET:stock-backend/main.py > /tmp/main.py
 
 # S3経由でEC2にデプロイ
 aws s3 cp /tmp/stock.html s3://golfspace-media/deploy/stock.html
 aws s3 cp /tmp/screening.html s3://golfspace-media/deploy/screening.html
 aws s3 cp /tmp/main.py s3://golfspace-media/deploy/main.py
-# → SSMで本番反映
+# → SSMで本番反映後、S3のDEPLOYED_VERSIONも更新
+echo $TARGET | sed 's/v//' | aws s3 cp - s3://golfspace-media/deploy/DEPLOYED_VERSION
 ```
 
 ---
