@@ -4716,6 +4716,41 @@ def screening_update():
     return {"message": "started"}
 
 
+_FUTURES = [
+    {"key": "nikkei", "symbol": "NKD=F",  "label": "日経先物",  "unit": ""},
+    {"key": "dow",    "symbol": "YM=F",   "label": "ダウ先物",  "unit": ""},
+    {"key": "sp500",  "symbol": "ES=F",   "label": "S&P先物",   "unit": ""},
+    {"key": "nasdaq", "symbol": "NQ=F",   "label": "ナスダック先物", "unit": ""},
+]
+_futures_cache = {"data": [], "updated_at": None}
+
+@app.get("/futures")
+def get_futures():
+    from datetime import datetime as _dtf
+    now = _dtf.utcnow()
+    if _futures_cache["updated_at"] and (now - _futures_cache["updated_at"]).total_seconds() < 60:
+        return _futures_cache["data"]
+    result = []
+    for f in _FUTURES:
+        try:
+            tk = yf.Ticker(f["symbol"])
+            info = tk.fast_info
+            price = float(info.last_price)
+            prev  = float(info.previous_close) if hasattr(info, "previous_close") and info.previous_close else None
+            chg   = round(price - prev, 2) if prev else None
+            chg_pct = round((price - prev) / prev * 100, 2) if prev else None
+            result.append({
+                "key": f["key"], "label": f["label"],
+                "price": round(price, 2),
+                "change": chg, "change_pct": chg_pct,
+            })
+        except Exception:
+            result.append({"key": f["key"], "label": f["label"], "price": None, "change": None, "change_pct": None})
+    _futures_cache["data"] = result
+    _futures_cache["updated_at"] = now
+    return result
+
+
 @app.get("/screening")
 def get_screening(
     min_score: int = Query(-20),

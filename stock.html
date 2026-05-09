@@ -201,6 +201,48 @@
     overflow: hidden;
   }
 
+  /* ===== FUTURES WIDGET ===== */
+  .futures-widget {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+    flex-shrink: 0;
+  }
+  .futures-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .futures-label {
+    font-size: 9px;
+    color: var(--text2);
+    white-space: nowrap;
+  }
+  .futures-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .futures-price {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .futures-chg {
+    font-size: 10px;
+  }
+  .futures-chg.pos { color: var(--green); }
+  .futures-chg.neg { color: var(--red); }
+  .futures-updated {
+    grid-column: 1 / -1;
+    font-size: 9px;
+    color: var(--text2);
+    text-align: right;
+    margin-top: 1px;
+  }
+
   /* ===== SIDEBAR ===== */
   .sidebar {
     width: 280px;
@@ -1287,6 +1329,13 @@
 
 <div class="main">
   <div class="sidebar">
+    <div class="futures-widget" id="futuresWidget">
+      <div class="futures-item" id="fut-nikkei"><span class="futures-label">日経先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-item" id="fut-dow"><span class="futures-label">ダウ先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-item" id="fut-sp500"><span class="futures-label">S&amp;P先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-item" id="fut-nasdaq"><span class="futures-label">ナスダック先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-updated" id="futuresUpdated"></div>
+    </div>
     <div class="sidebar-section">
       <div class="section-title">
         損益サマリー
@@ -6320,6 +6369,42 @@ async function sendAiChat() {
     if (firstCode) selectSymbol(firstCode);
   }
 })();
+
+// ===== 先物ウィジェット =====
+async function loadFutures() {
+  try {
+    const res = await fetch(`${API}/futures`);
+    if (!res.ok) return;
+    const data = await res.json();
+    for (const f of data) {
+      const el = document.getElementById(`fut-${f.key}`);
+      if (!el) continue;
+      const priceEl = el.querySelector('.futures-price');
+      const rowEl   = el.querySelector('.futures-row');
+      if (f.price == null) { priceEl.textContent = '--'; continue; }
+      const p = f.price >= 1000
+        ? f.price.toLocaleString('ja-JP', {maximumFractionDigits: 1})
+        : f.price.toFixed(2);
+      priceEl.textContent = p;
+      // 既存の変化率要素を削除して再生成
+      const old = rowEl.querySelector('.futures-chg');
+      if (old) old.remove();
+      if (f.change_pct != null) {
+        const sign = f.change_pct >= 0 ? '+' : '';
+        const cls  = f.change_pct >= 0 ? 'pos' : 'neg';
+        const chgEl = document.createElement('span');
+        chgEl.className = `futures-chg ${cls}`;
+        chgEl.textContent = `${sign}${f.change_pct.toFixed(2)}%`;
+        rowEl.appendChild(chgEl);
+      }
+    }
+    const now = new Date();
+    document.getElementById('futuresUpdated').textContent =
+      `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')} 更新`;
+  } catch(e) {}
+}
+loadFutures();
+setInterval(loadFutures, 60000); // 1分ごとに自動更新
 </script>
 </body>
 </html>
