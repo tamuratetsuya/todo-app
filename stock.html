@@ -214,7 +214,13 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 5px;
+    transition: background 0.12s;
   }
+  .futures-item:hover { background: var(--bg3); }
+  .futures-item.active { background: rgba(31,111,235,0.15); outline: 1px solid var(--accent); }
   .futures-label {
     font-size: 9px;
     color: var(--text2);
@@ -1330,10 +1336,10 @@
 <div class="main">
   <div class="sidebar">
     <div class="futures-widget" id="futuresWidget">
-      <div class="futures-item" id="fut-nikkei"><span class="futures-label">日経先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
-      <div class="futures-item" id="fut-dow"><span class="futures-label">ダウ先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
-      <div class="futures-item" id="fut-sp500"><span class="futures-label">S&amp;P先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
-      <div class="futures-item" id="fut-nasdaq"><span class="futures-label">ナスダック先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-item" id="fut-nikkei"  onclick="selectFutures('NKD=F','日経先物')"><span class="futures-label">日経先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-item" id="fut-dow"     onclick="selectFutures('YM=F','ダウ先物')"><span class="futures-label">ダウ先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-item" id="fut-sp500"   onclick="selectFutures('ES=F','S&amp;P先物')"><span class="futures-label">S&amp;P先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-item" id="fut-nasdaq"  onclick="selectFutures('NQ=F','ナスダック先物')"><span class="futures-label">ナスダック先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
       <div class="futures-updated" id="futuresUpdated"></div>
     </div>
     <div class="sidebar-section">
@@ -3991,6 +3997,8 @@ function esc(s) {
 // ===== SELECT SYMBOL =====
 function selectSymbol(code) {
   currentSymbol = code;
+  // 先物アクティブ表示をリセット（先物以外の銘柄選択時）
+  if (!FUTURES_KEY_MAP[code]) document.querySelectorAll('.futures-item').forEach(el => el.classList.remove('active'));
   stockSelect.value = code;
   history.replaceState(null, '', '?code=' + encodeURIComponent(code));
   aiSignals = [];  // 銘柄変更時にシグナルリセット
@@ -6371,6 +6379,21 @@ async function sendAiChat() {
 })();
 
 // ===== 先物ウィジェット =====
+const FUTURES_KEY_MAP = {'NKD=F':'nikkei','YM=F':'dow','ES=F':'sp500','NQ=F':'nasdaq'};
+
+function selectFutures(sym, label) {
+  // アクティブ表示の切り替え
+  document.querySelectorAll('.futures-item').forEach(el => el.classList.remove('active'));
+  const key = FUTURES_KEY_MAP[sym];
+  if (key) document.getElementById(`fut-${key}`)?.classList.add('active');
+
+  // 銘柄名を登録してselectSymbol経由でチャート表示
+  stockNames[sym] = label;
+  selectSymbol(sym);
+  // 分析パネルは閉じる
+  document.getElementById('analysisPanel')?.classList.remove('visible');
+}
+
 async function loadFutures() {
   try {
     const res = await fetch(`${API}/futures`);
