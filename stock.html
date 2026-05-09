@@ -4002,7 +4002,10 @@ function esc(s) {
 function selectSymbol(code) {
   currentSymbol = code;
   // 先物アクティブ表示をリセット（先物以外の銘柄選択時）
-  if (!FUTURES_KEY_MAP[code]) document.querySelectorAll('.futures-item').forEach(el => el.classList.remove('active'));
+  if (!FUTURES_KEY_MAP[code]) {
+    document.querySelectorAll('.futures-item').forEach(el => el.classList.remove('active'));
+    document.getElementById('analysisPanel')?.classList.add('visible');
+  }
   stockSelect.value = code;
   history.replaceState(null, '', '?code=' + encodeURIComponent(code));
   aiSignals = [];  // 銘柄変更時にシグナルリセット
