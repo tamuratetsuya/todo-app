@@ -55,6 +55,53 @@ ssh ... "cp /tmp/main.py ~/calendar-backend/main.py && sudo systemctl restart ca
 cd /Users/tamura/claude_code && git add -A && git commit -m "..." && git push origin main
 ```
 
+## バージョン管理ルール
+
+### バージョン番号の付け方
+- `VERSION` ファイルで管理（例: `1.2.0`）
+- セマンティックバージョニング: `メジャー.マイナー.パッチ`
+  - パッチ（0.0.x）: バグ修正
+  - マイナー（0.x.0）: 新機能追加
+  - メジャー（x.0.0）: 大規模変更
+
+### 本番デプロイ時の必須手順
+1. `VERSION` ファイルを更新
+2. git commit & push
+3. git tag を打つ: `git tag -a v1.0.0 -m "リリース内容の説明"`
+4. タグを push: `git push origin v1.0.0`
+5. 本番デプロイ実行
+
+```bash
+# タグ付きリリース手順
+VERSION=1.0.0
+echo $VERSION > VERSION
+git add -A
+git commit -m "Release v$VERSION: 変更内容"
+git tag -a "v$VERSION" -m "変更内容"
+git push origin main
+git push origin "v$VERSION"
+# → 本番デプロイ
+```
+
+### ロールバック手順
+```bash
+# タグ一覧確認
+git tag -l | sort -V
+
+# 特定バージョンのファイルを取得してデプロイ
+git show v1.0.0:stock.html > /tmp/stock.html
+git show v1.0.0:screening.html > /tmp/screening.html
+git show v1.0.0:stock-backend/main.py > /tmp/main.py
+
+# S3経由でEC2にデプロイ
+aws s3 cp /tmp/stock.html s3://golfspace-media/deploy/stock.html
+aws s3 cp /tmp/screening.html s3://golfspace-media/deploy/screening.html
+aws s3 cp /tmp/main.py s3://golfspace-media/deploy/main.py
+# → SSMで本番反映
+```
+
+---
+
 ## 必須ルール: 本番デプロイ前に必ずgit commit & push
 
 本番（/usr/share/nginx/html/）へのデプロイは、必ず以下の順番で行う：
