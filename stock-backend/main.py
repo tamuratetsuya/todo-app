@@ -4717,10 +4717,14 @@ def screening_update():
 
 
 _FUTURES = [
-    {"key": "nikkei", "symbol": "NKD=F",  "label": "日経先物",  "unit": ""},
-    {"key": "dow",    "symbol": "YM=F",   "label": "ダウ先物",  "unit": ""},
-    {"key": "sp500",  "symbol": "ES=F",   "label": "S&P先物",   "unit": ""},
-    {"key": "nasdaq", "symbol": "NQ=F",   "label": "ナスダック先物", "unit": ""},
+    {"key": "nikkei", "symbol": "NKD=F",   "label": "日経先物"},
+    {"key": "dow",    "symbol": "YM=F",    "label": "ダウ先物"},
+    {"key": "sp500",  "symbol": "ES=F",    "label": "S&P先物"},
+    {"key": "nasdaq", "symbol": "NQ=F",    "label": "ナスダック先物"},
+    {"key": "gold",   "symbol": "GC=F",    "label": "金先物"},
+    {"key": "btc",    "symbol": "BTC-USD", "label": "ビットコイン"},
+    {"key": "oil",    "symbol": "CL=F",    "label": "原油先物"},
+    {"key": "vix",    "symbol": "^VIX",    "label": "VIX"},
 ]
 _futures_cache = {"data": [], "updated_at": None}
 
