@@ -191,6 +191,15 @@ def init_db():
                 INDEX idx_tl (symbol, interval_type)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS margin_cache (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                ratio FLOAT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_margin (symbol)
+            )
+        """)
     conn.commit()
     conn.close()
 
@@ -2355,6 +2364,57 @@ def get_margin_balance(symbol: str = Query(...)):
         }
     except Exception:
         return {"history": []}
+
+
+@app.get("/margin_ratio")
+def get_margin_ratio(symbol: str = Query(...)):
+    """信用倍率のみ返す（スクリーニング用・7日キャッシュ）"""
+    code = symbol.replace(".T", "").replace(".OS", "")
+    if not code.isdigit():
+        return {"ratio": None}
+    # キャッシュ確認（7日）
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT ratio, updated_at FROM margin_cache WHERE symbol=%s", (code,))
+            row = cur.fetchone()
+        if row and (datetime.utcnow() - row["updated_at"]).total_seconds() < 604800:
+            return {"ratio": row["ratio"]}
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    # irbank からスクレイプ
+    try:
+        import re as _re3
+        hdrs = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", "Accept-Language": "ja"}
+        r = _requests.get(f"https://irbank.net/{code}/margin", headers=hdrs, timeout=10)
+        rows_html = _re3.findall(r'<tr class="o(?:cc|bb|dd)"[^>]*>(.*?)</tr>', r.text, _re3.DOTALL)
+        ratio = None
+        for row_html in rows_html:
+            tds = _re3.findall(r'<td[^>]*>(.*?)</td>', row_html, _re3.DOTALL)
+            if len(tds) >= 6:
+                m = _re3.search(r'[\d.]+', _re3.sub(r'<[^>]+>', '', tds[5]))
+                if m:
+                    ratio = float(m.group())
+                    break
+        # キャッシュ保存
+        conn2 = get_conn()
+        try:
+            with conn2.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO margin_cache (symbol, ratio) VALUES (%s, %s) "
+                    "ON DUPLICATE KEY UPDATE ratio=%s, updated_at=NOW()",
+                    (code, ratio, ratio)
+                )
+            conn2.commit()
+        except Exception:
+            pass
+        finally:
+            conn2.close()
+        return {"ratio": ratio}
+    except Exception:
+        return {"ratio": None}
 
 
 @app.get("/news")
