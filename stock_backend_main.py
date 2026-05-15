@@ -4833,6 +4833,7 @@ def get_futures():
     if _futures_cache["updated_at"] and (now - _futures_cache["updated_at"]).total_seconds() < 60:
         return _futures_cache["data"]
     result = []
+    nikkei_price = nikkei_prev = None
     for f in _FUTURES:
         try:
             tk = yf.Ticker(f["symbol"])
@@ -4846,8 +4847,28 @@ def get_futures():
                 "price": round(price, 2),
                 "change": chg, "change_pct": chg_pct,
             })
+            if f["key"] == "nikkei":
+                nikkei_price, nikkei_prev = price, prev
         except Exception:
             result.append({"key": f["key"], "label": f["label"], "price": None, "change": None, "change_pct": None})
+    # NT倍率 = 日経先物 / TOPIX先物
+    try:
+        topix_info = yf.Ticker("TPY=F").fast_info
+        topix_price = float(topix_info.last_price)
+        topix_prev  = float(topix_info.previous_close) if hasattr(topix_info, "previous_close") and topix_info.previous_close else None
+        if nikkei_price and topix_price:
+            nt      = round(nikkei_price / topix_price, 2)
+            nt_prev = round(nikkei_prev  / topix_prev,  2) if nikkei_prev and topix_prev else None
+            result.append({
+                "key": "nt", "label": "NT倍率",
+                "price": nt,
+                "change":     round(nt - nt_prev, 2)              if nt_prev else None,
+                "change_pct": round((nt - nt_prev) / nt_prev * 100, 2) if nt_prev else None,
+            })
+        else:
+            result.append({"key": "nt", "label": "NT倍率", "price": None, "change": None, "change_pct": None})
+    except Exception:
+        result.append({"key": "nt", "label": "NT倍率", "price": None, "change": None, "change_pct": None})
     _futures_cache["data"] = result
     _futures_cache["updated_at"] = now
     return result

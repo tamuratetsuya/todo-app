@@ -221,6 +221,8 @@
   }
   .futures-item:hover { background: var(--bg3); }
   .futures-item.active { background: rgba(31,111,235,0.15); outline: 1px solid var(--accent); }
+  .futures-item.no-click { cursor: default; }
+  .futures-item.no-click:hover { background: transparent; }
   .futures-label {
     font-size: 9px;
     color: var(--text2);
@@ -1345,6 +1347,7 @@
       <div class="futures-item" id="fut-oil"     onclick="selectFutures('CL=F','原油先物')"><span class="futures-label">原油先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
       <div class="futures-item" id="fut-vix"     onclick="selectFutures('^VIX','VIX')"><span class="futures-label">VIX</span><div class="futures-row"><span class="futures-price">--</span></div></div>
       <div class="futures-item" id="fut-usdjpy"  onclick="selectFutures('USDJPY=X','ドル円')"><span class="futures-label">ドル円</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-item no-click" id="fut-nt"><span class="futures-label">NT倍率</span><div class="futures-row"><span class="futures-price">--</span></div></div>
       <div class="futures-updated" id="futuresUpdated"></div>
     </div>
     <div class="sidebar-section">
