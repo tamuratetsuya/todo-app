@@ -1344,6 +1344,8 @@
       <div class="futures-item" id="fut-btc"     onclick="selectFutures('BTC-USD','ビットコイン')"><span class="futures-label">ビットコイン</span><div class="futures-row"><span class="futures-price">--</span></div></div>
       <div class="futures-item" id="fut-oil"     onclick="selectFutures('CL=F','原油先物')"><span class="futures-label">原油先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
       <div class="futures-item" id="fut-vix"     onclick="selectFutures('^VIX','VIX')"><span class="futures-label">VIX</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-item" id="fut-topix"   onclick="selectFutures('TPY=F','TOPIX先物')"><span class="futures-label">TOPIX先物</span><div class="futures-row"><span class="futures-price">--</span></div></div>
+      <div class="futures-item" id="fut-usdjpy"  onclick="selectFutures('USDJPY=X','ドル円')"><span class="futures-label">ドル円</span><div class="futures-row"><span class="futures-price">--</span></div></div>
       <div class="futures-updated" id="futuresUpdated"></div>
     </div>
     <div class="sidebar-section">
@@ -6386,7 +6388,7 @@ async function sendAiChat() {
 })();
 
 // ===== 先物ウィジェット =====
-const FUTURES_KEY_MAP = {'NKD=F':'nikkei','YM=F':'dow','ES=F':'sp500','NQ=F':'nasdaq','GC=F':'gold','BTC-USD':'btc','CL=F':'oil','^VIX':'vix'};
+const FUTURES_KEY_MAP = {'NKD=F':'nikkei','YM=F':'dow','ES=F':'sp500','NQ=F':'nasdaq','GC=F':'gold','BTC-USD':'btc','CL=F':'oil','^VIX':'vix','TPY=F':'topix','USDJPY=X':'usdjpy'};
 
 function selectFutures(sym, label) {
   // アクティブ表示の切り替え
