@@ -4822,7 +4822,6 @@ _FUTURES = [
     {"key": "btc",    "symbol": "BTC-USD", "label": "ビットコイン"},
     {"key": "oil",    "symbol": "CL=F",    "label": "原油先物"},
     {"key": "vix",    "symbol": "^VIX",    "label": "VIX"},
-    {"key": "topix",  "symbol": "1308.T",  "label": "TOPIX"},
     {"key": "usdjpy", "symbol": "USDJPY=X","label": "ドル円"},
 ]
 _futures_cache = {"data": [], "updated_at": None}
