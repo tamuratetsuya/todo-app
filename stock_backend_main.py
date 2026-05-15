@@ -3955,6 +3955,29 @@ def chat(req: ChatRequest):
 def get_candles(symbol: str = Query(...), interval: str = Query("1d")):
     if interval not in INTERVALS:
         raise HTTPException(400, "Invalid interval")
+    # NT倍率: ^N225 / 1308.T を日次計算して返す（DBキャッシュなし）
+    if symbol == "NT_RATIO":
+        try:
+            n225  = _fetch_yahoo_raw("^N225",  interval)
+            topix = _fetch_yahoo_raw("1308.T", interval)
+            tmap  = {c["time"]: c for c in topix}
+            result = []
+            for nc in n225:
+                tc = tmap.get(nc["time"])
+                if not tc or not tc["close"]:
+                    continue
+                def nt(a, b): return round(a / b, 2) if b else round(nc["close"] / tc["close"], 2)
+                result.append({
+                    "time":   nc["time"],
+                    "open":   nt(nc["open"],  tc["open"]),
+                    "high":   nt(nc["high"],  tc["low"]),
+                    "low":    nt(nc["low"],   tc["high"]),
+                    "close":  nt(nc["close"], tc["close"]),
+                    "volume": 0,
+                })
+            return result
+        except Exception as e:
+            raise HTTPException(500, str(e))
     # 日本株コード判定: 数字のみ or 4桁英数字（例: 314A, 318A）も .T を付与
     sym = f"{symbol}.T" if (symbol.isdigit() or (len(symbol) == 4 and symbol.isalnum())) else symbol
     try:
