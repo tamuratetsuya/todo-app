@@ -2417,6 +2417,43 @@ def get_margin_ratio(symbol: str = Query(...)):
         return {"ratio": None}
 
 
+@app.get("/rsi")
+def get_rsi(symbol: str = Query(...), period: int = 14):
+    """DBのcandlesからRSI(14)を計算して返す（スクリーニング用）"""
+    code = symbol.replace(".T", "").replace(".OS", "")
+    sym = f"{code}.T" if code.isdigit() else symbol
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT close FROM candles WHERE symbol=%s AND interval_type='1d' "
+                "ORDER BY candle_time DESC LIMIT %s",
+                (sym, period + 1)
+            )
+            rows = cur.fetchall()
+        if len(rows) < period + 1:
+            return {"rsi": None}
+        closes = [r["close"] for r in reversed(rows)]
+        gains, losses = 0.0, 0.0
+        for i in range(1, period + 1):
+            diff = closes[i] - closes[i - 1]
+            if diff >= 0:
+                gains += diff
+            else:
+                losses -= diff
+        avg_gain = gains / period
+        avg_loss = losses / period
+        if avg_loss == 0:
+            rsi = 100.0
+        else:
+            rsi = 100 - 100 / (1 + avg_gain / avg_loss)
+        return {"rsi": round(rsi, 1)}
+    except Exception:
+        return {"rsi": None}
+    finally:
+        conn.close()
+
+
 @app.get("/news")
 def get_news(symbol: str = Query(...)):
     """銘柄関連ニュースをYahoo Finance RSS + yfinance newsから取得しDBに差分保存、直近1週間を返す"""

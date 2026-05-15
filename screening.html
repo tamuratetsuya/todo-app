@@ -232,6 +232,7 @@
   .col-pbr    { width: 64px; text-align: right; font-size: 11px; }
   .col-mcap   { width: 72px; text-align: right; font-size: 11px; }
   .col-margin { width: 64px; text-align: right; font-size: 11px; }
+  .col-rsi   { width: 58px; text-align: right; font-size: 11px; }
   .col-fav    { width: 36px; text-align: center; }
   .fav-btn {
     background: none;
@@ -395,6 +396,7 @@
       <option value="volume_avg">出来高</option>
       <option value="hv">HV</option>
       <option value="margin_ratio">信用倍率</option>
+      <option value="rsi">RSI</option>
     </select>
   </div>
 
@@ -439,13 +441,14 @@
         <th class="col-pbr"  data-col="pbr">PBR <span class="sort-icon">↕</span></th>
         <th class="col-mcap" data-col="market_cap">時価総額 <span class="sort-icon">↕</span></th>
         <th class="col-margin" data-col="margin_ratio">信用倍率 <span class="sort-icon">↕</span></th>
+        <th class="col-rsi" data-col="rsi">RSI <span class="sort-icon">↕</span></th>
         <th class="col-vol" data-col="volume_avg">出来高(万株) <span class="sort-icon">↕</span></th>
         <th class="col-hv"  data-col="hv">HV(%) <span class="sort-icon">↕</span></th>
         <th class="col-sigs">シグナル</th>
       </tr>
     </thead>
     <tbody id="screeningBody">
-      <tr><td colspan="16" class="empty-msg">データを読み込み中...</td></tr>
+      <tr><td colspan="17" class="empty-msg">データを読み込み中...</td></tr>
     </tbody>
   </table>
 </div>
@@ -741,6 +744,9 @@ function renderTable() {
   // 信用倍率が未取得の銘柄をバックグラウンドで取得（日本株のみ）
   const missingMargin = rows.filter(r => r.margin_ratio == null && /^\d{4}(\.T)?$/.test(r.code)).map(r => r.code);
   if (missingMargin.length) fetchMarginBatch(missingMargin);
+  // RSIが未取得の銘柄をバックグラウンドで取得
+  const missingRsi = rows.filter(r => r.rsi == null).map(r => r.code);
+  if (missingRsi.length) fetchRsiBatch(missingRsi);
 }
 
 function buildRow(r) {
@@ -785,6 +791,9 @@ function buildRow(r) {
   })() : '-';
   const marginStr = r.margin_ratio != null ? Number(r.margin_ratio).toFixed(2) + '倍' : '-';
   const marginClass = r.margin_ratio == null ? '' : r.margin_ratio >= 3 ? 'chg-neg' : r.margin_ratio <= 1 ? 'chg-pos' : '';
+  const rsiVal = r.rsi != null ? Number(r.rsi) : null;
+  const rsiStr = rsiVal != null ? rsiVal.toFixed(1) : '-';
+  const rsiClass = rsiVal == null ? '' : rsiVal >= 70 ? 'chg-neg' : rsiVal <= 30 ? 'chg-pos' : '';
 
   const _favType = favorites.get(code) || null;
   const _favTitle = _favType === 'buy' ? '★買い（クリックで解除）' : _favType === 'sell' ? '★売り（クリックで解除）' : 'お気に入り追加';
@@ -803,6 +812,7 @@ function buildRow(r) {
     <td class="col-pbr"  id="pbr-${code}"  style="text-align:right;color:var(--text2)">${pbrStr}</td>
     <td class="col-mcap" id="mcap-${code}" style="text-align:right;color:var(--text2)">${mcapStr}</td>
     <td class="col-margin ${marginClass}" id="margin-${code}" style="text-align:right;color:var(--text2)">${marginStr}</td>
+    <td class="col-rsi ${rsiClass}" id="rsi-${code}" style="text-align:right;color:var(--text2)">${rsiStr}</td>
     <td class="col-vol" style="text-align:right">${volStr}</td>
     <td class="col-hv ${hvClass}" style="text-align:right">${hvStr}</td>
     <td class="col-sigs"><div class="sig-tags">${buySigs}${sellSigs}</div></td>
@@ -867,6 +877,33 @@ async function fetchMarginBatch(codes) {
         if (el) {
           el.textContent = fmtMargin;
           el.className = `col-margin ${d.ratio >= 3 ? 'chg-neg' : d.ratio <= 1 ? 'chg-pos' : ''}`;
+          el.style.textAlign = 'right';
+          el.style.color = 'var(--text2)';
+        }
+      } catch(e) {}
+    }));
+    if (i + BATCH < codes.length) await new Promise(r => setTimeout(r, DELAY));
+  }
+}
+
+async function fetchRsiBatch(codes) {
+  const BATCH = 10;
+  const DELAY = 200;
+  for (let i = 0; i < codes.length; i += BATCH) {
+    const batch = codes.slice(i, i + BATCH);
+    await Promise.all(batch.map(async code => {
+      try {
+        const res = await fetch(`${API}/rsi?symbol=${encodeURIComponent(code)}`);
+        if (!res.ok) return;
+        const d = await res.json();
+        const rec = allData.find(r => r.code === code);
+        if (rec && d.rsi != null) rec.rsi = d.rsi;
+        const rsiVal = d.rsi != null ? Number(d.rsi) : null;
+        const fmtRsi = rsiVal != null ? rsiVal.toFixed(1) : '-';
+        const el = document.getElementById(`rsi-${code}`);
+        if (el) {
+          el.textContent = fmtRsi;
+          el.className = `col-rsi ${rsiVal >= 70 ? 'chg-neg' : rsiVal <= 30 ? 'chg-pos' : ''}`;
           el.style.textAlign = 'right';
           el.style.color = 'var(--text2)';
         }
