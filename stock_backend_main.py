@@ -976,23 +976,20 @@ def generate_rule_signals(symbol: str, interval: str, _candles=None, _vix_by_dat
             return all((_bb(j) or 100) <= 20 for j in range(i-n+1, i+1))
 
         def _macd(i):
-            """MACD(12,26,9) と シグナル線を返す (macd, signal) or (None, None)"""
-            if i < 33: return None, None  # 26+9-1
-            def ema(vals, period):
+            """MACD(12,26,9) と シグナル線を返す (macd, signal) or (None, None)
+            全履歴を使って正確にEMAを計算（チャート表示と一致）"""
+            if i < 33: return None, None
+            def ema_series(vals, period):
                 k = 2 / (period + 1)
-                e = vals[0]
-                for v in vals[1:]:
-                    e = v * k + e * (1 - k)
-                return e
-            # MACD線 = EMA12 - EMA26
-            macd_vals = []
-            for j in range(i - 8, i + 1):  # 9本分のMACD値を計算
-                if j < 25: return None, None
-                e12 = ema(closes[j-11:j+1], 12)
-                e26 = ema(closes[j-25:j+1], 26)
-                macd_vals.append(e12 - e26)
-            sig = ema(macd_vals, 9)
-            return macd_vals[-1], sig
+                r = [vals[0]]
+                for v in vals[1:]: r.append(v * k + r[-1] * (1 - k))
+                return r
+            e12 = ema_series(closes[:i+1], 12)
+            e26 = ema_series(closes[:i+1], 26)
+            macd_series = [e12[j] - e26[j] for j in range(25, i+1)]
+            if len(macd_series) < 9: return None, None
+            sig_series = ema_series(macd_series, 9)
+            return macd_series[-1], sig_series[-1]
 
         def _rsi(i, period=14):
             """RSI(period)を返す。データ不足時はNone"""
@@ -4116,17 +4113,19 @@ def _calc_screening_score(rows: list, vix_latest=None):
         return (closes[idx] - (mean - 2*std)) / rng if rng > 0 else 0.5
 
     def macd_and_signal(idx):
+        """MACD(12,26,9) 全履歴EMAで計算（チャート表示と一致）"""
         if idx < 33: return None, None
-        def ema(vals, p):
-            k = 2 / (p + 1); v = vals[0]
-            for x in vals[1:]: v = x * k + v * (1 - k)
-            return v
-        macd_vals = []
-        for j in range(idx - 8, idx + 1):
-            if j < 25: return None, None
-            macd_vals.append(ema(closes[j-11:j+1], 12) - ema(closes[j-25:j+1], 26))
-        sig = ema(macd_vals, 9)
-        return macd_vals[-1], sig
+        def ema_series(vals, period):
+            k = 2 / (period + 1)
+            r = [vals[0]]
+            for v in vals[1:]: r.append(v * k + r[-1] * (1 - k))
+            return r
+        e12 = ema_series(closes[:idx+1], 12)
+        e26 = ema_series(closes[:idx+1], 26)
+        macd_series = [e12[j] - e26[j] for j in range(25, idx+1)]
+        if len(macd_series) < 9: return None, None
+        sig_series = ema_series(macd_series, 9)
+        return macd_series[-1], sig_series[-1]
 
     def rsi(idx, period=14):
         if idx < period: return None
