@@ -233,6 +233,7 @@
   .col-mcap   { width: 72px; text-align: right; font-size: 11px; }
   .col-margin { width: 64px; text-align: right; font-size: 11px; }
   .col-rsi   { width: 58px; text-align: right; font-size: 11px; }
+  .col-alpha { width: 68px; text-align: right; font-size: 11px; }
   .col-fav    { width: 36px; text-align: center; }
   .fav-btn {
     background: none;
@@ -397,6 +398,7 @@
       <option value="hv">HV</option>
       <option value="margin_ratio">信用倍率</option>
       <option value="rsi">RSI</option>
+      <option value="alpha">α超過(5日)</option>
     </select>
   </div>
 
@@ -442,13 +444,14 @@
         <th class="col-mcap" data-col="market_cap">時価総額 <span class="sort-icon">↕</span></th>
         <th class="col-margin" data-col="margin_ratio">信用倍率 <span class="sort-icon">↕</span></th>
         <th class="col-rsi" data-col="rsi">RSI <span class="sort-icon">↕</span></th>
+        <th class="col-alpha" data-col="alpha">α超過(5日) <span class="sort-icon">↕</span></th>
         <th class="col-vol" data-col="volume_avg">出来高(万株) <span class="sort-icon">↕</span></th>
         <th class="col-hv"  data-col="hv">HV(%) <span class="sort-icon">↕</span></th>
         <th class="col-sigs">シグナル</th>
       </tr>
     </thead>
     <tbody id="screeningBody">
-      <tr><td colspan="17" class="empty-msg">データを読み込み中...</td></tr>
+      <tr><td colspan="18" class="empty-msg">データを読み込み中...</td></tr>
     </tbody>
   </table>
 </div>
@@ -747,6 +750,8 @@ function renderTable() {
   // RSIが未取得の銘柄をバックグラウンドで取得
   const missingRsi = rows.filter(r => r.rsi == null).map(r => r.code);
   if (missingRsi.length) fetchRsiBatch(missingRsi);
+  const missingAlpha = rows.filter(r => r.alpha == null).map(r => r.code);
+  if (missingAlpha.length) fetchAlphaBatch(missingAlpha);
 }
 
 function buildRow(r) {
@@ -794,6 +799,9 @@ function buildRow(r) {
   const rsiVal = r.rsi != null ? Number(r.rsi) : null;
   const rsiStr = rsiVal != null ? rsiVal.toFixed(1) : '-';
   const rsiClass = rsiVal == null ? '' : rsiVal >= 70 ? 'chg-neg' : rsiVal <= 30 ? 'chg-pos' : '';
+  const alphaVal = r.alpha != null ? Number(r.alpha) : null;
+  const alphaStr = alphaVal != null ? (alphaVal >= 0 ? '+' : '') + alphaVal.toFixed(2) + '%' : '-';
+  const alphaClass = alphaVal == null ? '' : alphaVal <= -0.3 ? 'chg-neg' : alphaVal >= 0.3 ? 'chg-pos' : '';
 
   const _favType = favorites.get(code) || null;
   const _favTitle = _favType === 'buy' ? '★買い（クリックで解除）' : _favType === 'sell' ? '★売り（クリックで解除）' : 'お気に入り追加';
@@ -813,6 +821,7 @@ function buildRow(r) {
     <td class="col-mcap" id="mcap-${code}" style="text-align:right;color:var(--text2)">${mcapStr}</td>
     <td class="col-margin ${marginClass}" id="margin-${code}" style="text-align:right;color:var(--text2)">${marginStr}</td>
     <td class="col-rsi ${rsiClass}" id="rsi-${code}" style="text-align:right;color:var(--text2)">${rsiStr}</td>
+    <td class="col-alpha ${alphaClass}" id="alpha-${code}" style="text-align:right;color:var(--text2)">${alphaStr}</td>
     <td class="col-vol" style="text-align:right">${volStr}</td>
     <td class="col-hv ${hvClass}" style="text-align:right">${hvStr}</td>
     <td class="col-sigs"><div class="sig-tags">${buySigs}${sellSigs}</div></td>
@@ -913,6 +922,33 @@ async function fetchRsiBatch(codes) {
   }
 }
 
+async function fetchAlphaBatch(codes) {
+  const BATCH = 10;
+  const DELAY = 200;
+  for (let i = 0; i < codes.length; i += BATCH) {
+    const batch = codes.slice(i, i + BATCH);
+    await Promise.all(batch.map(async code => {
+      try {
+        const res = await fetch(`${API}/alpha?symbol=${encodeURIComponent(code)}`);
+        if (!res.ok) return;
+        const d = await res.json();
+        const rec = allData.find(r => r.code === code);
+        if (rec && d.alpha != null) rec.alpha = d.alpha;
+        const val = d.alpha != null ? Number(d.alpha) : null;
+        const fmt = val != null ? (val >= 0 ? '+' : '') + val.toFixed(2) + '%' : '-';
+        const el = document.getElementById(`alpha-${code}`);
+        if (el) {
+          el.textContent = fmt;
+          el.className = `col-alpha ${val == null ? '' : val <= -0.3 ? 'chg-neg' : val >= 0.3 ? 'chg-pos' : ''}`;
+          el.style.textAlign = 'right';
+          el.style.color = 'var(--text2)';
+        }
+      } catch(e) {}
+    }));
+    if (i + BATCH < codes.length) await new Promise(r => setTimeout(r, DELAY));
+  }
+}
+
 function openStock(code) {
   const item = filteredData.find(r => r.code === code) || allData.find(r => r.code === code);
   const name = item ? item.name : '';
@@ -922,7 +958,7 @@ function openStock(code) {
 
 function renderEmpty(msg) {
   document.getElementById('screeningBody').innerHTML =
-    `<tr><td colspan="15" class="empty-msg">${escHtml(msg)}</td></tr>`;
+    `<tr><td colspan="18" class="empty-msg">${escHtml(msg)}</td></tr>`;
   document.getElementById('countBadge').style.display = 'none';
 }
 

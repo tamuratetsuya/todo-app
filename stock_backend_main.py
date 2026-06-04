@@ -2451,6 +2451,54 @@ def get_rsi(symbol: str = Query(...), period: int = 14):
         conn.close()
 
 
+_nikkei_ret_cache = {"returns": None, "updated_at": None}
+
+def _get_nikkei_returns(n=5):
+    """Nikkei 225の直近n日リターン(%)リストを返す。1時間キャッシュ"""
+    from datetime import datetime as _dt
+    now = _dt.utcnow()
+    c = _nikkei_ret_cache
+    if c["updated_at"] and (now - c["updated_at"]).total_seconds() < 3600 and c["returns"] and len(c["returns"]) >= n:
+        return c["returns"][-n:]
+    bars = _fetch_yahoo_raw("^N225", "1d")
+    if len(bars) < n + 1:
+        return None
+    closes = [b["close"] for b in bars[-(n+1):]]
+    returns = [(closes[i] - closes[i-1]) / closes[i-1] * 100 for i in range(1, len(closes))]
+    c["returns"] = returns
+    c["updated_at"] = now
+    return returns[-n:]
+
+
+@app.get("/alpha")
+def get_alpha(symbol: str = Query(...), days: int = 5):
+    """直近days日間の日次超過リターン（株リターン − 日経リターン）の平均を返す"""
+    code = symbol.replace(".T", "").replace(".OS", "")
+    sym = f"{code}.T" if code.isdigit() else symbol
+    nk = _get_nikkei_returns(days)
+    if not nk:
+        return {"alpha": None}
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT close FROM candles WHERE symbol=%s AND interval_type='1d' "
+                "ORDER BY candle_time DESC LIMIT %s",
+                (sym, days + 1)
+            )
+            rows = cur.fetchall()
+        if len(rows) < days + 1:
+            return {"alpha": None}
+        closes = [r["close"] for r in reversed(rows)]
+        stock_ret = [(closes[i] - closes[i-1]) / closes[i-1] * 100 for i in range(1, days+1)]
+        excess = [stock_ret[i] - nk[i] for i in range(days)]
+        return {"alpha": round(sum(excess) / days, 2)}
+    except Exception:
+        return {"alpha": None}
+    finally:
+        conn.close()
+
+
 @app.get("/news")
 def get_news(symbol: str = Query(...)):
     """銘柄関連ニュースをYahoo Finance RSS + yfinance newsから取得しDBに差分保存、直近1週間を返す"""
